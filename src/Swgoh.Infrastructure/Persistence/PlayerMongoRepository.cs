@@ -24,6 +24,7 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
 
     private static PlayerDocument ToDocument(PlayerProfile player) => new()
     {
+        Id = player.AllyCode,
         AllyCode = player.AllyCode,
         PlayerId = player.PlayerId,
         Name = player.Name,
