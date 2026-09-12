@@ -71,10 +71,8 @@ jobs:
     needs: validate
     if: >-
       needs.validate.result == 'success' &&
-      (
-        (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RUN_SMOKE_AFTER_CI != 'false') ||
-        (github.event_name == 'workflow_dispatch' && inputs.run_smoke)
-      )
+      github.event_name == 'workflow_dispatch' &&
+      inputs.run_smoke
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -82,7 +80,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SMOKE_REF: ${{ github.ref_name }}
-      SMOKE_ALLY_CODE: ${{ github.event_name == 'workflow_dispatch' && inputs.ally_code || '476825771' }}
+      SMOKE_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
     steps:
       - name: Dispatch Smoke Test
         run: >-

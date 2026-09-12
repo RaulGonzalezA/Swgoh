@@ -1,7 +1,11 @@
 name: Smoke Test
-run-name: Smoke Test · ally ${{ inputs.ally_code }}
+run-name: Smoke Test · ally ${{ inputs.ally_code || '476825771' }}
 
 on:
+  workflow_run:
+    workflows: [ CI ]
+    types: [ completed ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       ally_code:
@@ -15,7 +19,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: smoke-test-${{ github.ref }}
+  group: smoke-test-${{ github.event.workflow_run.head_sha || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -24,16 +28,25 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   CI: true
-  SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code }}
+  SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
 
 jobs:
   smoke:
     name: Live player smoke test
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        vars.RUN_SMOKE_AFTER_CI != 'false'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
