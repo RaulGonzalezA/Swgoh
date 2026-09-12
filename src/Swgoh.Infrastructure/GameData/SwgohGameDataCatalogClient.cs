@@ -7,9 +7,9 @@ namespace Swgoh.Infrastructure.GameData;
 internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgohGameDataCatalog
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(6);
-    private readonly SemaphoreSlim cacheLock = new(1, 1);
-    private GameDataCatalog? cachedCatalog;
-    private DateTimeOffset cacheExpiresAtUtc;
+    private static readonly SemaphoreSlim CacheLock = new(1, 1);
+    private static GameDataCatalog? cachedCatalog;
+    private static DateTimeOffset cacheExpiresAtUtc;
 
     public async Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -18,7 +18,7 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
             return cachedCatalog;
         }
 
-        await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await CacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (cachedCatalog is not null && DateTimeOffset.UtcNow < cacheExpiresAtUtc)
@@ -50,7 +50,7 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
         }
         finally
         {
-            cacheLock.Release();
+            CacheLock.Release();
         }
     }
 
@@ -71,8 +71,7 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
                 continue;
             }
 
-            bool isShip = IsShip(unit);
-            result[baseId] = new GameUnitDefinition(baseId, isShip);
+            result[baseId] = new GameUnitDefinition(baseId, IsShip(unit));
         }
 
         return result;
@@ -165,9 +164,8 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
             string? unitBaseId = FindKnownUnitId(element, knownUnits);
             if (unitBaseId is not null)
             {
-                RequirementAccumulator current = requirements.TryGetValue(unitBaseId, out RequirementAccumulator existing)
-                    ? existing
-                    : new RequirementAccumulator();
+                requirements.TryGetValue(unitBaseId, out RequirementAccumulator? existing);
+                RequirementAccumulator current = existing ?? new RequirementAccumulator();
                 requirements[unitBaseId] = current with
                 {
                     MinimumRarity = Math.Max(current.MinimumRarity, FindNumericMinimum(element, "rarity")),
