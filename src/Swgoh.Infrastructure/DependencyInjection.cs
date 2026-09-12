@@ -40,9 +40,7 @@ public static class DependencyInjection
         services.AddMongoRepository<PlayerSnapshotDocument, string>(
             PlayerSnapshotMongoRepository.CollectionName,
             snapshot => snapshot.Id,
-            collection => collection
-                .CreateIfMissing()
-                .HasIndex(snapshot => snapshot.Id, indexName: "ux_player_snapshots_id", unique: true));
+            collection => collection.CreateIfMissing());
 
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
