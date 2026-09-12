@@ -1,3 +1,5 @@
+using Asp.Versioning;
+using Microsoft.AspNetCore.RateLimiting;
 using Swgoh.Application.Players;
 using Swgoh.Domain.Players;
 
@@ -7,13 +9,27 @@ internal static class PlayerEndpoints
 {
     public static IEndpointRouteBuilder MapPlayerEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        RouteGroupBuilder group = endpoints.MapGroup("/api/players").WithTags("Players");
-        group.MapGet("/{allyCode:long}", GetAsync);
-        group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync);
-        group.MapGet("/{allyCode:long}/history", GetHistoryAsync);
-        group.MapGet("/{allyCode:long}/gl-progress", GetGalacticLegendProgressAsync);
-        group.MapPost("/{allyCode:long}/refresh", RefreshAsync);
-        group.MapPut("/{allyCode:long}", PutAsync);
+        var versionedApi = endpoints.NewVersionedApi("Players");
+        RouteGroupBuilder group = versionedApi
+            .MapGroup("/api/v{version:apiVersion}/players")
+            .HasApiVersion(1.0)
+            .WithTags("Players");
+
+        group.MapGet("/{allyCode:long}", GetAsync)
+            .WithSummary("Get the persisted player profile");
+        group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync)
+            .WithSummary("Get roster analysis metrics");
+        group.MapGet("/{allyCode:long}/history", GetHistoryAsync)
+            .WithSummary("Get recent player snapshots");
+        group.MapGet("/{allyCode:long}/gl-progress", GetGalacticLegendProgressAsync)
+            .WithSummary("Get Galactic Legend requirement progress");
+        group.MapPost("/{allyCode:long}/refresh", RefreshAsync)
+            .WithSummary("Refresh a player from live SWGOH data")
+            .RequireRateLimiting("player-refresh")
+            .Produces(StatusCodes.Status429TooManyRequests);
+        group.MapPut("/{allyCode:long}", PutAsync)
+            .WithSummary("Create or update a player manually");
+
         return endpoints;
     }
 
