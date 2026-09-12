@@ -26,7 +26,11 @@ builder.Services
         options.ReportApiVersions = true;
         options.ApiVersionReader = new UrlSegmentApiVersionReader();
     })
-    .AddApiExplorer()
+    .AddApiExplorer(options =>
+    {
+        options.GroupNameFormat = "'v'VVV";
+        options.SubstituteApiVersionInUrl = true;
+    })
     .AddOpenApi();
 
 builder.Services.AddRateLimiter(options =>
@@ -90,7 +94,7 @@ app.UseRateLimiter();
 app.MapDefaultEndpoints();
 app.MapPlayerEndpoints();
 app.MapOpenApi().WithDocumentPerVersion();
-app.MapScalarApiReference(options =>
+app.MapScalarApiReference("/scalar", options =>
 {
     var descriptions = app.DescribeApiVersions();
     for (int index = 0; index < descriptions.Count; index++)
