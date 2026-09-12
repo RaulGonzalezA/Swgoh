@@ -34,8 +34,8 @@ public sealed class SwgohComlinkClientTests
                   "relic":{"currentTier":11},
                   "equippedStatMod":[{},{}],
                   "skill":[
-                    {"id":"zeta-skill","tier":6},
-                    {"id":"omicron-skill","tier":6},
+                    {"id":"zeta-and-omicron","tier":6},
+                    {"id":"zeta-before-omicron","tier":5},
                     {"id":"not-yet-zeta","tier":5}
                   ]
                 }
@@ -55,8 +55,8 @@ public sealed class SwgohComlinkClientTests
             },
             new Dictionary<string, GameSkillDefinition>
             {
-                ["zeta-skill"] = new("zeta-skill", 8, null),
-                ["omicron-skill"] = new("omicron-skill", null, 8),
+                ["zeta-and-omicron"] = new("zeta-and-omicron", 7, 8),
+                ["zeta-before-omicron"] = new("zeta-before-omicron", 7, 8),
                 ["not-yet-zeta"] = new("not-yet-zeta", 8, null)
             },
             []));
@@ -69,7 +69,7 @@ public sealed class SwgohComlinkClientTests
         Assert.Equal("CHARACTER", unit.DefinitionId);
         Assert.Equal(9, unit.RelicTier);
         Assert.Equal(2, unit.EquippedModCount);
-        Assert.Equal(1, unit.ZetaCount);
+        Assert.Equal(2, unit.ZetaCount);
         Assert.Equal(1, unit.OmicronCount);
     }
 
