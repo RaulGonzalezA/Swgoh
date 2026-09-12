@@ -3,9 +3,12 @@ using System.Threading.RateLimiting;
 
 using Asp.Versioning;
 using Asp.Versioning.OpenApi;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+
 using Scalar.AspNetCore;
+
 using Swgoh.Api.Endpoints;
 using Swgoh.Application;
 using Swgoh.Infrastructure;
