@@ -27,7 +27,7 @@ builder.Services
         options.ApiVersionReader = new UrlSegmentApiVersionReader();
     })
     .AddApiExplorer()
-    .AddOpenApi(options => options.Document.AddScalarTransformers());
+    .AddOpenApi();
 
 builder.Services.AddRateLimiter(options =>
 {
