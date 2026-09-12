@@ -12,6 +12,8 @@ internal sealed class SwgohComlinkClient(
     ISwgohStatsClient statsClient,
     ISwgohGameDataCatalog gameDataCatalog) : ISwgohPlayerClient
 {
+    private const int PlayerSkillTierOffset = 2;
+
     public async Task<ImportedPlayer> GetPlayerAsync(long allyCode, CancellationToken cancellationToken = default)
     {
         if (allyCode is < 100_000_000 or > 999_999_999)
@@ -75,12 +77,13 @@ internal sealed class SwgohComlinkClient(
                 continue;
             }
 
-            if (skill.ZetaTier is int zetaTier && playerSkill.Tier >= zetaTier)
+            int currentSkillTier = playerSkill.Tier + PlayerSkillTierOffset;
+            if (skill.ZetaTier is int zetaTier && currentSkillTier >= zetaTier)
             {
                 zetaCount++;
             }
 
-            if (skill.OmicronTier is int omicronTier && playerSkill.Tier >= omicronTier)
+            if (skill.OmicronTier is int omicronTier && currentSkillTier >= omicronTier)
             {
                 omicronCount++;
             }
