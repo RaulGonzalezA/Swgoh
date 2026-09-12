@@ -48,7 +48,7 @@ public sealed class GalacticLegendProgressServiceTests
         Assert.True(progress.Unlocked);
         Assert.Equal(1, progress.CompletedRequirements);
         Assert.Equal(3, progress.TotalRequirements);
-        Assert.Equal(33.3m, progress.Percentage);
+        Assert.Equal(33.3m, progress.CompletionPercent);
 
         GalacticLegendRequirementProgress reqA = Assert.Single(progress.Requirements, requirement => requirement.UnitBaseId == "REQ_A");
         Assert.True(reqA.Owned);
@@ -57,7 +57,7 @@ public sealed class GalacticLegendProgressServiceTests
         GalacticLegendRequirementProgress reqB = Assert.Single(progress.Requirements, requirement => requirement.UnitBaseId == "REQ_B");
         Assert.True(reqB.Owned);
         Assert.False(reqB.Complete);
-        Assert.Equal(4, reqB.RelicTier);
+        Assert.Equal(4, reqB.CurrentRelicTier);
 
         GalacticLegendRequirementProgress reqC = Assert.Single(progress.Requirements, requirement => requirement.UnitBaseId == "REQ_C");
         Assert.False(reqC.Owned);
