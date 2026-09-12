@@ -1,7 +1,10 @@
+using MongoDB.Bson.Serialization.Attributes;
+
 namespace Swgoh.Infrastructure.Persistence.Documents;
 
 internal sealed class PlayerSnapshotDocument
 {
+    [BsonId]
     public string Id { get; set; } = string.Empty;
     public long AllyCode { get; set; }
     public DateTimeOffset CapturedAtUtc { get; set; }
