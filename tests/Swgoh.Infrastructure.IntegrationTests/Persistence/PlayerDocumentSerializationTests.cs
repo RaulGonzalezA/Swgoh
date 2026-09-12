@@ -3,6 +3,8 @@ using MongoDB.Bson.Serialization;
 
 using Swgoh.Infrastructure.Persistence.Documents;
 
+using Xunit;
+
 namespace Swgoh.Infrastructure.IntegrationTests.Persistence;
 
 public sealed class PlayerDocumentSerializationTests
