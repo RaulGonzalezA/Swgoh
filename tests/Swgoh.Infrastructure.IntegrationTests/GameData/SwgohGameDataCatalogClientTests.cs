@@ -13,6 +13,7 @@ public sealed class SwgohGameDataCatalogClientTests
     [Fact]
     public async Task GetAsync_ParsesSpecialSkillTiersAndCachesCatalog()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var handler = new GameDataHandler();
         using var httpClient = new HttpClient(handler)
         {
@@ -20,8 +21,8 @@ public sealed class SwgohGameDataCatalogClientTests
         };
         var client = new SwgohGameDataCatalogClient(new StubHttpClientFactory(httpClient));
 
-        GameDataCatalog first = await client.GetAsync();
-        GameDataCatalog second = await client.GetAsync();
+        GameDataCatalog first = await client.GetAsync(cancellationToken);
+        GameDataCatalog second = await client.GetAsync(cancellationToken);
 
         Assert.Same(first, second);
         Assert.Equal(4, first.Skills["skill-zeta"].ZetaTier);
