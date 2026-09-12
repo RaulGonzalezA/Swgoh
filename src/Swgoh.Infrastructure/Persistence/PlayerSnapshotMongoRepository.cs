@@ -1,3 +1,5 @@
+using MongoDB.Driver;
+
 using RepositoryMongoDb.Repository;
 
 using Swgoh.Application.Players;
@@ -9,6 +11,7 @@ internal sealed class PlayerSnapshotMongoRepository(IMongoDbRepository<PlayerSna
     : IPlayerSnapshotRepository
 {
     internal const string CollectionName = "playerSnapshots";
+    internal const string AllyCodeCapturedAtIndexName = "ix_player_snapshots_ally_code_captured_at";
 
     public Task UpsertAsync(PlayerSnapshot snapshot, CancellationToken cancellationToken = default) =>
         repository.UpsertAsync(ToDocument(snapshot), cancellationToken);
@@ -18,15 +21,16 @@ internal sealed class PlayerSnapshotMongoRepository(IMongoDbRepository<PlayerSna
         int limit,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyCollection<PlayerSnapshotDocument> documents = await repository.FindAllAsync(cancellationToken).ConfigureAwait(false);
-        return
-        [
-            .. documents
-                .Where(document => document.AllyCode == allyCode)
-                .OrderByDescending(document => document.CapturedAtUtc)
-                .Take(limit)
-                .Select(ToDomain)
-        ];
+        FilterDefinition<PlayerSnapshotDocument> filter = Builders<PlayerSnapshotDocument>.Filter
+            .Eq(document => document.AllyCode, allyCode);
+        SortDefinition<PlayerSnapshotDocument> sort = Builders<PlayerSnapshotDocument>.Sort
+            .Descending(document => document.CapturedAtUtc);
+
+        IReadOnlyCollection<PlayerSnapshotDocument> documents = await repository
+            .FindPageAsync(filter, skip: 0, limit, sort, cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. documents.Select(ToDomain)];
     }
 
     private static PlayerSnapshotDocument ToDocument(PlayerSnapshot snapshot) => new()
