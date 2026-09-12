@@ -5,6 +5,8 @@ var database = mongo.AddDatabase("swgoh");
 
 var comlink = builder
     .AddContainer("comlink", "ghcr.io/swgoh-utils/swgoh-comlink", "latest")
+    .WithEnvironment("APP_NAME", "swgoh")
+    .WithEnvironment("PORT", "3000")
     .WithHttpEndpoint(port: 3000, targetPort: 3000, name: "http");
 
 var stats = builder
