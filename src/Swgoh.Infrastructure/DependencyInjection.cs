@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+using MongoDB.Driver;
+
 using RepositoryMongoDb.DependencyInjection;
 
 using Swgoh.Application.Abstractions;
@@ -35,18 +37,30 @@ public static class DependencyInjection
             player => player.AllyCode,
             collection => collection.CreateIfMissing());
 
+        IndexKeysDefinition<PlayerSnapshotDocument> snapshotIndexKeys = Builders<PlayerSnapshotDocument>.IndexKeys
+            .Ascending(snapshot => snapshot.AllyCode)
+            .Descending(snapshot => snapshot.CapturedAtUtc);
+
         services.AddMongoRepository<PlayerSnapshotDocument, string>(
             PlayerSnapshotMongoRepository.CollectionName,
             snapshot => snapshot.Id,
-            collection => collection.CreateIfMissing());
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    snapshotIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = PlayerSnapshotMongoRepository.AllyCodeCapturedAtIndexName
+                    }));
 
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
-        services.AddHttpClient<ISwgohGameDataCatalog, SwgohGameDataCatalogClient>(client =>
+        services.AddHttpClient(SwgohGameDataCatalogClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(gameDataBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromMinutes(5);
         });
+        services.AddSingleton<ISwgohGameDataCatalog, SwgohGameDataCatalogClient>();
 
         string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
         services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>
