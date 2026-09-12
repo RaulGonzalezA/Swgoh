@@ -7,8 +7,11 @@ internal sealed class PlayerProfileService(
     IPlayerRepository repository,
     IPlayerSnapshotRepository snapshotRepository,
     ISwgohPlayerClient swgohPlayerClient,
-    IClock clock) : IPlayerProfileService
+    IClock clock,
+    PlayerRefreshLock refreshLock) : IPlayerProfileService
 {
+    internal static readonly TimeSpan RefreshFreshnessWindow = TimeSpan.FromMinutes(5);
+
     public Task<PlayerProfile?> GetAsync(long allyCode, CancellationToken cancellationToken = default) =>
         repository.FindByAllyCodeAsync(allyCode, cancellationToken);
 
@@ -31,6 +34,20 @@ internal sealed class PlayerProfileService(
 
     public async Task<PlayerProfile> RefreshFromGameAsync(long allyCode, CancellationToken cancellationToken = default)
     {
+        PlayerProfile? existing = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        if (IsFreshImportedProfile(existing))
+        {
+            return existing!;
+        }
+
+        using IDisposable refreshLease = await refreshLock.AcquireAsync(allyCode, cancellationToken).ConfigureAwait(false);
+
+        existing = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        if (IsFreshImportedProfile(existing))
+        {
+            return existing!;
+        }
+
         ImportedPlayer imported = await swgohPlayerClient.GetPlayerAsync(allyCode, cancellationToken).ConfigureAwait(false);
         RosterUnit[] roster =
         [
@@ -63,4 +80,9 @@ internal sealed class PlayerProfileService(
         await snapshotRepository.UpsertAsync(PlayerRosterMetrics.CreateSnapshot(player), cancellationToken).ConfigureAwait(false);
         return player;
     }
+
+    private bool IsFreshImportedProfile(PlayerProfile? player) =>
+        player is not null
+        && !string.IsNullOrWhiteSpace(player.PlayerId)
+        && player.UpdatedAtUtc >= clock.UtcNow - RefreshFreshnessWindow;
 }

@@ -29,6 +29,8 @@ public sealed class SwgohGameDataCatalogClientTests
         Assert.Null(first.Skills["skill-zeta"].OmicronTier);
         Assert.Equal(3, first.Skills["skill-omicron"].OmicronTier);
         Assert.Null(first.Skills["skill-omicron"].ZetaTier);
+        Assert.Equal(3, first.Skills["skill-zeta-omicron"].ZetaTier);
+        Assert.Equal(4, first.Skills["skill-zeta-omicron"].OmicronTier);
         Assert.False(first.Units["CHARACTER"].IsShip);
         Assert.True(first.Units["SHIP"].IsShip);
         Assert.Equal(4, handler.RequestCount);
@@ -69,6 +71,11 @@ public sealed class SwgohGameDataCatalogClientTests
                       ]},
                       {"id":"skill-omicron","tier":[
                         {"isZetaTier":false,"isOmicronTier":false},
+                        {"isZetaTier":false,"isOmicronTier":true}
+                      ]},
+                      {"id":"skill-zeta-omicron","tier":[
+                        {"isZetaTier":false,"isOmicronTier":false},
+                        {"isZetaTier":true,"isOmicronTier":false},
                         {"isZetaTier":false,"isOmicronTier":true}
                       ]}
                     ]}
