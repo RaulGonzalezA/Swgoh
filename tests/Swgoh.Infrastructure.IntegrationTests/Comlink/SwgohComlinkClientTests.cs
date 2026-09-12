@@ -15,6 +15,7 @@ public sealed class SwgohComlinkClientTests
     [Fact]
     public async Task GetPlayerAsync_ConvertsComlinkSkillTierBeforeCountingZetasAndOmicrons()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         const string playerJson = """
             {
               "allyCode":"476825771",
@@ -61,7 +62,7 @@ public sealed class SwgohComlinkClientTests
             []));
         var client = new SwgohComlinkClient(httpClient, stats, catalog);
 
-        ImportedPlayer result = await client.GetPlayerAsync(476_825_771);
+        ImportedPlayer result = await client.GetPlayerAsync(476_825_771, cancellationToken);
 
         Assert.Equal(42_000, result.GalacticPower);
         ImportedRosterUnit unit = Assert.Single(result.Roster);
@@ -75,6 +76,7 @@ public sealed class SwgohComlinkClientTests
     [Fact]
     public async Task GetPlayerAsync_WithInvalidAllyCode_ThrowsBeforeCallingProvider()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         using var httpClient = new HttpClient(new JsonHandler("{}"))
         {
             BaseAddress = new Uri("http://comlink.test/")
@@ -87,7 +89,7 @@ public sealed class SwgohComlinkClientTests
                 new Dictionary<string, GameSkillDefinition>(),
                 [])));
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.GetPlayerAsync(123));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.GetPlayerAsync(123, cancellationToken));
     }
 
     private sealed class FakeStatsClient(IReadOnlyDictionary<string, long> powerByUnit) : ISwgohStatsClient
