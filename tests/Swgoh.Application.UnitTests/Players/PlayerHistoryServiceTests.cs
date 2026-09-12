@@ -13,10 +13,11 @@ public sealed class PlayerHistoryServiceTests
     [InlineData(500, 365)]
     public async Task GetRecentAsync_ClampsRequestedLimit(int requestedLimit, int expectedLimit)
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var repository = new CapturingSnapshotRepository();
         var service = new PlayerHistoryService(repository);
 
-        await service.GetRecentAsync(476_825_771, requestedLimit);
+        await service.GetRecentAsync(476_825_771, requestedLimit, cancellationToken);
 
         Assert.Equal(476_825_771, repository.AllyCode);
         Assert.Equal(expectedLimit, repository.Limit);
