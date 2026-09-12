@@ -11,6 +11,7 @@ public sealed class GalacticLegendProgressServiceTests
     [Fact]
     public async Task GetAsync_CalculatesOwnedCompletedAndPercentage()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         PlayerProfile player = PlayerProfile.Import(
             476_825_771,
             "player-id",
@@ -41,7 +42,7 @@ public sealed class GalacticLegendProgressServiceTests
             ]));
         var service = new GalacticLegendProgressService(repository, catalog);
 
-        IReadOnlyCollection<GalacticLegendProgress>? result = await service.GetAsync(476_825_771);
+        IReadOnlyCollection<GalacticLegendProgress>? result = await service.GetAsync(476_825_771, cancellationToken);
 
         GalacticLegendProgress progress = Assert.Single(Assert.IsAssignableFrom<IReadOnlyCollection<GalacticLegendProgress>>(result));
         Assert.True(progress.Unlocked);
@@ -66,6 +67,7 @@ public sealed class GalacticLegendProgressServiceTests
     [Fact]
     public async Task GetAsync_WhenPlayerDoesNotExist_ReturnsNull()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var service = new GalacticLegendProgressService(
             new FakePlayerRepository(null),
             new FakeGameDataCatalog(new GameDataCatalog(
@@ -73,7 +75,7 @@ public sealed class GalacticLegendProgressServiceTests
                 new Dictionary<string, GameSkillDefinition>(),
                 [])));
 
-        IReadOnlyCollection<GalacticLegendProgress>? result = await service.GetAsync(476_825_771);
+        IReadOnlyCollection<GalacticLegendProgress>? result = await service.GetAsync(476_825_771, cancellationToken);
 
         Assert.Null(result);
     }
