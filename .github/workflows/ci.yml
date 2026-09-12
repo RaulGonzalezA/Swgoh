@@ -7,9 +7,15 @@ on:
     branches: [ main ]
   workflow_dispatch:
     inputs:
+      run_smoke:
+        description: Run Smoke Test after CI succeeds
+        required: true
+        default: true
+        type: boolean
       ally_code:
-        description: SWGOH ally code for the live smoke test
+        description: SWGOH ally code used when Smoke Test is requested
         required: false
+        default: '476825771'
         type: string
 
 permissions:
@@ -26,11 +32,10 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   CI: true
-  SWGOH_TEST_ALLY_CODE: ${{ github.event.inputs.ally_code || '476825771' }}
 
 jobs:
   validate:
-    name: Format, build, test and smoke
+    name: Format, build and test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -61,123 +66,27 @@ jobs:
       - name: Run tests
         run: dotnet test Swgoh.sln --configuration Release --no-build --no-restore
 
-      - name: Start live smoke dependencies
-        if: env.SWGOH_TEST_ALLY_CODE != ''
-        run: |
-          set -euo pipefail
-
-          docker network create swgoh-smoke
-          docker run -d --name mongodb --network swgoh-smoke -p 27017:27017 mongo:8
-          docker run -d --name comlink --network swgoh-smoke -p 3000:3000 \
-            -e APP_NAME=swgoh \
-            -e PORT=3000 \
-            ghcr.io/swgoh-utils/swgoh-comlink:latest
-
-          comlink_ready=false
-          for attempt in {1..60}; do
-            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
-              comlink_ready=true
-              break
-            fi
-            if ! docker ps --format '{{.Names}}' | grep -qx comlink; then
-              echo 'Comlink stopped during startup.'
-              docker logs comlink || true
-              exit 1
-            fi
-            sleep 2
-          done
-
-          if [[ "${comlink_ready}" != true ]]; then
-            echo 'Comlink did not become ready in time.'
-            docker logs comlink || true
-            exit 1
-          fi
-
-          docker run -d --name swgoh-stats --network swgoh-smoke -p 3223:3223 \
-            -e PORT=3223 \
-            -e CLIENT_URL=http://comlink:3000 \
-            ghcr.io/swgoh-utils/swgoh-stats:latest
-
-          stats_ready=false
-          for attempt in {1..90}; do
-            if docker logs swgoh-stats 2>&1 | grep -q 'Data updates complete!'; then
-              stats_ready=true
-              break
-            fi
-            if ! docker ps --format '{{.Names}}' | grep -qx swgoh-stats; then
-              echo 'swgoh-stats stopped during startup.'
-              docker logs swgoh-stats || true
-              exit 1
-            fi
-            sleep 2
-          done
-
-          if [[ "${stats_ready}" != true ]]; then
-            echo 'swgoh-stats did not finish loading game data in time.'
-            docker logs swgoh-stats || true
-            exit 1
-          fi
-
-      - name: Start API for live smoke test
-        if: env.SWGOH_TEST_ALLY_CODE != ''
-        env:
-          ASPNETCORE_URLS: http://127.0.0.1:5080
-          ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
-          Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
-          Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
-        run: |
-          mkdir -p smoke-results
-          dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build > smoke-results/api.log 2>&1 &
-          echo $! > smoke-results/api.pid
-
-          for attempt in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:5080/health > /dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-
-          cat smoke-results/api.log
-          exit 1
-
-      - name: Execute live player smoke test
-        if: env.SWGOH_TEST_ALLY_CODE != ''
-        run: |
-          set -euo pipefail
-          base_url="http://127.0.0.1:5080/api/players/${SWGOH_TEST_ALLY_CODE}"
-
-          curl --fail-with-body --silent --show-error --request POST "${base_url}/refresh" --output smoke-results/refresh.json
-          curl --fail-with-body --silent --show-error "${base_url}" --output smoke-results/player.json
-          curl --fail-with-body --silent --show-error "${base_url}/analysis" --output smoke-results/analysis.json
-          curl --fail-with-body --silent --show-error "${base_url}/history?limit=5" --output smoke-results/history.json
-          curl --fail-with-body --silent --show-error "${base_url}/gl-progress" --output smoke-results/gl-progress.json
-
-          jq -e '.name | length > 0' smoke-results/player.json > /dev/null
-          jq -e '.rosterCount > 0' smoke-results/player.json > /dev/null
-          jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
-          jq -e '(.roster | length) == .rosterCount' smoke-results/player.json > /dev/null
-          jq -e '.galacticPower > 0' smoke-results/analysis.json > /dev/null
-          jq -e '.omicrons > 0' smoke-results/analysis.json > /dev/null
-          jq -e 'type == "array" and length > 0' smoke-results/history.json > /dev/null
-          jq -e 'type == "array"' smoke-results/gl-progress.json > /dev/null
-
-          jq '{name, level, galacticPower, rosterCount, guildName, updatedAtUtc}' smoke-results/player.json
-          jq '{galacticPower, characterGalacticPower, shipGalacticPower, characterCount, shipCount, relicCharacters, relic7Plus, relic8Plus, relic9Plus, relic10, zetas, omicrons}' smoke-results/analysis.json
-          jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
-
-      - name: Upload live smoke responses
-        if: always() && env.SWGOH_TEST_ALLY_CODE != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: swgoh-live-smoke-${{ github.run_number }}
-          path: smoke-results/
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Dump live dependency logs on failure
-        if: failure() && env.SWGOH_TEST_ALLY_CODE != ''
-        run: |
-          docker logs comlink || true
-          docker logs swgoh-stats || true
-          docker logs mongodb || true
-          cat smoke-results/api.log || true
+  dispatch-smoke:
+    name: Trigger Smoke Test
+    needs: validate
+    if: >-
+      needs.validate.result == 'success' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RUN_SMOKE_AFTER_CI != 'false') ||
+        (github.event_name == 'workflow_dispatch' && inputs.run_smoke)
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SMOKE_REF: ${{ github.ref_name }}
+      SMOKE_ALLY_CODE: ${{ github.event_name == 'workflow_dispatch' && inputs.ally_code || '476825771' }}
+    steps:
+      - name: Dispatch Smoke Test
+        run: >-
+          gh workflow run smoke-test.yml
+          --repo "${{ github.repository }}"
+          --ref "${SMOKE_REF}"
+          -f ally_code="${SMOKE_ALLY_CODE}"

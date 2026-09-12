@@ -46,11 +46,18 @@ Outside Aspire, configure:
 
 Game Data is cached in-process for six hours.
 
-## CI
+## CI and smoke test
 
-GitHub Actions validates formatting, builds Release, runs unit/integration tests and executes a live smoke test against MongoDB, Comlink and SWGOH Stats. The smoke test verifies player import, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
+GitHub Actions uses two separate workflows:
 
-`workflow_dispatch` accepts an optional `ally_code` input for the live smoke test.
+- `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, refreshes a live player and validates player import, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
+
+A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
+
+Pushes to `main` run CI and, by default, dispatch `Smoke Test` after a successful CI. Set the repository Actions variable `RUN_SMOKE_AFTER_CI=false` to keep automatic `main` runs as CI-only.
+
+`Smoke Test` also has its own `workflow_dispatch`, so it can be executed independently with a configurable `ally_code`.
 
 ## Commands
 
