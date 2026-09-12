@@ -1,4 +1,5 @@
 using Swgoh.Domain.Players;
+using Xunit;
 
 namespace Swgoh.Domain.UnitTests.Players;
 
