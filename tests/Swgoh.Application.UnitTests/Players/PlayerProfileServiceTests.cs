@@ -13,6 +13,7 @@ public sealed class PlayerProfileServiceTests
     [Fact]
     public async Task RefreshFromGameAsync_MapsPersistsAndSnapshotsImportedPlayer()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var repository = new FakePlayerRepository();
         var snapshots = new FakePlayerSnapshotRepository();
         var client = new FakePlayerClient(new ImportedPlayer(
@@ -29,7 +30,7 @@ public sealed class PlayerProfileServiceTests
             ]));
         var service = new PlayerProfileService(repository, snapshots, client, new FakeClock(FixedNow));
 
-        PlayerProfile result = await service.RefreshFromGameAsync(476_825_771);
+        PlayerProfile result = await service.RefreshFromGameAsync(476_825_771, cancellationToken);
 
         Assert.Equal("player-id", result.PlayerId);
         Assert.Equal("Aberronko", result.Name);
@@ -54,6 +55,7 @@ public sealed class PlayerProfileServiceTests
     [Fact]
     public async Task SaveAsync_WhenPlayerDoesNotExist_CreatesAndPersistsPlayer()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var repository = new FakePlayerRepository();
         var service = new PlayerProfileService(
             repository,
@@ -61,7 +63,11 @@ public sealed class PlayerProfileServiceTests
             new FakePlayerClient(),
             new FakeClock(FixedNow));
 
-        PlayerProfile result = await service.SaveAsync(476_825_771, "  Aberronko  ", 13_700_000);
+        PlayerProfile result = await service.SaveAsync(
+            476_825_771,
+            "  Aberronko  ",
+            13_700_000,
+            cancellationToken);
 
         Assert.Equal("Aberronko", result.Name);
         Assert.Equal(13_700_000, result.GalacticPower);
