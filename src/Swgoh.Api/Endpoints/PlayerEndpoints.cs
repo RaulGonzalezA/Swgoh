@@ -1,5 +1,7 @@
 using Asp.Versioning;
+
 using Microsoft.AspNetCore.RateLimiting;
+
 using Swgoh.Application.Players;
 using Swgoh.Domain.Players;
 
