@@ -98,13 +98,14 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
 
         using IAsyncCursor<BsonDocument> cursor = await collection.Indexes.ListAsync(cancellationToken);
         List<BsonDocument> indexes = await cursor.ToListAsync(cancellationToken);
-        BsonDocument compoundIndex = Assert.Single(indexes.Where(index =>
-            index.TryGetValue("name", out BsonValue? name)
-            && name.IsString
-            && string.Equals(
-                name.AsString,
-                PlayerSnapshotMongoRepository.AllyCodeCapturedAtIndexName,
-                StringComparison.Ordinal)));
+        BsonDocument compoundIndex = Assert.Single(
+            indexes,
+            index => index.TryGetValue("name", out BsonValue? name)
+                && name.IsString
+                && string.Equals(
+                    name.AsString,
+                    PlayerSnapshotMongoRepository.AllyCodeCapturedAtIndexName,
+                    StringComparison.Ordinal));
 
         BsonDocument keys = compoundIndex["key"].AsBsonDocument;
         Assert.Equal(1, keys["AllyCode"].ToInt32());
