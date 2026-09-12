@@ -1,10 +1,8 @@
-using MongoDB.Bson.Serialization.Attributes;
-
 namespace Swgoh.Infrastructure.Persistence.Documents;
 
 internal sealed class PlayerDocument
 {
-    [BsonId]
+    public long Id { get; set; }
     public long AllyCode { get; set; }
     public string PlayerId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
