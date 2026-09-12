@@ -14,6 +14,7 @@ internal sealed class PlayerSnapshotDocument
     public int Relic7Plus { get; set; }
     public int Relic8Plus { get; set; }
     public int Relic9Plus { get; set; }
+    public int Relic10 { get; set; }
     public int Zetas { get; set; }
     public int Omicrons { get; set; }
 }
