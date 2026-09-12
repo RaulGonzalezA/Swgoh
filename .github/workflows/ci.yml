@@ -124,7 +124,7 @@ jobs:
           jq -e '.name | length > 0' smoke-results/player.json > /dev/null
           jq -e '.rosterCount > 0' smoke-results/player.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
-          jq -e '.roster | length == .rosterCount' smoke-results/player.json > /dev/null
+          jq -e '(.roster | length) == .rosterCount' smoke-results/player.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/analysis.json > /dev/null
           jq -e 'type == "array"' smoke-results/gl-progress.json > /dev/null
 
