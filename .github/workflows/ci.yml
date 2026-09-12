@@ -16,10 +16,10 @@ concurrency:
 
 env:
   DOTNET_NOLOGO: true
+  NUGET_XMLDOC_MODE: skip
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   CI: true
-  NUGET_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
 jobs:
   validate:
@@ -35,12 +35,12 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Authenticate GitHub Packages
-        run: >
-          dotnet nuget update source github
-          --configfile NuGet.config
+        run: >-
+          dotnet nuget update source github-raulgonzaleza
           --username "${{ github.actor }}"
-          --password "$NUGET_GITHUB_TOKEN"
+          --password "${{ secrets.NUGET_PAT }}"
           --store-password-in-clear-text
+          --configfile NuGet.config
 
       - name: Restore
         run: dotnet restore Swgoh.sln
