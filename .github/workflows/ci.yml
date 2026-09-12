@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,10 +21,11 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   CI: true
+  SWGOH_TEST_ALLY_CODE: ${{ secrets.SWGOH_TEST_ALLY_CODE }}
 
 jobs:
   validate:
-    name: Format, build and test
+    name: Format, build, test and smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -53,3 +55,106 @@ jobs:
 
       - name: Run tests
         run: dotnet test Swgoh.sln --configuration Release --no-build --no-restore
+
+      - name: Start live smoke dependencies
+        if: env.SWGOH_TEST_ALLY_CODE != ''
+        run: |
+          docker network create swgoh-smoke
+          docker run -d --rm --name mongodb --network swgoh-smoke -p 27017:27017 mongo:8
+          docker run -d --rm --name comlink --network swgoh-smoke -p 3000:3000 ghcr.io/swgoh-utils/swgoh-comlink:latest
+          docker run -d --rm --name swgoh-stats --network swgoh-smoke -p 3223:3223 \
+            -e PORT=3223 \
+            -e CLIENT_URL=http://comlink:3000 \
+            ghcr.io/swgoh-utils/swgoh-stats:latest
+
+      - name: Start API for live smoke test
+        if: env.SWGOH_TEST_ALLY_CODE != ''
+        env:
+          ASPNETCORE_URLS: http://127.0.0.1:5080
+          ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
+          Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
+          Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
+        run: |
+          mkdir -p smoke-results
+          dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build > smoke-results/api.log 2>&1 &
+          echo $! > smoke-results/api.pid
+
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:5080/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          cat smoke-results/api.log
+          exit 1
+
+      - name: Execute live player smoke test
+        if: env.SWGOH_TEST_ALLY_CODE != ''
+        run: |
+          set -euo pipefail
+          base_url="http://127.0.0.1:5080/api/players/${SWGOH_TEST_ALLY_CODE}"
+
+          curl --fail-with-body --silent --show-error \
+            --request POST "${base_url}/refresh" \
+            --output smoke-results/refresh.json
+
+          curl --fail-with-body --silent --show-error \
+            "${base_url}" \
+            --output smoke-results/player.json
+
+          curl --fail-with-body --silent --show-error \
+            "${base_url}/analysis" \
+            --output smoke-results/analysis.json
+
+          curl --fail-with-body --silent --show-error \
+            "${base_url}/gl-progress" \
+            --output smoke-results/gl-progress.json
+
+          jq -e '.name | length > 0' smoke-results/player.json > /dev/null
+          jq -e '.rosterCount > 0' smoke-results/player.json > /dev/null
+          jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
+          jq -e '.roster | length == .rosterCount' smoke-results/player.json > /dev/null
+          jq -e '.galacticPower > 0' smoke-results/analysis.json > /dev/null
+          jq -e 'type == "array"' smoke-results/gl-progress.json > /dev/null
+
+          jq '{
+            name,
+            level,
+            galacticPower,
+            rosterCount,
+            guildName,
+            updatedAtUtc
+          }' smoke-results/player.json
+
+          jq '{
+            galacticPower,
+            characterGalacticPower,
+            shipGalacticPower,
+            characterCount,
+            shipCount,
+            relicCharacters,
+            relic7Plus,
+            relic8Plus,
+            relic9Plus,
+            relic10,
+            zetas,
+            omicrons
+          }' smoke-results/analysis.json
+
+      - name: Upload live smoke responses
+        if: always() && env.SWGOH_TEST_ALLY_CODE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: swgoh-live-smoke-${{ github.run_number }}
+          path: smoke-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Dump live dependency logs on failure
+        if: failure() && env.SWGOH_TEST_ALLY_CODE != ''
+        run: |
+          docker logs comlink || true
+          docker logs swgoh-stats || true
+          docker logs mongodb || true
+          cat smoke-results/api.log || true
