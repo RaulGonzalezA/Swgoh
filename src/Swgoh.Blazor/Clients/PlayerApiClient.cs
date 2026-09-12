@@ -6,7 +6,7 @@ public sealed class PlayerApiClient(HttpClient httpClient)
 {
     public async Task<PlayerViewModel?> GetAsync(long allyCode, CancellationToken cancellationToken = default)
     {
-        using HttpResponseMessage response = await httpClient.GetAsync($"/api/players/{allyCode}", cancellationToken);
+        using HttpResponseMessage response = await httpClient.GetAsync($"/api/v1/players/{allyCode}", cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
