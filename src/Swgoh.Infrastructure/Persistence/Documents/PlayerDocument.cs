@@ -22,4 +22,8 @@ internal sealed class RosterUnitDocument
     public int GearTier { get; set; }
     public int RelicTier { get; set; }
     public int EquippedModCount { get; set; }
+    public long GalacticPower { get; set; }
+    public bool IsShip { get; set; }
+    public int ZetaCount { get; set; }
+    public int OmicronCount { get; set; }
 }

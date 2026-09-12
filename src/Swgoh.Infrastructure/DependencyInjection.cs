@@ -35,6 +35,20 @@ public static class DependencyInjection
                 .CreateIfMissing()
                 .HasIndex(player => player.AllyCode, indexName: "ux_players_ally_code", unique: true));
 
+        services.AddMongoRepository<PlayerSnapshotDocument, string>(
+            PlayerSnapshotMongoRepository.CollectionName,
+            snapshot => snapshot.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(snapshot => snapshot.Id, indexName: "ux_player_snapshots_id", unique: true));
+
+        string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
+        services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>
+        {
+            client.BaseAddress = new Uri(statsBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
+            client.Timeout = TimeSpan.FromSeconds(120);
+        });
+
         string comlinkBaseUrl = configuration["Swgoh:Comlink:BaseUrl"] ?? "http://comlink";
         services.AddHttpClient<ISwgohPlayerClient, SwgohComlinkClient>(client =>
         {
@@ -44,6 +58,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
+        services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         return services;
     }
 }

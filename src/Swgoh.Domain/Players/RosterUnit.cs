@@ -7,4 +7,8 @@ public sealed record RosterUnit(
     int Rarity,
     int GearTier,
     int RelicTier,
-    int EquippedModCount);
+    int EquippedModCount,
+    long GalacticPower = 0,
+    bool IsShip = false,
+    int ZetaCount = 0,
+    int OmicronCount = 0);

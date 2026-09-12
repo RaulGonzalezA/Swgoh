@@ -1,11 +1,12 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Swgoh.Application.Players;
 
 namespace Swgoh.Infrastructure.Comlink;
 
-internal sealed class SwgohComlinkClient(HttpClient httpClient) : ISwgohPlayerClient
+internal sealed class SwgohComlinkClient(HttpClient httpClient, ISwgohStatsClient statsClient) : ISwgohPlayerClient
 {
     public async Task<ImportedPlayer> GetPlayerAsync(long allyCode, CancellationToken cancellationToken = default)
     {
@@ -18,14 +19,24 @@ internal sealed class SwgohComlinkClient(HttpClient httpClient) : ISwgohPlayerCl
         using HttpResponseMessage response = await httpClient.PostAsJsonAsync("player", request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        ComlinkPlayerDto? player = await response.Content.ReadFromJsonAsync<ComlinkPlayerDto>(cancellationToken).ConfigureAwait(false);
+        string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        ComlinkPlayerDto? player = JsonSerializer.Deserialize<ComlinkPlayerDto>(json);
         if (player is null)
         {
             throw new InvalidOperationException("Comlink returned an empty player payload.");
         }
 
+        using JsonDocument rawPlayer = JsonDocument.Parse(json);
+        JsonElement[] rawRoster = rawPlayer.RootElement.TryGetProperty("rosterUnit", out JsonElement rosterElement)
+            ? [.. rosterElement.EnumerateArray().Select(unit => unit.Clone())]
+            : [];
+        IReadOnlyDictionary<string, long> powerByUnit = await statsClient
+            .CalculateGalacticPowerAsync(rawRoster, cancellationToken)
+            .ConfigureAwait(false);
+
         long returnedAllyCode = long.TryParse(player.AllyCode, out long parsedAllyCode) ? parsedAllyCode : allyCode;
-        ImportedRosterUnit[] roster = [.. player.RosterUnit.Select(MapRosterUnit)];
+        ImportedRosterUnit[] roster = [.. player.RosterUnit.Select(unit => MapRosterUnit(unit, powerByUnit))];
+        long galacticPower = roster.Sum(unit => unit.GalacticPower);
 
         return new ImportedPlayer(
             returnedAllyCode,
@@ -34,11 +45,13 @@ internal sealed class SwgohComlinkClient(HttpClient httpClient) : ISwgohPlayerCl
             player.GuildId,
             player.GuildName,
             player.Level,
-            0,
+            galacticPower,
             roster);
     }
 
-    private static ImportedRosterUnit MapRosterUnit(ComlinkRosterUnitDto unit)
+    private static ImportedRosterUnit MapRosterUnit(
+        ComlinkRosterUnitDto unit,
+        IReadOnlyDictionary<string, long> powerByUnit)
     {
         string definitionId = unit.DefinitionId ?? string.Empty;
         int separatorIndex = definitionId.IndexOf(':', StringComparison.Ordinal);
@@ -47,14 +60,17 @@ internal sealed class SwgohComlinkClient(HttpClient httpClient) : ISwgohPlayerCl
             definitionId = definitionId[..separatorIndex];
         }
 
+        string id = unit.Id ?? string.Empty;
+        long galacticPower = powerByUnit.TryGetValue(id, out long gp) ? gp : 0;
         return new ImportedRosterUnit(
-            unit.Id ?? string.Empty,
+            id,
             definitionId,
             unit.CurrentLevel,
             unit.CurrentRarity,
             unit.CurrentTier,
             unit.Relic?.CurrentTier ?? 0,
-            unit.EquippedStatMod?.Count ?? 0);
+            unit.EquippedStatMod?.Count ?? 0,
+            galacticPower);
     }
 
     private sealed record ComlinkPlayerRequest(

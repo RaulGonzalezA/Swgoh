@@ -10,6 +10,8 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddScoped<IPlayerProfileService, PlayerProfileService>();
+        services.AddScoped<IPlayerAnalysisService, PlayerAnalysisService>();
+        services.AddScoped<IPlayerHistoryService, PlayerHistoryService>();
         return services;
     }
 }

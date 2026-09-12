@@ -9,18 +9,36 @@ internal static class PlayerEndpoints
     {
         RouteGroupBuilder group = endpoints.MapGroup("/api/players").WithTags("Players");
         group.MapGet("/{allyCode:long}", GetAsync);
+        group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync);
+        group.MapGet("/{allyCode:long}/history", GetHistoryAsync);
         group.MapPost("/{allyCode:long}/refresh", RefreshAsync);
         group.MapPut("/{allyCode:long}", PutAsync);
         return endpoints;
     }
 
-    private static async Task<IResult> GetAsync(
-        long allyCode,
-        IPlayerProfileService service,
-        CancellationToken cancellationToken)
+    private static async Task<IResult> GetAsync(long allyCode, IPlayerProfileService service, CancellationToken cancellationToken)
     {
         PlayerProfile? player = await service.GetAsync(allyCode, cancellationToken);
         return player is null ? Results.NotFound() : Results.Ok(PlayerResponse.From(player));
+    }
+
+    private static async Task<IResult> GetAnalysisAsync(
+        long allyCode,
+        IPlayerAnalysisService service,
+        CancellationToken cancellationToken)
+    {
+        PlayerRosterAnalysis? analysis = await service.GetAsync(allyCode, cancellationToken);
+        return analysis is null ? Results.NotFound() : Results.Ok(analysis);
+    }
+
+    private static async Task<IResult> GetHistoryAsync(
+        long allyCode,
+        int? limit,
+        IPlayerHistoryService service,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<PlayerSnapshot> snapshots = await service.GetRecentAsync(allyCode, limit ?? 30, cancellationToken);
+        return Results.Ok(snapshots);
     }
 
     private static async Task<IResult> RefreshAsync(
@@ -33,16 +51,13 @@ internal static class PlayerEndpoints
             PlayerProfile player = await service.RefreshFromGameAsync(allyCode, cancellationToken);
             return Results.Ok(PlayerResponse.From(player));
         }
-        catch (ArgumentException exception)
-        {
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["allyCode"] = [exception.Message] });
-        }
         catch (HttpRequestException exception)
         {
-            return Results.Problem(
-                title: "SWGOH Comlink request failed",
-                detail: exception.Message,
-                statusCode: StatusCodes.Status502BadGateway);
+            return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["player"] = [exception.Message] });
         }
     }
 
@@ -75,7 +90,7 @@ internal static class PlayerEndpoints
         long GalacticPower,
         DateTimeOffset UpdatedAtUtc,
         int RosterCount,
-        IReadOnlyList<RosterUnitResponse> Roster)
+        IReadOnlyCollection<RosterUnitResponse> Roster)
     {
         public static PlayerResponse From(PlayerProfile player) => new(
             player.AllyCode,
@@ -97,7 +112,11 @@ internal static class PlayerEndpoints
         int Rarity,
         int GearTier,
         int RelicTier,
-        int EquippedModCount)
+        int EquippedModCount,
+        long GalacticPower,
+        bool IsShip,
+        int ZetaCount,
+        int OmicronCount)
     {
         public static RosterUnitResponse From(RosterUnit unit) => new(
             unit.Id,
@@ -106,6 +125,10 @@ internal static class PlayerEndpoints
             unit.Rarity,
             unit.GearTier,
             unit.RelicTier,
-            unit.EquippedModCount);
+            unit.EquippedModCount,
+            unit.GalacticPower,
+            unit.IsShip,
+            unit.ZetaCount,
+            unit.OmicronCount);
     }
 }

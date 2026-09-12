@@ -5,17 +5,14 @@ namespace Swgoh.Application.Players;
 
 internal sealed class PlayerProfileService(
     IPlayerRepository repository,
+    IPlayerSnapshotRepository snapshotRepository,
     ISwgohPlayerClient swgohPlayerClient,
     IClock clock) : IPlayerProfileService
 {
     public Task<PlayerProfile?> GetAsync(long allyCode, CancellationToken cancellationToken = default) =>
         repository.FindByAllyCodeAsync(allyCode, cancellationToken);
 
-    public async Task<PlayerProfile> SaveAsync(
-        long allyCode,
-        string name,
-        long galacticPower,
-        CancellationToken cancellationToken = default)
+    public async Task<PlayerProfile> SaveAsync(long allyCode, string name, long galacticPower, CancellationToken cancellationToken = default)
     {
         PlayerProfile? player = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
 
@@ -32,33 +29,38 @@ internal sealed class PlayerProfileService(
         return player;
     }
 
-    public async Task<PlayerProfile> RefreshFromGameAsync(
-        long allyCode,
-        CancellationToken cancellationToken = default)
+    public async Task<PlayerProfile> RefreshFromGameAsync(long allyCode, CancellationToken cancellationToken = default)
     {
-        ImportedPlayer source = await swgohPlayerClient.GetPlayerAsync(allyCode, cancellationToken).ConfigureAwait(false);
-
-        RosterUnit[] roster = [.. source.Roster.Select(unit => new RosterUnit(
-            unit.Id,
-            unit.DefinitionId,
-            unit.Level,
-            unit.Rarity,
-            unit.GearTier,
-            unit.RelicTier,
-            unit.EquippedModCount))];
+        ImportedPlayer imported = await swgohPlayerClient.GetPlayerAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        RosterUnit[] roster =
+        [
+            .. imported.Roster.Select(unit => new RosterUnit(
+                unit.Id,
+                unit.DefinitionId,
+                unit.Level,
+                unit.Rarity,
+                unit.GearTier,
+                unit.RelicTier,
+                unit.EquippedModCount,
+                unit.GalacticPower,
+                unit.IsShip,
+                unit.ZetaCount,
+                unit.OmicronCount))
+        ];
 
         PlayerProfile player = PlayerProfile.Import(
-            source.AllyCode,
-            source.PlayerId,
-            source.Name,
-            source.GuildId,
-            source.GuildName,
-            source.Level,
-            source.GalacticPower,
-            clock.UtcNow,
-            roster);
+            imported.AllyCode,
+            imported.PlayerId,
+            imported.Name,
+            imported.GuildId,
+            imported.GuildName,
+            imported.Level,
+            imported.GalacticPower,
+            roster,
+            clock.UtcNow);
 
         await repository.UpsertAsync(player, cancellationToken).ConfigureAwait(false);
+        await snapshotRepository.UpsertAsync(PlayerRosterMetrics.CreateSnapshot(player), cancellationToken).ConfigureAwait(false);
         return player;
     }
 }

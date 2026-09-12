@@ -16,30 +16,11 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
         return document is null ? null : ToDomain(document);
     }
 
-    public async Task UpsertAsync(PlayerProfile player, CancellationToken cancellationToken = default)
+    public Task UpsertAsync(PlayerProfile player, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(player);
-        await repository.UpsertAsync(ToDocument(player), cancellationToken).ConfigureAwait(false);
+        return repository.UpsertAsync(ToDocument(player), cancellationToken);
     }
-
-    private static PlayerProfile ToDomain(PlayerDocument document) =>
-        PlayerProfile.Import(
-            document.AllyCode,
-            document.PlayerId,
-            document.Name,
-            document.GuildId,
-            document.GuildName,
-            document.Level,
-            document.GalacticPower,
-            document.UpdatedAtUtc,
-            document.Roster.Select(unit => new RosterUnit(
-                unit.Id,
-                unit.DefinitionId,
-                unit.Level,
-                unit.Rarity,
-                unit.GearTier,
-                unit.RelicTier,
-                unit.EquippedModCount)));
 
     private static PlayerDocument ToDocument(PlayerProfile player) => new()
     {
@@ -51,15 +32,44 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
         Level = player.Level,
         GalacticPower = player.GalacticPower,
         UpdatedAtUtc = player.UpdatedAtUtc,
-        Roster = [.. player.Roster.Select(unit => new RosterUnitDocument
-        {
-            Id = unit.Id,
-            DefinitionId = unit.DefinitionId,
-            Level = unit.Level,
-            Rarity = unit.Rarity,
-            GearTier = unit.GearTier,
-            RelicTier = unit.RelicTier,
-            EquippedModCount = unit.EquippedModCount
-        })]
+        Roster =
+        [
+            .. player.Roster.Select(unit => new RosterUnitDocument
+            {
+                Id = unit.Id,
+                DefinitionId = unit.DefinitionId,
+                Level = unit.Level,
+                Rarity = unit.Rarity,
+                GearTier = unit.GearTier,
+                RelicTier = unit.RelicTier,
+                EquippedModCount = unit.EquippedModCount,
+                GalacticPower = unit.GalacticPower,
+                IsShip = unit.IsShip,
+                ZetaCount = unit.ZetaCount,
+                OmicronCount = unit.OmicronCount
+            })
+        ]
     };
+
+    private static PlayerProfile ToDomain(PlayerDocument document) => PlayerProfile.Import(
+        document.AllyCode,
+        document.PlayerId,
+        document.Name,
+        document.GuildId,
+        document.GuildName,
+        document.Level,
+        document.GalacticPower,
+        document.Roster.Select(unit => new RosterUnit(
+            unit.Id,
+            unit.DefinitionId,
+            unit.Level,
+            unit.Rarity,
+            unit.GearTier,
+            unit.RelicTier,
+            unit.EquippedModCount,
+            unit.GalacticPower,
+            unit.IsShip,
+            unit.ZetaCount,
+            unit.OmicronCount)),
+        document.UpdatedAtUtc);
 }
