@@ -43,6 +43,7 @@ internal sealed class PlayerSnapshotMongoRepository(IMongoDbRepository<PlayerSna
         Relic7Plus = snapshot.Relic7Plus,
         Relic8Plus = snapshot.Relic8Plus,
         Relic9Plus = snapshot.Relic9Plus,
+        Relic10 = snapshot.Relic10,
         Zetas = snapshot.Zetas,
         Omicrons = snapshot.Omicrons
     };
@@ -60,6 +61,7 @@ internal sealed class PlayerSnapshotMongoRepository(IMongoDbRepository<PlayerSna
         document.Relic7Plus,
         document.Relic8Plus,
         document.Relic9Plus,
+        document.Relic10,
         document.Zetas,
         document.Omicrons);
 }
