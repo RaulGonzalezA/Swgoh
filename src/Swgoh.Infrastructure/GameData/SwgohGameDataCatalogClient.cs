@@ -4,12 +4,14 @@ using Swgoh.Application.GameData;
 
 namespace Swgoh.Infrastructure.GameData;
 
-internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgohGameDataCatalog
+internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFactory) : ISwgohGameDataCatalog
 {
+    internal const string HttpClientName = "swgoh-game-data";
+
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(6);
-    private static readonly SemaphoreSlim CacheLock = new(1, 1);
-    private static GameDataCatalog? cachedCatalog;
-    private static DateTimeOffset cacheExpiresAtUtc;
+    private readonly SemaphoreSlim cacheLock = new(1, 1);
+    private GameDataCatalog? cachedCatalog;
+    private DateTimeOffset cacheExpiresAtUtc;
 
     public async Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -18,7 +20,7 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
             return cachedCatalog;
         }
 
-        await CacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (cachedCatalog is not null && DateTimeOffset.UtcNow < cacheExpiresAtUtc)
@@ -26,10 +28,11 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
                 return cachedCatalog;
             }
 
-            Task<JsonDocument> unitsTask = GetJsonAsync("units_gas.json", cancellationToken);
-            Task<JsonDocument> skillsTask = GetJsonAsync("skill.json", cancellationToken);
-            Task<JsonDocument> guidesTask = GetJsonAsync("unitGuideDefinition.json", cancellationToken);
-            Task<JsonDocument> requirementsTask = GetJsonAsync("requirement.json", cancellationToken);
+            HttpClient httpClient = httpClientFactory.CreateClient(HttpClientName);
+            Task<JsonDocument> unitsTask = GetJsonAsync(httpClient, "units_gas.json", cancellationToken);
+            Task<JsonDocument> skillsTask = GetJsonAsync(httpClient, "skill.json", cancellationToken);
+            Task<JsonDocument> guidesTask = GetJsonAsync(httpClient, "unitGuideDefinition.json", cancellationToken);
+            Task<JsonDocument> requirementsTask = GetJsonAsync(httpClient, "requirement.json", cancellationToken);
 
             await Task.WhenAll(unitsTask, skillsTask, guidesTask, requirementsTask).ConfigureAwait(false);
             using JsonDocument unitsDocument = await unitsTask.ConfigureAwait(false);
@@ -50,11 +53,14 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
         }
         finally
         {
-            CacheLock.Release();
+            cacheLock.Release();
         }
     }
 
-    private async Task<JsonDocument> GetJsonAsync(string relativeUrl, CancellationToken cancellationToken)
+    private static async Task<JsonDocument> GetJsonAsync(
+        HttpClient httpClient,
+        string relativeUrl,
+        CancellationToken cancellationToken)
     {
         using Stream stream = await httpClient.GetStreamAsync(relativeUrl, cancellationToken).ConfigureAwait(false);
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -243,11 +249,12 @@ internal sealed class SwgohGameDataCatalogClient(HttpClient httpClient) : ISwgoh
             int index = 0;
             foreach (JsonElement tier in property.Value.EnumerateArray())
             {
-                index++;
                 if (ContainsTrueMarker(tier, marker))
                 {
-                    return TryGetInt32(tier, "tier") ?? index;
+                    return TryGetInt32(tier, "tier") ?? index + 2;
                 }
+
+                index++;
             }
         }
 
