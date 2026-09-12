@@ -18,14 +18,26 @@ The API imports live player data from a self-hosted `swgoh-comlink` instance, ca
 
 Each live refresh also stores a player snapshot so roster evolution can be queried over time.
 
+### API versioning
+
+The public HTTP API uses URL-segment versioning. Version 1 is exposed under `/api/v1` and supported versions are reported in the API version response headers.
+
 ### Endpoints
 
-- `GET /api/players/{allyCode}` returns the last persisted player profile and roster.
-- `POST /api/players/{allyCode}/refresh` fetches the player from Comlink, calculates unit GP, enriches the roster and persists both the current profile and a historical snapshot.
-- `PUT /api/players/{allyCode}` remains available for manual/local data while the application evolves.
-- `GET /api/players/{allyCode}/analysis` returns roster metrics including character/ship GP, relic thresholds, zetas, omicrons and mod coverage.
-- `GET /api/players/{allyCode}/history?limit=30` returns recent snapshots ordered from newest to oldest. The limit is clamped between 1 and 365.
-- `GET /api/players/{allyCode}/gl-progress` calculates Galactic Legend unit-requirement progress using current Game Data.
+- `GET /api/v1/players/{allyCode}` returns the last persisted player profile and roster.
+- `POST /api/v1/players/{allyCode}/refresh` fetches the player from Comlink, calculates unit GP, enriches the roster and persists both the current profile and a historical snapshot.
+- `PUT /api/v1/players/{allyCode}` remains available for manual/local data while the application evolves.
+- `GET /api/v1/players/{allyCode}/analysis` returns roster metrics including character/ship GP, relic thresholds, zetas, omicrons and mod coverage.
+- `GET /api/v1/players/{allyCode}/history?limit=30` returns recent snapshots ordered from newest to oldest. The limit is clamped between 1 and 365.
+- `GET /api/v1/players/{allyCode}/gl-progress` calculates Galactic Legend unit-requirement progress using current Game Data.
+
+### API hardening
+
+The API applies a global fixed-window rate limit of 120 requests per minute per remote IP address.
+
+`POST /api/v1/players/{allyCode}/refresh` has an additional dedicated limit of one refresh every 30 seconds per Ally Code, with no queue. Rejected requests return HTTP `429 Too Many Requests` and include `Retry-After` when available. This protects Comlink, SWGOH Stats and MongoDB from repeated or concurrent refresh attempts for the same player.
+
+OpenAPI documents are generated per API version. The v1 document is available at `/openapi/v1.json` and Scalar exposes the interactive API reference at `/scalar`.
 
 ## Runtime dependencies
 
@@ -51,7 +63,7 @@ Game Data is cached in-process for six hours.
 GitHub Actions uses two separate workflows:
 
 - `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
-- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, refreshes a live player and validates player import, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
 
 A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
 

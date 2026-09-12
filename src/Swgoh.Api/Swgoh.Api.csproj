@@ -4,4 +4,10 @@
     <ProjectReference Include="..\Swgoh.Infrastructure\Swgoh.Infrastructure.csproj" />
     <ProjectReference Include="..\Swgoh.ServiceDefaults\Swgoh.ServiceDefaults.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Asp.Versioning.Http" />
+    <PackageReference Include="Asp.Versioning.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+  </ItemGroup>
 </Project>
