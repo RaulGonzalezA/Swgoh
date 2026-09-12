@@ -23,6 +23,7 @@ internal static class PlayerRosterMetrics
             characters.Count(unit => unit.RelicTier >= 7),
             characters.Count(unit => unit.RelicTier >= 8),
             characters.Count(unit => unit.RelicTier >= 9),
+            characters.Count(unit => unit.RelicTier >= 10),
             player.Roster.Sum(unit => unit.ZetaCount),
             player.Roster.Sum(unit => unit.OmicronCount),
             characters.Count(unit => unit.EquippedModCount >= 6),
@@ -46,6 +47,7 @@ internal static class PlayerRosterMetrics
             metrics.Relic7Plus,
             metrics.Relic8Plus,
             metrics.Relic9Plus,
+            metrics.Relic10,
             metrics.Zetas,
             metrics.Omicrons);
     }
