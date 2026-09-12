@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="Aspire.AppHost.Sdk" Version="13.5.3" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAspireHost>true</IsAspireHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" />
+    <PackageReference Include="Aspire.Hosting.MongoDB" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Swgoh.Api\Swgoh.Api.csproj" />
+    <ProjectReference Include="..\Swgoh.Blazor\Swgoh.Blazor.csproj" />
+  </ItemGroup>
+</Project>

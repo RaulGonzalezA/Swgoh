@@ -1,0 +1,69 @@
+@page "/"
+@rendermode InteractiveServer
+@inject PlayerApiClient PlayerClient
+
+<PageTitle>SWGOH</PageTitle>
+
+<h1>SWGOH</h1>
+<p>Base de Clean Architecture preparada.</p>
+
+<div class="search">
+    <label for="allyCode">Ally Code</label>
+    <input id="allyCode" @bind="_allyCode" />
+    <button @onclick="LoadAsync" disabled="@_loading">Buscar</button>
+</div>
+
+@if (_loading)
+{
+    <p>Cargando...</p>
+}
+else if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+else if (_searched && _player is null)
+{
+    <p>No se encontró el jugador.</p>
+}
+else if (_player is not null)
+{
+    <section>
+        <h2>@_player.Name</h2>
+        <p>Ally Code: @_player.AllyCode</p>
+        <p>GP: @_player.GalacticPower.ToString("N0")</p>
+    </section>
+}
+
+@code {
+    private string _allyCode = "";
+    private bool _loading;
+    private bool _searched;
+    private string? _error;
+    private PlayerApiClient.PlayerViewModel? _player;
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        _player = null;
+        _searched = true;
+        if (!long.TryParse(_allyCode.Replace("-", "", StringComparison.Ordinal), out long allyCode))
+        {
+            _error = "Introduce un Ally Code válido.";
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            _player = await PlayerClient.GetAsync(allyCode);
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido consultar la API.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

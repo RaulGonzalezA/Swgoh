@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\Swgoh.Application\Swgoh.Application.csproj" />
+    <ProjectReference Include="..\Swgoh.Infrastructure\Swgoh.Infrastructure.csproj" />
+    <ProjectReference Include="..\Swgoh.ServiceDefaults\Swgoh.ServiceDefaults.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,56 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.AppHost", "src\Swgoh.AppHost\Swgoh.AppHost.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99901}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Api", "src\Swgoh.Api\Swgoh.Api.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99902}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Blazor", "src\Swgoh.Blazor\Swgoh.Blazor.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99903}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Application", "src\Swgoh.Application\Swgoh.Application.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99904}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Domain", "src\Swgoh.Domain\Swgoh.Domain.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99905}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Infrastructure", "src\Swgoh.Infrastructure\Swgoh.Infrastructure.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99906}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.ServiceDefaults", "src\Swgoh.ServiceDefaults\Swgoh.ServiceDefaults.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99907}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Domain.UnitTests", "tests\Swgoh.Domain.UnitTests\Swgoh.Domain.UnitTests.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99908}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Application.UnitTests", "tests\Swgoh.Application.UnitTests\Swgoh.Application.UnitTests.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99909}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swgoh.Infrastructure.IntegrationTests", "tests\Swgoh.Infrastructure.IntegrationTests\Swgoh.Infrastructure.IntegrationTests.csproj", "{0F4D5518-3206-47B3-8B4B-8AD10AF99910}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99901}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99901}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99901}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99902}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99902}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99902}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99902}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99903}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99903}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99903}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99903}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99904}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99904}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99904}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99904}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99905}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99905}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99905}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99905}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99906}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99906}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99906}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F4D5518-3206-47B3-8B4B-8AD10AF99906}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
