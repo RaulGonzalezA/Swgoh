@@ -33,9 +33,7 @@ public static class DependencyInjection
         services.AddMongoRepository<PlayerDocument, long>(
             PlayerMongoRepository.CollectionName,
             player => player.AllyCode,
-            collection => collection
-                .CreateIfMissing()
-                .HasIndex(player => player.AllyCode, indexName: "ux_players_ally_code", unique: true));
+            collection => collection.CreateIfMissing());
 
         services.AddMongoRepository<PlayerSnapshotDocument, string>(
             PlayerSnapshotMongoRepository.CollectionName,
