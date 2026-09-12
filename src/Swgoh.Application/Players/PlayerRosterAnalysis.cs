@@ -11,6 +11,7 @@ public sealed record PlayerRosterAnalysis(
     int Relic7Plus,
     int Relic8Plus,
     int Relic9Plus,
+    int Relic10,
     int Zetas,
     int Omicrons,
     int FullyModdedCharacters,
