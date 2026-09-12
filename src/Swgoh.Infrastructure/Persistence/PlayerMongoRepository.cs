@@ -59,6 +59,7 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
         document.GuildName,
         document.Level,
         document.GalacticPower,
+        document.UpdatedAtUtc,
         document.Roster.Select(unit => new RosterUnit(
             unit.Id,
             unit.DefinitionId,
@@ -70,6 +71,5 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
             unit.GalacticPower,
             unit.IsShip,
             unit.ZetaCount,
-            unit.OmicronCount)),
-        document.UpdatedAtUtc);
+            unit.OmicronCount)));
 }
