@@ -64,15 +64,19 @@ jobs:
       - name: Start live smoke dependencies
         if: env.SWGOH_TEST_ALLY_CODE != ''
         run: |
+          set -euo pipefail
+
           docker network create swgoh-smoke
-          docker run -d --rm --name mongodb --network swgoh-smoke -p 27017:27017 mongo:8
-          docker run -d --rm --name comlink --network swgoh-smoke -p 3000:3000 \
+          docker run -d --name mongodb --network swgoh-smoke -p 27017:27017 mongo:8
+          docker run -d --name comlink --network swgoh-smoke -p 3000:3000 \
             -e APP_NAME=swgoh \
             -e PORT=3000 \
             ghcr.io/swgoh-utils/swgoh-comlink:latest
 
+          comlink_ready=false
           for attempt in {1..60}; do
             if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
+              comlink_ready=true
               break
             fi
             if ! docker ps --format '{{.Names}}' | grep -qx comlink; then
@@ -83,10 +87,36 @@ jobs:
             sleep 2
           done
 
-          docker run -d --rm --name swgoh-stats --network swgoh-smoke -p 3223:3223 \
+          if [[ "${comlink_ready}" != true ]]; then
+            echo 'Comlink did not become ready in time.'
+            docker logs comlink || true
+            exit 1
+          fi
+
+          docker run -d --name swgoh-stats --network swgoh-smoke -p 3223:3223 \
             -e PORT=3223 \
             -e CLIENT_URL=http://comlink:3000 \
             ghcr.io/swgoh-utils/swgoh-stats:latest
+
+          stats_ready=false
+          for attempt in {1..90}; do
+            if docker logs swgoh-stats 2>&1 | grep -q 'Data updates complete!'; then
+              stats_ready=true
+              break
+            fi
+            if ! docker ps --format '{{.Names}}' | grep -qx swgoh-stats; then
+              echo 'swgoh-stats stopped during startup.'
+              docker logs swgoh-stats || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [[ "${stats_ready}" != true ]]; then
+            echo 'swgoh-stats did not finish loading game data in time.'
+            docker logs swgoh-stats || true
+            exit 1
+          fi
 
       - name: Start API for live smoke test
         if: env.SWGOH_TEST_ALLY_CODE != ''
