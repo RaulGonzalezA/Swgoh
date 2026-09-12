@@ -56,8 +56,8 @@ internal sealed class PlayerProfileService(
             imported.GuildName,
             imported.Level,
             imported.GalacticPower,
-            roster,
-            clock.UtcNow);
+            clock.UtcNow,
+            roster);
 
         await repository.UpsertAsync(player, cancellationToken).ConfigureAwait(false);
         await snapshotRepository.UpsertAsync(PlayerRosterMetrics.CreateSnapshot(player), cancellationToken).ConfigureAwait(false);
