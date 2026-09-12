@@ -6,6 +6,11 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      ally_code:
+        description: SWGOH ally code for the live smoke test
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -21,7 +26,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   CI: true
-  SWGOH_TEST_ALLY_CODE: ${{ secrets.SWGOH_TEST_ALLY_CODE }}
+  SWGOH_TEST_ALLY_CODE: ${{ github.event.inputs.ally_code }}
 
 jobs:
   validate:
