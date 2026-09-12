@@ -11,6 +11,7 @@ internal static class PlayerEndpoints
         group.MapGet("/{allyCode:long}", GetAsync);
         group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync);
         group.MapGet("/{allyCode:long}/history", GetHistoryAsync);
+        group.MapGet("/{allyCode:long}/gl-progress", GetGalacticLegendProgressAsync);
         group.MapPost("/{allyCode:long}/refresh", RefreshAsync);
         group.MapPut("/{allyCode:long}", PutAsync);
         return endpoints;
@@ -39,6 +40,15 @@ internal static class PlayerEndpoints
     {
         IReadOnlyCollection<PlayerSnapshot> snapshots = await service.GetRecentAsync(allyCode, limit ?? 30, cancellationToken);
         return Results.Ok(snapshots);
+    }
+
+    private static async Task<IResult> GetGalacticLegendProgressAsync(
+        long allyCode,
+        IGalacticLegendProgressService service,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<GalacticLegendProgress>? progress = await service.GetAsync(allyCode, cancellationToken);
+        return progress is null ? Results.NotFound() : Results.Ok(progress);
     }
 
     private static async Task<IResult> RefreshAsync(

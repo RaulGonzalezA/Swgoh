@@ -4,8 +4,10 @@ using Microsoft.Extensions.DependencyInjection;
 using RepositoryMongoDb.DependencyInjection;
 
 using Swgoh.Application.Abstractions;
+using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
 using Swgoh.Infrastructure.Comlink;
+using Swgoh.Infrastructure.GameData;
 using Swgoh.Infrastructure.Persistence;
 using Swgoh.Infrastructure.Persistence.Documents;
 using Swgoh.Infrastructure.Time;
@@ -41,6 +43,14 @@ public static class DependencyInjection
             collection => collection
                 .CreateIfMissing()
                 .HasIndex(snapshot => snapshot.Id, indexName: "ux_player_snapshots_id", unique: true));
+
+        string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
+            ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
+        services.AddHttpClient<ISwgohGameDataCatalog, SwgohGameDataCatalogClient>(client =>
+        {
+            client.BaseAddress = new Uri(gameDataBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
+            client.Timeout = TimeSpan.FromMinutes(5);
+        });
 
         string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
         services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>
