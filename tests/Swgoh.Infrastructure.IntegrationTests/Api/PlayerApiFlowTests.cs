@@ -3,7 +3,6 @@ using System.Text.Json;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -27,8 +26,11 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
     public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesAnalysisAndHistory()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        using var connectionStringScope = new EnvironmentVariableScope(
+            "ConnectionStrings__swgoh",
+            fixture.ConnectionString);
         var provider = new FakePlayerClient(CreateImportedPlayer());
-        await using var factory = new SwgohApiFactory(fixture.ConnectionString, provider);
+        await using var factory = new SwgohApiFactory(provider);
         using HttpClient client = factory.CreateClient();
 
         using HttpResponseMessage refreshResponse = await client.PostAsync(
@@ -153,20 +155,11 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
                 IsShip: true)
         ]);
 
-    private sealed class SwgohApiFactory(
-        string connectionString,
-        ISwgohPlayerClient playerClient) : WebApplicationFactory<global::Program>
+    private sealed class SwgohApiFactory(ISwgohPlayerClient playerClient) : WebApplicationFactory<global::Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
-            builder.ConfigureAppConfiguration((_, configuration) =>
-            {
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["ConnectionStrings:swgoh"] = connectionString
-                });
-            });
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<ISwgohPlayerClient>();
@@ -189,5 +182,20 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
             Assert.Equal(player.AllyCode, allyCode);
             return Task.FromResult(player);
         }
+    }
+
+    private sealed class EnvironmentVariableScope : IDisposable
+    {
+        private readonly string name;
+        private readonly string? previousValue;
+
+        public EnvironmentVariableScope(string name, string value)
+        {
+            this.name = name;
+            previousValue = Environment.GetEnvironmentVariable(name);
+            Environment.SetEnvironmentVariable(name, value);
+        }
+
+        public void Dispose() => Environment.SetEnvironmentVariable(name, previousValue);
     }
 }
