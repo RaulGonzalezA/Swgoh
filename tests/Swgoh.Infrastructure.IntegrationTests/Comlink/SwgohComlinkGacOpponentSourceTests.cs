@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -13,11 +14,12 @@ namespace Swgoh.Infrastructure.IntegrationTests.Comlink;
 public sealed class SwgohComlinkGacOpponentSourceTests
 {
     [Fact]
-    public async Task GetAsync_WithSparseBadRequestBrackets_UsesSeasonInstanceAndFindsOpponent()
+    public async Task GetAsync_WithLiveSeasonSchemaAndRateLimit_FindsOpponentFromNestedLeaderboard()
     {
         const string eventId = "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_83";
-        const string currentEventInstance = eventId + ":O1788998400000";
-        var handler = new GacHandler(eventId, currentEventInstance);
+        const string seasonEventInstance = "GA2_SEASON_83A:O1788901200000";
+        const string eventsEventInstance = eventId + ":O1788987600000";
+        var handler = new GacHandler(eventId, seasonEventInstance, eventsEventInstance);
         var factory = new SingleClientFactory(new HttpClient(handler)
         {
             BaseAddress = new Uri("http://comlink/")
@@ -36,15 +38,20 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         Assert.Equal("opponent-id", opponent.OpponentPlayerId);
         Assert.Equal(GacLeague.Kyber, opponent.League);
         Assert.Equal(GacFormat.ThreeVsThree, opponent.Format);
-        Assert.Equal("SeasonAlternationFallback", opponent.FormatSource);
+        Assert.Equal("SeasonStatus", opponent.FormatSource);
         Assert.Equal("BracketOrderPairing", opponent.OpponentResolutionMethod);
-        Assert.Equal(currentEventInstance, opponent.EventInstanceId);
+        Assert.Equal(eventId, opponent.EventId);
+        Assert.Equal(seasonEventInstance, opponent.EventInstanceId);
         Assert.EndsWith(":KYBER:9", opponent.BracketId, StringComparison.Ordinal);
-        Assert.Equal(2, handler.PlayerArenaRequests);
-        Assert.InRange(handler.BracketRequests, 10, 40);
-        Assert.True(handler.BadRequestBracketResponses > 0);
-        Assert.DoesNotContain(handler.GroupIds, groupId => groupId.EndsWith(":KYBER:0", StringComparison.Ordinal) && handler.GroupIds.Count == 1);
-        Assert.All(handler.GroupIds, groupId => Assert.StartsWith(currentEventInstance, groupId, StringComparison.Ordinal));
+        Assert.Equal(1, handler.PlayerRequests);
+        Assert.Equal(1, handler.PlayerArenaRequests);
+        Assert.Equal(1, handler.RateLimitResponses);
+        Assert.True(handler.MissingBracketResponses > 0);
+        Assert.InRange(handler.BracketRequests, 5, 12);
+        Assert.All(handler.GroupIds, groupId =>
+            Assert.StartsWith(seasonEventInstance, groupId, StringComparison.Ordinal));
+        Assert.DoesNotContain(handler.GroupIds, groupId =>
+            groupId.StartsWith(eventsEventInstance, StringComparison.Ordinal));
     }
 
     private sealed class SingleClientFactory(HttpClient client) : IHttpClientFactory
@@ -52,17 +59,30 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         public HttpClient CreateClient(string name) => client;
     }
 
-    private sealed class GacHandler(string eventId, string currentEventInstance) : HttpMessageHandler
+    private sealed class GacHandler(
+        string eventId,
+        string seasonEventInstance,
+        string eventsEventInstance) : HttpMessageHandler
     {
-        private readonly List<string> groupIds = [];
+        private readonly ConcurrentBag<string> groupIds = [];
+        private int bracketRequests;
+        private int missingBracketResponses;
+        private int playerArenaRequests;
+        private int playerRequests;
+        private int rateLimitResponses;
+        private int targetBracketRequests;
 
-        public int BracketRequests { get; private set; }
+        public int BracketRequests => bracketRequests;
 
-        public int PlayerArenaRequests { get; private set; }
+        public int MissingBracketResponses => missingBracketResponses;
 
-        public int BadRequestBracketResponses { get; private set; }
+        public int PlayerArenaRequests => playerArenaRequests;
 
-        public IReadOnlyCollection<string> GroupIds => groupIds;
+        public int PlayerRequests => playerRequests;
+
+        public int RateLimitResponses => rateLimitResponses;
+
+        public IReadOnlyCollection<string> GroupIds => groupIds.ToArray();
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -75,16 +95,18 @@ public sealed class SwgohComlinkGacOpponentSourceTests
 
             return path switch
             {
+                "player" => Player(),
                 "playerArena" => PlayerArena(body),
                 "getEvents" => Json($$"""
                     {
                       "gameEvent": [{
                         "id": "{{eventId}}",
                         "type": 10,
-                        "instance": [
-                          { "id": "O1788000000000" },
-                          { "id": "O1788998400000" }
-                        ]
+                        "instance": [{
+                          "id": "O1788987600000",
+                          "startTime": "1788987600000",
+                          "endTime": "1792000000000"
+                        }]
                       }]
                     }
                     """),
@@ -93,9 +115,33 @@ public sealed class SwgohComlinkGacOpponentSourceTests
             };
         }
 
+        private HttpResponseMessage Player()
+        {
+            Interlocked.Increment(ref playerRequests);
+            return Json($$"""
+                {
+                  "allyCode": "123456789",
+                  "playerId": "self-id",
+                  "name": "Yo",
+                  "playerRating": {
+                    "playerSkillRating": { "skillRating": 3200 },
+                    "playerRankStatus": { "leagueId": "KYBER", "divisionId": 10 }
+                  },
+                  "seasonStatus": [{
+                    "seasonId": "4zone_3v3_ga2_c3s1_83a",
+                    "eventInstanceId": "{{seasonEventInstance}}",
+                    "league": "KYBER",
+                    "division": 10,
+                    "rank": 81,
+                    "endTime": "1791234000000"
+                  }]
+                }
+                """);
+        }
+
         private HttpResponseMessage PlayerArena(string body)
         {
-            PlayerArenaRequests++;
+            Interlocked.Increment(ref playerArenaRequests);
             using JsonDocument request = JsonDocument.Parse(body);
             JsonElement payload = request.RootElement.GetProperty("payload");
             if (payload.TryGetProperty("playerId", out JsonElement playerId) &&
@@ -110,33 +156,26 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                     """);
             }
 
-            return Json($$"""
-                {
-                  "allyCode": "123456789",
-                  "playerId": "self-id",
-                  "name": "Yo",
-                  "playerRating": { "league": "Kyber", "division": 15, "skillRating": 3200 },
-                  "seasonStatus": [{
-                    "seasonId": "{{eventId}}",
-                    "eventInstanceId": "{{currentEventInstance}}",
-                    "league": "Kyber",
-                    "rank": 81
-                  }]
-                }
-                """);
+            return new HttpResponseMessage(HttpStatusCode.BadRequest);
         }
 
         private HttpResponseMessage Leaderboard(string body)
         {
-            BracketRequests++;
+            Interlocked.Increment(ref bracketRequests);
             using JsonDocument request = JsonDocument.Parse(body);
             string groupId = request.RootElement.GetProperty("payload").GetProperty("groupId").GetString()
                 ?? string.Empty;
             groupIds.Add(groupId);
 
-            if (string.Equals(groupId, currentEventInstance + ":KYBER:9", StringComparison.Ordinal))
+            if (string.Equals(groupId, seasonEventInstance + ":KYBER:9", StringComparison.Ordinal))
             {
-                return Json(Bracket([
+                if (Interlocked.Increment(ref targetBracketRequests) == 1)
+                {
+                    Interlocked.Increment(ref rateLimitResponses);
+                    return BadRequest("""{"code":6,"message":"Rate exceeded!"}""");
+                }
+
+                return Json(NestedBracket([
                     ("a", "A"),
                     ("b", "B"),
                     ("self-id", "Yo"),
@@ -148,16 +187,31 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                 ]));
             }
 
-            BadRequestBracketResponses++;
-            return new HttpResponseMessage(HttpStatusCode.BadRequest);
+            Interlocked.Increment(ref missingBracketResponses);
+            return BadRequest("""{"code":5,"message":"Leaderboard group not found"}""");
         }
 
-        private static string Bracket(IReadOnlyCollection<(string Id, string Name)> players)
+        private static string NestedBracket(IReadOnlyCollection<(string Id, string Name)> players)
         {
             string entries = string.Join(",", players.Select(player =>
                 $$"""{"id":"{{player.Id}}","name":"{{player.Name}}","level":85,"power":10000000}"""));
-            return $$"""{"player":[{{entries}}]}""";
+            return $$"""
+                {
+                  "player": [],
+                  "leaderboard": [{
+                    "player": [{{entries}}],
+                    "id": "",
+                    "playerStatus": { "rank": 1, "rankDelta": 0, "score": 0, "scoreDelta": 0, "tier": 0 }
+                  }],
+                  "playerStatus": null
+                }
+                """;
         }
+
+        private static HttpResponseMessage BadRequest(string json) => new(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
 
         private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK)
         {
