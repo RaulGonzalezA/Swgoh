@@ -122,4 +122,5 @@ public sealed record CurrentGacScoutingResult(
     CurrentGacOpponentLookup Lookup,
     OpponentScoutingReport? Scouting,
     CurrentOpponentRosterScouting? RosterScouting,
-    CurrentGacBattlePlan? BattlePlan);
+    CurrentGacBattlePlan? BattlePlan,
+    GacHistorySyncResult? HistorySync = null);
