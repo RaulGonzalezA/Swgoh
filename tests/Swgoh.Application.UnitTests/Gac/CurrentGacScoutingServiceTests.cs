@@ -68,7 +68,8 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Contains(battlePlan.Threats, threat => threat.Unit.DefinitionId == "GL_TEST");
         Assert.Contains(battlePlan.AttackReserves, reserve => reserve.Unit.DefinitionId == "GL_SELF");
         GacBattleCounterSuggestion counter = Assert.Single(
-            battlePlan.CounterSuggestions.Where(item => item.Threat.DefinitionId == "GL_TEST"));
+            battlePlan.CounterSuggestions,
+            item => item.Threat.DefinitionId == "GL_TEST");
         Assert.Equal("RosterStrengthHeuristic", counter.Source);
         Assert.Contains(counter.CandidateAnchors, candidate => candidate.DefinitionId == "GL_SELF");
         Assert.True(counter.RequiresDatacronVerification);
