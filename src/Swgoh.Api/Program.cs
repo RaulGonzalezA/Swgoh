@@ -94,6 +94,7 @@ app.UseRateLimiter();
 app.MapDefaultEndpoints();
 app.MapPlayerEndpoints();
 app.MapSquadEndpoints();
+app.MapConquestEndpoints();
 app.MapGacEndpoints();
 app.MapGacPlannerEndpoints();
 app.MapGacPlannerOptimizationEndpoints();
