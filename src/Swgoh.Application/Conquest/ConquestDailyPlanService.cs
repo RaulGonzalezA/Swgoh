@@ -192,7 +192,7 @@ internal sealed class ConquestDailyPlanService(
                     catalog.Units.TryGetValue(value.Unit.DefinitionId, out GameUnitDefinition? definition);
                     return new ConquestDailyRecoveryUnit(
                         value.Unit.DefinitionId,
-                        definition?.Name ?? value.Unit.Name,
+                        definition?.Name ?? value.Unit.DefinitionId,
                         definition?.ThumbnailName,
                         value.FinalStamina,
                         plan.ReserveFloorPercent);
