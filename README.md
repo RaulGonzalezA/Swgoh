@@ -25,6 +25,7 @@ The public HTTP API uses URL-segment versioning. Version 1 is exposed under `/ap
 ### Endpoints
 
 - `GET /api/v1/players/{allyCode}` returns the last persisted player profile and roster.
+- `GET /api/v1/players/{allyCode}/roster` returns a filtered, sorted and paged roster. Query options: `page`, `pageSize` (1-100), `search`, `type` (`All`, `Character`, `Ship`), `minRarity`, `minRelic`, `hasZeta`, `hasOmicron`, `orderBy` (`GalacticPower`, `RelicTier`, `Rarity`, `GearTier`, `Level`, `DefinitionId`) and `direction` (`Ascending`, `Descending`).
 - `POST /api/v1/players/{allyCode}/refresh` fetches the player from Comlink, calculates unit GP, enriches the roster and persists both the current profile and a historical snapshot.
 - `PUT /api/v1/players/{allyCode}` remains available for manual/local data while the application evolves.
 - `GET /api/v1/players/{allyCode}/analysis` returns roster metrics including character/ship GP, relic thresholds, zetas, omicrons and mod coverage.
@@ -63,11 +64,11 @@ Game Data is cached in-process for six hours.
 GitHub Actions uses two separate workflows:
 
 - `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
-- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
 
 A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
 
-Pushes to `main` run CI and, by default, dispatch `Smoke Test` after a successful CI. Set the repository Actions variable `RUN_SMOKE_AFTER_CI=false` to keep automatic `main` runs as CI-only.
+Pushes to `main` run CI and, by default, trigger `Smoke Test` through `workflow_run` after a successful CI. Set the repository Actions variable `RUN_SMOKE_AFTER_CI=false` to keep automatic `main` runs as CI-only.
 
 `Smoke Test` also has its own `workflow_dispatch`, so it can be executed independently with a configurable `ally_code`.
 
