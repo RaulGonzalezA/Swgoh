@@ -10,74 +10,86 @@
 <PageTitle>Datos · SWGOH Assistant</PageTitle>
 
 <section class="command-page">
-    <header class="command-page-heading">
-        <div>
-            <span class="section-kicker">Datos</span>
-            <h1>Estado y frescura de tus datos</h1>
-            <p>Comprueba qué información está disponible para el jugador activo y cuándo se actualizó por última vez.</p>
-        </div>
-    </header>
+    <UiPageHeader Kicker="Datos"
+                  Title="Estado y frescura de tus datos"
+                  Description="Comprueba qué información está disponible para el jugador activo y cuándo se actualizó por última vez." />
 
     @if (Session.AllyCode is not long allyCode)
     {
-        <div class="command-panel command-panel-empty">Selecciona primero un jugador desde Inicio.</div>
+        <UiEmptyState Icon="D"
+                      Title="Selecciona un jugador"
+                      Description="El estado de datos se calcula para el jugador principal que tengas activo.">
+            <Actions>
+                <a class="primary-button" href="/">Ir a Inicio</a>
+            </Actions>
+        </UiEmptyState>
     }
     else if (_loading)
     {
-        <div class="command-loading">
-            <span class="spinner" aria-hidden="true"></span>
-            <strong>Cargando estado de datos…</strong>
-        </div>
+        <UiLoadingState Title="Cargando estado de datos"
+                        Description="Consultando roster, Gran Arena y Conquista." />
     }
     else
     {
         <div class="command-secondary-grid data-status-grid">
-            <article class="command-panel">
-                <div class="command-panel-heading compact">
-                    <div><span class="section-kicker">Perfil</span><h2>Roster</h2></div>
-                    <span class="command-status-dot @FreshnessCss(_player?.UpdatedAtUtc)"></span>
-                </div>
-                <div class="command-data-list">
-                    <div><span>Jugador</span><strong>@(_player?.Name ?? "No disponible")</strong></div>
-                    <div><span>Última actualización</span><strong>@RelativeUpdated(_player?.UpdatedAtUtc)</strong></div>
-                    <div><span>Unidades</span><strong>@(_player?.RosterCount.ToString("N0") ?? "—")</strong></div>
-                    <div><span>Datacrons</span><strong>@(_player?.AvailableDatacrons.Count.ToString("N0") ?? "—")</strong></div>
-                </div>
-                <a class="command-secondary-link" href="@($"/player/{allyCode}")">Abrir roster →</a>
-            </article>
+            <UiCard Kicker="Perfil" Title="Roster">
+                <HeaderActions>
+                    <UiStatusPill Label="@FreshnessLabel(_player?.UpdatedAtUtc)"
+                                  Tone="@FreshnessTone(_player?.UpdatedAtUtc)"
+                                  ShowDot="true" />
+                </HeaderActions>
+                <ChildContent>
+                    <div class="command-data-list">
+                        <div><span>Jugador</span><strong>@(_player?.Name ?? "No disponible")</strong></div>
+                        <div><span>Última actualización</span><strong>@RelativeUpdated(_player?.UpdatedAtUtc)</strong></div>
+                        <div><span>Unidades</span><strong>@(_player?.RosterCount.ToString("N0") ?? "—")</strong></div>
+                        <div><span>Datacrons</span><strong>@(_player?.AvailableDatacrons.Count.ToString("N0") ?? "—")</strong></div>
+                    </div>
+                    <a class="command-secondary-link" href="@($"/player/{allyCode}")">Abrir roster →</a>
+                </ChildContent>
+            </UiCard>
 
-            <article class="command-panel">
-                <div class="command-panel-heading compact">
-                    <div><span class="section-kicker">Gran Arena</span><h2>Plan actual</h2></div>
-                    <span class="command-status-dot @FreshnessCss(_planner?.Plan.UpdatedAtUtc)"></span>
-                </div>
-                <div class="command-data-list">
-                    <div><span>Estado</span><strong>@(_planner is null ? "No disponible" : "Disponible")</strong></div>
-                    <div><span>Última actualización</span><strong>@RelativeUpdated(_planner?.Plan.UpdatedAtUtc)</strong></div>
-                    <div><span>Rival</span><strong>@(_planner?.Opponent.OpponentName ?? "—")</strong></div>
-                    <div><span>Formato</span><strong>@(_planner?.Opponent.Format ?? "—")</strong></div>
-                </div>
-                <a class="command-secondary-link" href="@($"/gac/{allyCode}/planner")">Abrir Planner →</a>
-            </article>
+            <UiCard Kicker="Gran Arena" Title="Plan actual">
+                <HeaderActions>
+                    <UiStatusPill Label="@FreshnessLabel(_planner?.Plan.UpdatedAtUtc)"
+                                  Tone="@FreshnessTone(_planner?.Plan.UpdatedAtUtc)"
+                                  ShowDot="true" />
+                </HeaderActions>
+                <ChildContent>
+                    <div class="command-data-list">
+                        <div><span>Estado</span><strong>@(_planner is null ? "No disponible" : "Disponible")</strong></div>
+                        <div><span>Última actualización</span><strong>@RelativeUpdated(_planner?.Plan.UpdatedAtUtc)</strong></div>
+                        <div><span>Rival</span><strong>@(_planner?.Opponent.OpponentName ?? "—")</strong></div>
+                        <div><span>Formato</span><strong>@(_planner?.Opponent.Format ?? "—")</strong></div>
+                    </div>
+                    <a class="command-secondary-link" href="@($"/gac/{allyCode}/planner")">Abrir Planner →</a>
+                </ChildContent>
+            </UiCard>
 
-            <article class="command-panel">
-                <div class="command-panel-heading compact">
-                    <div><span class="section-kicker">Conquista</span><h2>Plan actual</h2></div>
-                    <span class="command-status-dot @FreshnessCss(_conquest?.UpdatedAtUtc)"></span>
-                </div>
-                <div class="command-data-list">
-                    <div><span>Estado</span><strong>@(_conquest is null ? "No disponible" : "Disponible")</strong></div>
-                    <div><span>Última actualización</span><strong>@RelativeUpdated(_conquest?.UpdatedAtUtc)</strong></div>
-                    <div><span>Hazañas</span><strong>@(_conquest is null ? "—" : $"{_conquest.CompletedFeats}/{_conquest.TotalFeats}")</strong></div>
-                    <div><span>Puntos</span><strong>@(_conquest is null ? "—" : _conquest.EarnedFeatPoints.ToString())</strong></div>
-                </div>
-                <a class="command-secondary-link" href="@($"/conquest/{allyCode}")">Abrir Conquista →</a>
-            </article>
+            <UiCard Kicker="Conquista" Title="Plan actual">
+                <HeaderActions>
+                    <UiStatusPill Label="@FreshnessLabel(_conquest?.UpdatedAtUtc)"
+                                  Tone="@FreshnessTone(_conquest?.UpdatedAtUtc)"
+                                  ShowDot="true" />
+                </HeaderActions>
+                <ChildContent>
+                    <div class="command-data-list">
+                        <div><span>Estado</span><strong>@(_conquest is null ? "No disponible" : "Disponible")</strong></div>
+                        <div><span>Última actualización</span><strong>@RelativeUpdated(_conquest?.UpdatedAtUtc)</strong></div>
+                        <div><span>Hazañas</span><strong>@(_conquest is null ? "—" : $"{_conquest.CompletedFeats}/{_conquest.TotalFeats}")</strong></div>
+                        <div><span>Puntos</span><strong>@(_conquest is null ? "—" : _conquest.EarnedFeatPoints.ToString())</strong></div>
+                    </div>
+                    <a class="command-secondary-link" href="@($"/conquest/{allyCode}")">Abrir Conquista →</a>
+                </ChildContent>
+            </UiCard>
         </div>
 
         @if (!string.IsNullOrWhiteSpace(_error))
         {
-            <p class="command-inline-error">@_error</p>
+            <UiAlert Tone="danger"
+                     Icon="!"
+                     Title="No se ha podido completar la consulta"
+                     Description="@_error" />
         }
     }
 </section>
@@ -147,9 +159,13 @@
         }
     }
 
-    private static string FreshnessCss(DateTimeOffset? updatedAt) => updatedAt is null
-        ? "missing"
-        : DateTimeOffset.UtcNow - updatedAt.Value < TimeSpan.FromHours(24) ? "fresh" : "stale";
+    private static string FreshnessTone(DateTimeOffset? updatedAt) => updatedAt is null
+        ? "danger"
+        : DateTimeOffset.UtcNow - updatedAt.Value < TimeSpan.FromHours(24) ? "success" : "warning";
+
+    private static string FreshnessLabel(DateTimeOffset? updatedAt) => updatedAt is null
+        ? "Sin datos"
+        : DateTimeOffset.UtcNow - updatedAt.Value < TimeSpan.FromHours(24) ? "Actualizado" : "Revisar";
 
     private static string RelativeUpdated(DateTimeOffset? updatedAt)
     {

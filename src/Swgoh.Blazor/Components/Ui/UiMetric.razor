@@ -1,0 +1,25 @@
+<article class="ui-metric ui-metric-@Tone @Class">
+    <span class="ui-metric-label">@Label</span>
+    <strong>@Value</strong>
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <small>@Hint</small>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Hint { get; set; }
+
+    [Parameter]
+    public string Tone { get; set; } = "default";
+
+    [Parameter]
+    public string? Class { get; set; }
+}

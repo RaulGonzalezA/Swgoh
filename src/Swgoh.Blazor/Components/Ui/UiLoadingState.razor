@@ -1,0 +1,21 @@
+<section class="ui-loading-state @Class" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <div>
+        <strong>@Title</strong>
+        @if (!string.IsNullOrWhiteSpace(Description))
+        {
+            <small>@Description</small>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Cargando…";
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+}

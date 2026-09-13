@@ -1,0 +1,52 @@
+<section class="ui-card ui-card-@Variant @(Compact ? "ui-card-compact" : string.Empty) @Class">
+    @if (!string.IsNullOrWhiteSpace(Title) || HeaderActions is not null)
+    {
+        <header class="ui-card-header">
+            <div>
+                @if (!string.IsNullOrWhiteSpace(Kicker))
+                {
+                    <span class="ui-kicker">@Kicker</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(Title))
+                {
+                    <h2>@Title</h2>
+                }
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <p>@Subtitle</p>
+                }
+            </div>
+            @if (HeaderActions is not null)
+            {
+                <div class="ui-card-actions">@HeaderActions</div>
+            }
+        </header>
+    }
+    <div class="ui-card-body">@ChildContent</div>
+</section>
+
+@code {
+    [Parameter]
+    public string? Kicker { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    [Parameter]
+    public string Variant { get; set; } = "default";
+
+    [Parameter]
+    public bool Compact { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? HeaderActions { get; set; }
+
+    [Parameter, EditorRequired]
+    public RenderFragment ChildContent { get; set; } = null!;
+}
