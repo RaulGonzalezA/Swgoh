@@ -256,22 +256,36 @@ else
                                         <span>score</span>
                                     </div>
                                 </div>
-                                <div class="conquest-unit-row">
+
+                                <div class="rich-squad" aria-label="Equipo recomendado">
+                                    @{ bool isLeader = true; }
                                     @foreach (ConquestApiClient.UnitViewModel unit in recommendation.Team)
                                     {
-                                        <div class="conquest-unit">
-                                            @if (GetPortraitUrl(unit.ThumbnailName) is string portrait)
-                                            {
-                                                <img src="@portrait" alt="" />
-                                            }
-                                            else
-                                            {
-                                                <span class="conquest-unit-fallback">@Initial(unit.Name)</span>
-                                            }
-                                            <div><strong>@unit.Name</strong><span>R@unit.RelicTier · @unit.GalacticPower.ToString("N0") GP</span></div>
-                                        </div>
+                                        PlayerApiClient.RosterUnitViewModel? rosterUnit = FindRosterUnit(unit.DefinitionId);
+                                        <RichUnitPortrait Name="@unit.Name"
+                                                          ThumbnailName="@unit.ThumbnailName"
+                                                          RelicTier="@unit.RelicTier"
+                                                          Speed="@(unit.Speed ?? rosterUnit?.Stats?.Speed)"
+                                                          EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                          SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                          ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                          IsLeader="@isLeader" />
+                                        isLeader = false;
                                     }
                                 </div>
+
+                                <div class="conquest-visual-meta">
+                                    @if (recommendation.AverageSpeed is decimal averageSpeed)
+                                    {
+                                        <span>Velocidad media <strong>@averageSpeed.ToString("0")</strong></span>
+                                    }
+                                    @if (IncompleteModCount(recommendation) > 0)
+                                    {
+                                        <span class="rich-team-warning">⚠ @IncompleteModCount(recommendation) unidad(es) con mods incompletos</span>
+                                    }
+                                    <span class="rich-team-warning">DC? Datacron no evaluado: verifica antes del combate</span>
+                                </div>
+
                                 <div class="conquest-contributions">
                                     @foreach (ConquestApiClient.ContributionViewModel contribution in recommendation.AdvancesFeats)
                                     {
@@ -288,4 +302,20 @@ else
             }
         }
     </section>
+}
+
+@code {
+    private PlayerApiClient.RosterUnitViewModel? FindRosterUnit(string definitionId) =>
+        roster.FirstOrDefault(unit => string.Equals(
+            unit.DefinitionId,
+            definitionId,
+            StringComparison.OrdinalIgnoreCase));
+
+    private int IncompleteModCount(ConquestApiClient.TeamViewModel recommendation) =>
+        recommendation.Team.Count(unit =>
+        {
+            PlayerApiClient.RosterUnitViewModel? rosterUnit = FindRosterUnit(unit.DefinitionId);
+            int? equipped = rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount;
+            return equipped is < 6;
+        });
 }
