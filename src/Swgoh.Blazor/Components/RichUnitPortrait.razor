@@ -1,0 +1,158 @@
+@using Microsoft.AspNetCore.Components
+
+<figure class="rich-unit @(Compact ? "rich-unit-compact" : string.Empty) @(IsLeader ? "rich-unit-leader" : string.Empty)" title="@Tooltip">
+    <div class="rich-unit-portrait">
+        @if (PortraitUrl is not null)
+        {
+            <img src="@PortraitUrl" alt="" loading="lazy" onerror="this.style.display='none'" />
+        }
+        <span class="rich-unit-fallback">@Initial</span>
+
+        @if (RelicTier is > 0)
+        {
+            <span class="rich-unit-relic">R@RelicTier</span>
+        }
+
+        @if (IsLeader)
+        {
+            <span class="rich-unit-leader-badge" aria-label="Líder">L</span>
+        }
+
+        @if (DatacronWarning)
+        {
+            <span class="rich-unit-datacron" title="Datacron: verificar aplicabilidad">DC?</span>
+        }
+    </div>
+
+    <div class="rich-unit-tactical">
+        @if (Speed is decimal speed)
+        {
+            <span class="rich-unit-speed">SPD <strong>@speed.ToString("0")</strong></span>
+        }
+        else
+        {
+            <span class="rich-unit-speed rich-unit-unknown">SPD —</span>
+        }
+
+        @if (EquippedMods is int equipped)
+        {
+            <span class="rich-unit-mods @(equipped < 6 ? "warning" : SixDotMods is > 0 ? "elite" : "ready")"
+                  title="@ModTooltip">
+                @(equipped < 6 ? $"M{equipped}/6" : SixDotMods is > 0 ? $"6•{SixDotMods}" : "M6")
+            </span>
+        }
+    </div>
+
+    @if (ShowName)
+    {
+        <figcaption>@Name</figcaption>
+    }
+</figure>
+
+@code {
+    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? ThumbnailName { get; set; }
+
+    [Parameter]
+    public int? RelicTier { get; set; }
+
+    [Parameter]
+    public decimal? Speed { get; set; }
+
+    [Parameter]
+    public int? EquippedMods { get; set; }
+
+    [Parameter]
+    public int? SixDotMods { get; set; }
+
+    [Parameter]
+    public decimal? ModSpeedBonus { get; set; }
+
+    [Parameter]
+    public bool IsLeader { get; set; }
+
+    [Parameter]
+    public bool DatacronWarning { get; set; }
+
+    [Parameter]
+    public bool Compact { get; set; }
+
+    [Parameter]
+    public bool ShowName { get; set; }
+
+    private string Initial => string.IsNullOrWhiteSpace(Name)
+        ? "?"
+        : char.ToUpperInvariant(Name.Trim()[0]).ToString();
+
+    private string? PortraitUrl
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ThumbnailName))
+            {
+                return null;
+            }
+
+            string asset = ThumbnailName.Trim();
+            if (!asset.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            {
+                asset += ".png";
+            }
+
+            return AssetBaseUrl + Uri.EscapeDataString(asset);
+        }
+    }
+
+    private string ModTooltip
+    {
+        get
+        {
+            string summary = EquippedMods is int equipped ? $"{equipped}/6 mods" : "Mods sin datos";
+            if (SixDotMods is > 0)
+            {
+                summary += $" · {SixDotMods} de 6 puntos";
+            }
+
+            if (ModSpeedBonus is decimal bonus)
+            {
+                summary += $" · +{bonus:0} velocidad de mods";
+            }
+
+            return summary;
+        }
+    }
+
+    private string Tooltip
+    {
+        get
+        {
+            var parts = new List<string> { Name };
+            if (RelicTier is > 0)
+            {
+                parts.Add($"R{RelicTier}");
+            }
+
+            if (Speed is decimal speed)
+            {
+                parts.Add($"Velocidad {speed:0}");
+            }
+
+            if (EquippedMods is not null)
+            {
+                parts.Add(ModTooltip);
+            }
+
+            if (DatacronWarning)
+            {
+                parts.Add("Datacron: verificar");
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
+}

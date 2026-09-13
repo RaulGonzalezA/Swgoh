@@ -112,12 +112,65 @@ else
                 <div class="optimizer-recommendation-list">
                     @foreach (GacPlannerApiClient.OptimizationRecommendationViewModel recommendation in Optimization.Recommendations)
                     {
+                        GacPlannerApiClient.TeamPresetViewModel? attackPreset = FindPreset(recommendation.TeamPresetId);
+                        GacPlannerApiClient.VisibleDefenseViewModel? defenseDetails = FindVisibleDefense(recommendation.DefenseId);
                         <article class="optimizer-recommendation-card">
                             <div class="optimizer-route">
                                 <div><span>@recommendation.Zone</span><strong>@recommendation.DefenseName</strong></div>
                                 <span class="optimizer-arrow">→</span>
                                 <div><span>Tu ataque</span><strong>@recommendation.TeamName</strong></div>
                             </div>
+
+                            @if (attackPreset is not null && defenseDetails is not null)
+                            {
+                                <div class="rich-matchup">
+                                    <div class="rich-matchup-side">
+                                        <span class="rich-matchup-label">Defensa rival</span>
+                                        <div class="rich-squad">
+                                            @{ bool rivalLeader = true; }
+                                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in defenseDetails.Squad.AllUnits)
+                                            {
+                                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOpponentRosterUnit(unit.DefinitionId);
+                                                <RichUnitPortrait Name="@unit.Name"
+                                                                  ThumbnailName="@unit.ThumbnailName"
+                                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                  IsLeader="@rivalLeader" />
+                                                rivalLeader = false;
+                                            }
+                                        </div>
+                                    </div>
+                                    <span class="rich-matchup-arrow" aria-hidden="true">→</span>
+                                    <div class="rich-matchup-side">
+                                        <span class="rich-matchup-label">Tu ataque</span>
+                                        <div class="rich-squad">
+                                            @{ bool attackLeader = true; }
+                                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in attackPreset.Squad.AllUnits)
+                                            {
+                                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                                <RichUnitPortrait Name="@unit.Name"
+                                                                  ThumbnailName="@unit.ThumbnailName"
+                                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                  IsLeader="@attackLeader"
+                                                                  DatacronWarning="@(attackLeader && DatacronNeedsReview(recommendation.DatacronStatus))" />
+                                                attackLeader = false;
+                                            }
+                                        </div>
+                                        @if (DatacronNeedsReview(recommendation.DatacronStatus))
+                                        {
+                                            <span class="rich-team-warning">DC? @FriendlyDatacronStatus(recommendation.DatacronStatus)</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
                             <div class="optimizer-meta">
                                 <span class="@OptimizerEvidenceClass(recommendation.Evidence)">@recommendation.Evidence</span>
                                 <span>Score <strong>@recommendation.Score.ToString("0.#")</strong></span>
@@ -129,6 +182,14 @@ else
                                 @if (recommendation.OneShotRate is decimal optimizerOneShot)
                                 {
                                     <span>1-shot <strong>@Percent(optimizerOneShot)</strong></span>
+                                }
+                                @if (recommendation.TeamAverageSpeed is decimal teamSpeed)
+                                {
+                                    <span>SPD ataque <strong>@teamSpeed.ToString("0")</strong></span>
+                                }
+                                @if (recommendation.DefenseAverageSpeed is decimal defenseSpeed)
+                                {
+                                    <span>SPD rival <strong>@defenseSpeed.ToString("0")</strong></span>
                                 }
                             </div>
                             <p>@recommendation.Rationale</p>
@@ -241,16 +302,21 @@ else
                                 <div><span class="planner-use-pill planner-use-@preset.Use.ToLowerInvariant()">@FriendlyUse(preset.Use)</span><strong>@preset.Name</strong></div>
                                 <button class="planner-icon-button" type="button" title="Eliminar equipo" @onclick="() => DeletePresetAsync(preset.Id)">×</button>
                             </div>
-                            <div class="planner-mini-squad">
+                            <div class="rich-squad">
+                                @{ bool presetLeader = true; }
                                 @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in preset.Squad.AllUnits)
                                 {
-                                    <div title="@unit.Name">
-                                        @if (GetPortraitUrl(unit.ThumbnailName) is string imageUrl)
-                                        {
-                                            <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'" />
-                                        }
-                                        <span>@Initial(unit.Name)</span>
-                                    </div>
+                                    PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                    <RichUnitPortrait Name="@unit.Name"
+                                                      ThumbnailName="@unit.ThumbnailName"
+                                                      RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                      Speed="@rosterUnit?.Stats?.Speed"
+                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                      IsLeader="@presetLeader"
+                                                      Compact="true" />
+                                    presetLeader = false;
                                 }
                             </div>
                             <small>@preset.Squad.Leader.Name · @(preset.Squad.IsFleet ? "Flota" : preset.Format)</small>
@@ -292,7 +358,26 @@ else
                             {
                                 <article class="planner-defense-card planner-own-defense-card">
                                     <div class="planner-zone-pill">@assignment.Zone</div>
-                                    <div class="planner-defense-main"><strong>@preset.Name</strong><span>@SquadNames(preset.Squad)</span></div>
+                                    <div class="planner-defense-main">
+                                        <strong>@preset.Name</strong>
+                                        <div class="rich-squad">
+                                            @{ bool ownDefenseLeader = true; }
+                                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in preset.Squad.AllUnits)
+                                            {
+                                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                                <RichUnitPortrait Name="@unit.Name"
+                                                                  ThumbnailName="@unit.ThumbnailName"
+                                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                  IsLeader="@ownDefenseLeader"
+                                                                  Compact="true" />
+                                                ownDefenseLeader = false;
+                                            }
+                                        </div>
+                                    </div>
                                     <button class="planner-icon-button" type="button" title="Quitar de defensa" @onclick="() => RemoveOwnDefenseAsync(assignment.Id)">×</button>
                                 </article>
                             }
@@ -366,10 +451,20 @@ else
 
                                 @if (details is not null)
                                 {
-                                    <div class="planner-large-squad">
+                                    <div class="rich-squad">
+                                        @{ bool enemyLeader = true; }
                                         @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in details.Squad.AllUnits)
                                         {
-                                            <div class="planner-unit-token" title="@unit.Name"><div>@if (GetPortraitUrl(unit.ThumbnailName) is string imageUrl) { <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'" /> }<span>@Initial(unit.Name)</span></div><small>@unit.Name</small>@if (unit.RelicTier is > 0) { <em>R@unit.RelicTier</em> }</div>
+                                            PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOpponentRosterUnit(unit.DefinitionId);
+                                            <RichUnitPortrait Name="@unit.Name"
+                                                              ThumbnailName="@unit.ThumbnailName"
+                                                              RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                              Speed="@rosterUnit?.Stats?.Speed"
+                                                              EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                              SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                              ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                              IsLeader="@enemyLeader" />
+                                            enemyLeader = false;
                                         }
                                     </div>
                                 }
@@ -379,13 +474,33 @@ else
                                     <div class="planner-counter-hint">
                                         <div class="planner-counter-hint-heading"><span>Counter sugerido</span><strong>@FriendlyConfidence(hint.Confidence)</strong></div>
                                         <p>@hint.Rationale</p>
-                                        @if (hint.RecommendedTeam.Count > 0) { <div class="planner-hint-team">@string.Join(" · ", hint.RecommendedTeam.Select(unit => unit.Name))</div> }
+                                        @if (hint.RecommendedTeam.Count > 0)
+                                        {
+                                            <div class="rich-squad">
+                                                @{ bool hintLeader = true; }
+                                                @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in hint.RecommendedTeam)
+                                                {
+                                                    PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                                    <RichUnitPortrait Name="@unit.Name"
+                                                                      ThumbnailName="@unit.ThumbnailName"
+                                                                      RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                      Speed="@rosterUnit?.Stats?.Speed"
+                                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                      IsLeader="@hintLeader"
+                                                                      DatacronWarning="@(hintLeader && hint.RequiresDatacronVerification)"
+                                                                      Compact="true" />
+                                                    hintLeader = false;
+                                                }
+                                            </div>
+                                        }
                                         <div class="planner-hint-stats">
                                             @if (hint.WinRate is decimal winRate) { <span><strong>@Percent(winRate)</strong> win</span> }
                                             @if (hint.OneShotRate is decimal oneShotRate) { <span><strong>@Percent(oneShotRate)</strong> one-shot</span> }
                                             @if (hint.Uses is int uses) { <span><strong>@uses</strong> muestras</span> }
                                         </div>
-                                        @if (hint.RequiresDatacronVerification) { <small class="datacron-note">Verifica datacron y mods antes de confirmar.</small> }
+                                        @if (hint.RequiresDatacronVerification) { <small class="datacron-note">DC? Verifica datacron antes de confirmar; los mods ya aparecen sobre los retratos.</small> }
                                         @if (hint.MatchingTeamPresetId is Guid matchingPresetId) { <button class="secondary-button planner-hint-action" type="button" @onclick="() => PlanAttackAsync(defense.Id, matchingPresetId)">Usar mi equipo coincidente</button> }
                                     </div>
                                 }
@@ -411,7 +526,30 @@ else
                                         {
                                             GacPlannerApiClient.TeamPresetViewModel? attackTeam = FindPreset(attack.TeamPresetId);
                                             <div class="planner-attempt planner-attempt-@attack.Status.ToLowerInvariant()">
-                                                <div><span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span><strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong></div>
+                                                <div>
+                                                    <span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span>
+                                                    <strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong>
+                                                    @if (attackTeam is not null)
+                                                    {
+                                                        <div class="rich-squad">
+                                                            @{ bool attemptLeader = true; }
+                                                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in attackTeam.Squad.AllUnits)
+                                                            {
+                                                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                                                <RichUnitPortrait Name="@unit.Name"
+                                                                                  ThumbnailName="@unit.ThumbnailName"
+                                                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                                  IsLeader="@attemptLeader"
+                                                                                  Compact="true" />
+                                                                attemptLeader = false;
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
                                                 @if (attack.Status == "Planned")
                                                 {
                                                     <div class="planner-attempt-actions"><button type="button" title="Victoria" @onclick="() => MarkAttackWonAsync(attack.Id)">✓</button><button type="button" title="Fallo" @onclick="() => MarkAttackFailedAsync(attack.Id)">×</button><button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button></div>
@@ -432,4 +570,29 @@ else
     {
         <div class="planner-saving-toast"><span class="spinner"></span> Guardando plan…</div>
     }
+}
+
+@code {
+    private PlayerApiClient.RosterUnitViewModel? FindOwnRosterUnit(string definitionId) =>
+        playerRoster.FirstOrDefault(unit => string.Equals(
+            unit.DefinitionId,
+            definitionId,
+            StringComparison.OrdinalIgnoreCase));
+
+    private PlayerApiClient.RosterUnitViewModel? FindOpponentRosterUnit(string definitionId) =>
+        opponentRoster.FirstOrDefault(unit => string.Equals(
+            unit.DefinitionId,
+            definitionId,
+            StringComparison.OrdinalIgnoreCase));
+
+    private static bool DatacronNeedsReview(string status) =>
+        !string.Equals(status, "NotRequired", StringComparison.OrdinalIgnoreCase);
+
+    private static string FriendlyDatacronStatus(string status) => status switch
+    {
+        "Level9AvailableUnverified" => "nivel 9 disponible; verifica afinidad",
+        "NoCandidate" => "no hay candidato claro",
+        "NotRequired" => "no requerido",
+        _ => "verifica aplicabilidad"
+    };
 }
