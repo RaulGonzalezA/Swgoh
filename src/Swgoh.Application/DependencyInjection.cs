@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IGalacticLegendProgressService, GalacticLegendProgressService>();
         services.AddScoped<ISquadService, SquadService>();
         services.AddScoped<IConquestService, ConquestService>();
+        services.AddScoped<IConquestDailyPlanService, ConquestDailyPlanService>();
         services.AddSingleton<IGacRulesService, GacRulesService>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();
         services.AddScoped<IGacHistorySyncService, GacHistorySyncService>();

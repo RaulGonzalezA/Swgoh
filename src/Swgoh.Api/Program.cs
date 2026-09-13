@@ -95,6 +95,7 @@ app.MapDefaultEndpoints();
 app.MapPlayerEndpoints();
 app.MapSquadEndpoints();
 app.MapConquestEndpoints();
+app.MapConquestDailyPlanEndpoints();
 app.MapGacEndpoints();
 app.MapGacPlannerEndpoints();
 app.MapGacPlannerOptimizationEndpoints();
