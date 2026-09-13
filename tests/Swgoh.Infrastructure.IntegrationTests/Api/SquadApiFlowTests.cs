@@ -60,9 +60,11 @@ public sealed class SquadApiFlowTests(MongoDbContainerFixture fixture)
         Assert.NotEqual(Guid.Empty, id);
         Assert.Equal("5v5", created.RootElement.GetProperty("format").GetString());
         Assert.Equal("Defense", created.RootElement.GetProperty("use").GetString());
-        Assert.Equal(
-            ["gac", "sith"],
-            created.RootElement.GetProperty("tags").EnumerateArray().Select(item => item.GetString()).ToArray());
+        string[] tags = created.RootElement.GetProperty("tags")
+            .EnumerateArray()
+            .Select(item => item.GetString()!)
+            .ToArray();
+        Assert.Equal(new[] { "gac", "sith" }, tags);
         JsonElement createdVariant = Assert.Single(created.RootElement.GetProperty("variants").EnumerateArray().ToArray());
         Assert.Equal("LEADER", createdVariant.GetProperty("leader").GetProperty("definitionId").GetString());
         Assert.Equal("Líder Sith", createdVariant.GetProperty("leader").GetProperty("name").GetString());
