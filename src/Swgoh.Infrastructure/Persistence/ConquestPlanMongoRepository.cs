@@ -74,6 +74,16 @@ internal sealed class ConquestPlanMongoRepository(
                 }
             })
         ],
+        StaminaCostPerBattle = plan.StaminaCostPerBattle,
+        ReserveFloorPercent = plan.ReserveFloorPercent,
+        Stamina =
+        [
+            .. plan.Stamina.Select(value => new ConquestUnitStaminaDocument
+            {
+                DefinitionId = value.DefinitionId,
+                CurrentPercent = value.CurrentPercent
+            })
+        ],
         CreatedAtUtc = plan.CreatedAtUtc,
         UpdatedAtUtc = plan.UpdatedAtUtc
     };
@@ -98,5 +108,10 @@ internal sealed class ConquestPlanMongoRepository(
                 feat.Rule.UnitDefinitionIds,
                 feat.Rule.MinimumMatchingUnits))),
         document.CreatedAtUtc,
-        document.UpdatedAtUtc);
+        document.UpdatedAtUtc,
+        document.StaminaCostPerBattle ?? ConquestPlan.DefaultStaminaCostPerBattle,
+        document.ReserveFloorPercent ?? ConquestPlan.DefaultReserveFloorPercent,
+        document.Stamina.Select(value => ConquestUnitStamina.Create(
+            value.DefinitionId,
+            value.CurrentPercent)));
 }
