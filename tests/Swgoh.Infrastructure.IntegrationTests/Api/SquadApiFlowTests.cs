@@ -173,8 +173,9 @@ public sealed class SquadApiFlowTests(MongoDbContainerFixture fixture)
         IMongoDatabase database = mongoClient.GetDatabase("swgoh");
         IMongoCollection<SquadDefinitionDocument> collection = database.GetCollection<SquadDefinitionDocument>(
             SquadMongoRepository.CollectionName);
+        string documentId = id.ToString("D");
         SquadDefinitionDocument? document = await collection
-            .Find(item => item.Id == id)
+            .Find(item => item.Id == documentId)
             .FirstOrDefaultAsync(cancellationToken);
 
         Assert.NotNull(document);
