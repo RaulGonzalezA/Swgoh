@@ -1,180 +1,454 @@
 @page "/"
 @rendermode InteractiveServer
+@using Microsoft.JSInterop
+@using Swgoh.Blazor.State
 @inject PlayerApiClient PlayerClient
+@inject GacPlannerApiClient PlannerClient
+@inject ConquestApiClient ConquestClient
+@inject PlayerSessionState Session
+@inject PlayerPreferenceService Preferences
 
-<PageTitle>Dashboard · SWGOH Planner</PageTitle>
+<PageTitle>Centro de operaciones · SWGOH Assistant</PageTitle>
 
-<section class="hero">
-    <div class="hero-copy">
-        <span class="eyebrow">Roster intelligence</span>
-        <h1>Prepara tu siguiente batalla con tus datos reales.</h1>
-        <p class="hero-text">
-            Consulta tu roster, detecta el rival actual de Gran Arena y convierte el análisis del backend
-            en una vista rápida para decidir qué guardar, qué atacar y dónde están los riesgos.
-        </p>
-    </div>
-
-    <div class="hero-orbit" aria-hidden="true">
-        <div class="orbit-ring orbit-ring-outer"></div>
-        <div class="orbit-ring orbit-ring-inner"></div>
-        <div class="orbit-core">GAC</div>
-    </div>
-</section>
-
-<section class="search-panel" aria-labelledby="player-search-title">
-    <div>
-        <span class="section-kicker">Empezar</span>
-        <h2 id="player-search-title">Busca un jugador</h2>
-        <p>Introduce un Ally Code. Aceptamos el formato con o sin guiones.</p>
-    </div>
-
-    <form class="player-search" @onsubmit="LoadAsync" @onsubmit:preventDefault>
-        <label class="sr-only" for="allyCode">Ally Code</label>
-        <div class="search-input-wrap">
-            <span class="search-icon" aria-hidden="true">#</span>
-            <input id="allyCode"
-                   inputmode="numeric"
-                   autocomplete="off"
-                   placeholder="123 456 789"
-                   @bind="_allyCode" />
-        </div>
-        <button class="primary-button" type="submit" disabled="@_loading">
-            @if (_loading)
-            {
-                <span class="spinner" aria-hidden="true"></span>
-                <span>Consultando</span>
-            }
-            else
-            {
-                <span>Analizar jugador</span>
-                <span aria-hidden="true">→</span>
-            }
-        </button>
-    </form>
-</section>
-
-@if (_error is not null)
+@if (_loading && _player is null)
 {
-    <div class="status-card status-error" role="alert">
-        <span class="status-icon" aria-hidden="true">!</span>
+    <section class="command-loading">
+        <span class="spinner" aria-hidden="true"></span>
         <div>
-            <strong>No hemos podido cargar el jugador</strong>
-            <p>@_error</p>
+            <strong>Cargando tu centro de operaciones</strong>
+            <small>Roster, GAC y Conquista</small>
         </div>
-    </div>
+    </section>
 }
-else if (_searched && !_loading && _player is null)
+else if (_player is null)
 {
-    <div class="status-card">
-        <span class="status-icon" aria-hidden="true">?</span>
-        <div>
-            <strong>Jugador no encontrado</strong>
-            <p>No hay un perfil persistido para ese Ally Code. Puedes refrescarlo primero desde la API.</p>
+    <section class="command-onboarding">
+        <div class="command-onboarding-copy">
+            <span class="section-kicker">SWGOH Assistant</span>
+            <h1>Tu siguiente decisión, con tus datos reales.</h1>
+            <p>
+                Carga un jugador una vez y el dashboard recordará su Ally Code. Después podrás entrar directamente
+                a tu roster, la ronda actual de GAC y el plan de Conquista.
+            </p>
         </div>
-    </div>
+
+        <div class="command-search-card">
+            <span class="section-kicker">Empezar</span>
+            <h2>Conecta tu perfil</h2>
+            <form class="command-search" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+                <label for="home-ally-code">Ally Code</label>
+                <div class="command-search-row">
+                    <input id="home-ally-code"
+                           inputmode="numeric"
+                           autocomplete="off"
+                           placeholder="123 456 789"
+                           @bind="_allyCode" />
+                    <button class="primary-button" type="submit" disabled="@_loading">
+                        @(_loading ? "Consultando…" : "Abrir dashboard")
+                    </button>
+                </div>
+            </form>
+            @if (_error is not null)
+            {
+                <p class="command-inline-error" role="alert">@_error</p>
+            }
+        </div>
+    </section>
 }
-else if (_player is not null)
+else
 {
-    <section class="player-dashboard" aria-labelledby="player-name">
-        <div class="player-heading">
-            <div class="player-avatar" aria-hidden="true">@Initials(_player.Name)</div>
-            <div class="player-identity">
-                <span class="eyebrow">Perfil cargado</span>
-                <h2 id="player-name">@_player.Name</h2>
-                <div class="identity-meta">
-                    <span>#@FormatAllyCode(_player.AllyCode)</span>
+    <section class="command-dashboard" aria-labelledby="command-player-name">
+        <header class="command-dashboard-heading">
+            <div>
+                <span class="section-kicker">Centro de operaciones</span>
+                <h1 id="command-player-name">Hola, @_player.Name</h1>
+                <p>
                     @if (!string.IsNullOrWhiteSpace(_player.GuildName))
                     {
-                        <span>@_player.GuildName</span>
+                        <span>@_player.GuildName · </span>
                     }
-                    <span>Nivel @_player.Level</span>
-                </div>
+                    <span>#@FormatAllyCode(_player.AllyCode) · actualizado @RelativeUpdated(_player.UpdatedAtUtc)</span>
+                </p>
             </div>
-            <span class="updated-badge">Actualizado @RelativeUpdated(_player.UpdatedAtUtc)</span>
-        </div>
+            <button class="ghost-button" type="button" @onclick="ShowPlayerPicker">Cambiar jugador</button>
+        </header>
 
-        <div class="metric-grid">
-            <div class="metric-card metric-primary">
-                <span class="metric-label">Poder galáctico</span>
+        @if (_showPlayerPicker)
+        {
+            <section class="command-player-picker">
+                <form class="command-search" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+                    <label for="change-ally-code">Nuevo Ally Code</label>
+                    <div class="command-search-row">
+                        <input id="change-ally-code" inputmode="numeric" autocomplete="off" @bind="_allyCode" />
+                        <button class="primary-button" type="submit" disabled="@_loading">Cargar</button>
+                        <button class="ghost-button" type="button" @onclick="HidePlayerPicker">Cancelar</button>
+                    </div>
+                </form>
+                @if (_error is not null)
+                {
+                    <p class="command-inline-error" role="alert">@_error</p>
+                }
+            </section>
+        }
+
+        <div class="command-metric-grid">
+            <article class="command-metric command-metric-primary">
+                <span>Poder galáctico</span>
                 <strong>@CompactNumber(_player.GalacticPower)</strong>
                 <small>@_player.GalacticPower.ToString("N0") GP</small>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Personajes</span>
-                <strong>@(_analysis?.CharacterCount.ToString("N0") ?? "—")</strong>
-                <small>@(_analysis is null ? "Análisis no disponible" : $"{_analysis.RelicCharacters:N0} en reliquia")</small>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">R7+</span>
-                <strong>@(_analysis?.Relic7Plus.ToString("N0") ?? "—")</strong>
-                <small>@(_analysis is null ? "Profundidad de roster" : $"{_analysis.Relic9Plus:N0} en R9+")</small>
-            </div>
-            <div class="metric-card">
-                <span class="metric-label">Omicrons</span>
-                <strong>@(_analysis?.Omicrons.ToString("N0") ?? "—")</strong>
-                <small>@(_analysis is null ? "Análisis no disponible" : $"{_analysis.Zetas:N0} zetas")</small>
-            </div>
+            </article>
+            <article class="command-metric">
+                <span>Gran Arena</span>
+                <strong>@(_planner?.Opponent.League ?? "—")</strong>
+                <small>@(_planner is null ? "Sin ronda cargada" : $"vs {_planner.Opponent.OpponentName} · {_planner.Opponent.Format}")</small>
+            </article>
+            <article class="command-metric">
+                <span>Conquista</span>
+                <strong>@(_conquest is null ? "—" : $"{_conquest.EarnedFeatPoints} pts")</strong>
+                <small>@(_conquest is null ? "Sin plan activo" : $"{_conquest.CompletedFeats}/{_conquest.TotalFeats} hazañas completadas")</small>
+            </article>
+            <article class="command-metric">
+                <span>Roster</span>
+                <strong>@(_analysis?.CharacterCount.ToString("N0") ?? _player.RosterCount.ToString("N0"))</strong>
+                <small>@(_analysis is null ? $"{_player.AvailableDatacrons.Count} datacrons" : $"{_analysis.RelicCharacters:N0} en reliquia · {_player.AvailableDatacrons.Count} datacrons")</small>
+            </article>
         </div>
 
-        <div class="action-grid">
-            <a class="feature-card" href="@($"/player/{_player.AllyCode}")">
-                <span class="feature-icon">R</span>
-                <div>
-                    <span class="section-kicker">Roster</span>
-                    <h3>Explorar colección</h3>
-                    <p>Busca unidades, filtra personajes y naves y revisa reliquias, zetas, omicrons y GP.</p>
+        <div class="command-focus-grid">
+            <section class="command-panel command-next-action">
+                <div class="command-panel-heading">
+                    <div>
+                        <span class="section-kicker">Siguiente acción recomendada</span>
+                        <h2>@NextActionTitle</h2>
+                    </div>
+                    <span class="command-mode-pill @NextActionCssClass">@NextActionMode</span>
                 </div>
-                <span class="feature-arrow" aria-hidden="true">→</span>
-            </a>
 
-            <a class="feature-card feature-card-accent" href="@($"/gac/{_player.AllyCode}")">
-                <span class="feature-icon">G</span>
-                <div>
-                    <span class="section-kicker">Gran Arena</span>
-                    <h3>Preparar enfrentamiento</h3>
-                    <p>Detecta al rival actual, compara ambos rosters y revisa amenazas, defensas y counters.</p>
-                </div>
-                <span class="feature-arrow" aria-hidden="true">→</span>
-            </a>
+                @if (TopGacRecommendation is not null)
+                {
+                    GacPlannerApiClient.OptimizationRecommendationViewModel gac = TopGacRecommendation;
+                    <div class="command-action-body">
+                        <div class="command-squad-strip">
+                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in GacRecommendedUnits)
+                            {
+                                string? portrait = GetPortraitUrl(unit.ThumbnailName);
+                                <div class="command-unit-mini" title="@unit.Name">
+                                    @if (portrait is not null)
+                                    {
+                                        <img src="@portrait" alt="" />
+                                    }
+                                    else
+                                    {
+                                        <span>@Initial(unit.Name)</span>
+                                    }
+                                    @if (unit.RelicTier is > 0)
+                                    {
+                                        <small>R@unit.RelicTier</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="command-action-copy">
+                            <strong>@gac.TeamName → @gac.DefenseName</strong>
+                            <p>@gac.Rationale</p>
+                            <div class="command-action-stats">
+                                <span>Score <b>@gac.Score.ToString("0.#")</b></span>
+                                <span>Confianza <b>@ConfidenceLabel(gac.Confidence)</b></span>
+                                @if (gac.WinRate is decimal winRate)
+                                {
+                                    <span>Histórico <b>@Percent(winRate)</b></span>
+                                }
+                                @if (gac.PersonalSamples > 0)
+                                {
+                                    <span>Personal <b>@gac.PersonalWins/@gac.PersonalSamples</b></span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <a class="command-wide-action" href="@($"/gac/{_player.AllyCode}/planner")">Abrir War Room <span>→</span></a>
+                }
+                else if (TopConquestRecommendation is not null)
+                {
+                    ConquestApiClient.TeamViewModel conquest = TopConquestRecommendation;
+                    <div class="command-action-body">
+                        <div class="command-squad-strip">
+                            @foreach (ConquestApiClient.UnitViewModel unit in conquest.Team)
+                            {
+                                string? portrait = GetPortraitUrl(unit.ThumbnailName);
+                                <div class="command-unit-mini" title="@unit.Name">
+                                    @if (portrait is not null)
+                                    {
+                                        <img src="@portrait" alt="" />
+                                    }
+                                    else
+                                    {
+                                        <span>@Initial(unit.Name)</span>
+                                    }
+                                    @if (unit.RelicTier > 0)
+                                    {
+                                        <small>R@unit.RelicTier</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="command-action-copy">
+                            <strong>Avanza @conquest.AdvancesFeats.Count hazaña(s) en el mismo combate</strong>
+                            <p>@conquest.Rationale</p>
+                            <div class="command-feat-chips">
+                                @foreach (ConquestApiClient.ContributionViewModel feat in conquest.AdvancesFeats.Take(3))
+                                {
+                                    <span>@feat.FeatName · +@feat.ExpectedProgress</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <a class="command-wide-action" href="@($"/conquest/{_player.AllyCode}")">Ver plan de Conquista <span>→</span></a>
+                }
+                else
+                {
+                    <div class="command-empty-action">
+                        <strong>No hay una acción urgente calculada.</strong>
+                        <p>Configura una ronda de GAC o añade hazañas a Conquista para que el asistente priorice tu siguiente movimiento.</p>
+                    </div>
+                    <div class="command-action-links">
+                        <a href="@($"/gac/{_player.AllyCode}/planner")">Configurar GAC</a>
+                        <a href="@($"/conquest/{_player.AllyCode}")">Configurar Conquista</a>
+                    </div>
+                }
+            </section>
 
-            <a class="feature-card" href="@($"/gac/{_player.AllyCode}/planner")">
-                <span class="feature-icon">P</span>
-                <div>
-                    <span class="section-kicker">Planificador</span>
-                    <h3>Diseñar la ronda</h3>
-                    <p>Guarda tu defensa, registra lo que ves del rival y asigna counters sin reutilizar unidades.</p>
+            <section class="command-panel command-gac-panel">
+                <div class="command-panel-heading">
+                    <div>
+                        <span class="section-kicker">GAC en curso</span>
+                        <h2>@(_planner?.Opponent.OpponentName ?? "Sin rival cargado")</h2>
+                    </div>
+                    @if (_planner is not null)
+                    {
+                        <span class="command-mode-pill gac">@_planner.Opponent.League</span>
+                    }
                 </div>
-                <span class="feature-arrow" aria-hidden="true">→</span>
-            </a>
 
-            <a class="feature-card" href="@($"/conquest/{_player.AllyCode}")">
-                <span class="feature-icon">C</span>
-                <div>
-                    <span class="section-kicker">Conquista</span>
-                    <h3>Optimizar hazañas</h3>
-                    <p>Registra el progreso y combina varias hazañas en los mismos combates con tu roster real.</p>
+                @if (_planner is not null)
+                {
+                    <div class="command-gac-scoreboard">
+                        <div><strong>@GacVisibleDefenses</strong><span>Defensas</span></div>
+                        <div><strong>@GacPendingDefenses</strong><span>Pendientes</span></div>
+                        <div><strong>@GacCoveredDefenses</strong><span>Cubiertas</span></div>
+                    </div>
+                    @if (TopGacRecommendation is not null)
+                    {
+                        <div class="command-mini-recommendation">
+                            <span>Próximo ataque</span>
+                            <strong>@TopGacRecommendation.TeamName → @TopGacRecommendation.DefenseName</strong>
+                            <small>@TopGacRecommendation.Evidence · coste estratégico @TopGacRecommendation.StrategicCost.ToString("0.#")</small>
+                        </div>
+                    }
+                    <a class="command-secondary-link" href="@($"/gac/{_player.AllyCode}/planner")">Ir al Planner →</a>
+                }
+                else
+                {
+                    <div class="command-panel-empty">No hay una ronda de Gran Arena preparada.</div>
+                    <a class="command-secondary-link" href="@($"/gac/{_player.AllyCode}")">Comprobar GAC →</a>
+                }
+            </section>
+        </div>
+
+        <div class="command-secondary-grid">
+            <section class="command-panel">
+                <div class="command-panel-heading compact">
+                    <div>
+                        <span class="section-kicker">Progreso de Conquista</span>
+                        <h2>@(_conquest?.Name ?? "Sin Conquista activa")</h2>
+                    </div>
+                    @if (_conquest is not null)
+                    {
+                        <strong class="command-panel-number">@ConquestProgressPercent%</strong>
+                    }
                 </div>
-                <span class="feature-arrow" aria-hidden="true">→</span>
-            </a>
+                @if (_conquest is not null)
+                {
+                    <div class="command-progress"><span style="width:@($"{ConquestProgressPercent}%")"></span></div>
+                    <div class="command-progress-meta">
+                        <span>@_conquest.EarnedFeatPoints pts completados</span>
+                        <span>@_conquest.AvailableFeatPoints pts pendientes</span>
+                    </div>
+                    <div class="command-feat-summary">
+                        <div><strong>@PendingGlobalFeats</strong><span>Globales pendientes</span></div>
+                        <div><strong>@PendingSectorFeats</strong><span>Sector pendientes</span></div>
+                        <div><strong>@PendingBossFeats</strong><span>Jefe pendientes</span></div>
+                    </div>
+                    <a class="command-secondary-link" href="@($"/conquest/{_player.AllyCode}")">Ver Conquista →</a>
+                }
+                else
+                {
+                    <div class="command-panel-empty">Crea el evento actual y añade sus hazañas para empezar a optimizar.</div>
+                    <a class="command-secondary-link" href="@($"/conquest/{_player.AllyCode}")">Crear plan →</a>
+                }
+            </section>
+
+            <section class="command-panel">
+                <div class="command-panel-heading compact">
+                    <div>
+                        <span class="section-kicker">Salud del roster</span>
+                        <h2>@(_analysis?.CharacterCount.ToString("N0") ?? "—") personajes</h2>
+                    </div>
+                    <span class="command-data-age">@RelativeUpdated(_player.UpdatedAtUtc)</span>
+                </div>
+                @if (_analysis is not null)
+                {
+                    <div class="command-roster-stats">
+                        <div><strong>@_analysis.Relic7Plus</strong><span>R7+</span></div>
+                        <div><strong>@_analysis.Relic9Plus</strong><span>R9+</span></div>
+                        <div><strong>@_analysis.Omicrons</strong><span>Omicrons</span></div>
+                        <div><strong>@_analysis.FullyModdedCharacters</strong><span>Mods completos</span></div>
+                    </div>
+                    <div class="command-roster-foot">
+                        <span>@_analysis.Zetas zetas</span>
+                        <span>@_player.AvailableDatacrons.Count datacrons</span>
+                        <span>@_analysis.UnmoddedCharacters sin mods</span>
+                    </div>
+                }
+                <a class="command-secondary-link" href="@($"/player/{_player.AllyCode}")">Explorar roster →</a>
+            </section>
+
+            <section class="command-panel command-data-panel">
+                <div class="command-panel-heading compact">
+                    <div>
+                        <span class="section-kicker">Estado de datos</span>
+                        <h2>Todo en contexto</h2>
+                    </div>
+                    <span class="command-status-dot @DataStatusCss"></span>
+                </div>
+                <div class="command-data-list">
+                    <div><span>Perfil / roster</span><strong>@RelativeUpdated(_player.UpdatedAtUtc)</strong></div>
+                    <div><span>Plan GAC</span><strong>@(_planner is null ? "No disponible" : RelativeUpdated(_planner.Plan.UpdatedAtUtc))</strong></div>
+                    <div><span>Conquista</span><strong>@(_conquest is null ? "No disponible" : RelativeUpdated(_conquest.UpdatedAtUtc))</strong></div>
+                </div>
+                <p>El asistente muestra de dónde sale cada recomendación y evita inventar contexto que no esté disponible.</p>
+            </section>
         </div>
     </section>
 }
 
 @code {
+    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+
     private string _allyCode = string.Empty;
     private bool _loading;
     private bool _searched;
+    private bool _showPlayerPicker;
     private string? _error;
     private PlayerApiClient.PlayerViewModel? _player;
     private PlayerApiClient.PlayerRosterAnalysisViewModel? _analysis;
+    private GacPlannerApiClient.PlannerViewModel? _planner;
+    private GacPlannerApiClient.OptimizationViewModel? _gacOptimization;
+    private ConquestApiClient.PlanViewModel? _conquest;
+    private ConquestApiClient.OptimizationViewModel? _conquestOptimization;
+
+    private GacPlannerApiClient.OptimizationRecommendationViewModel? TopGacRecommendation =>
+        _gacOptimization?.Recommendations.FirstOrDefault();
+
+    private ConquestApiClient.TeamViewModel? TopConquestRecommendation =>
+        TopGacRecommendation is null ? _conquestOptimization?.Recommendations.FirstOrDefault() : null;
+
+    private IReadOnlyCollection<GacPlannerApiClient.PlannerUnitViewModel> GacRecommendedUnits
+    {
+        get
+        {
+            if (_planner is null || TopGacRecommendation is null)
+            {
+                return [];
+            }
+
+            return _planner.Presets
+                .FirstOrDefault(preset => preset.Id == TopGacRecommendation.TeamPresetId)?
+                .Squad.AllUnits ?? [];
+        }
+    }
+
+    private string NextActionMode => TopGacRecommendation is not null
+        ? "GAC"
+        : TopConquestRecommendation is not null ? "Conquista" : "Sin urgencias";
+
+    private string NextActionCssClass => TopGacRecommendation is not null
+        ? "gac"
+        : TopConquestRecommendation is not null ? "conquest" : "neutral";
+
+    private string NextActionTitle => TopGacRecommendation is not null
+        ? "Ataca antes de gastar ese counter en otro sitio"
+        : TopConquestRecommendation is not null
+            ? "Aprovecha un combate para varias hazañas"
+            : "Configura el próximo objetivo";
+
+    private int GacVisibleDefenses => _planner?.Plan.VisibleDefenses.Count ?? 0;
+
+    private int GacPendingDefenses => _planner?.Plan.VisibleDefenses.Count(defense => !defense.Defeated) ?? 0;
+
+    private int GacCoveredDefenses
+    {
+        get
+        {
+            if (_planner is null)
+            {
+                return 0;
+            }
+
+            HashSet<Guid> covered = _planner.Plan.Attacks
+                .Where(attack => !string.Equals(attack.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+                .Select(attack => attack.DefenseId)
+                .ToHashSet();
+            return _planner.Plan.VisibleDefenses.Count(defense => defense.Defeated || covered.Contains(defense.Id));
+        }
+    }
+
+    private int ConquestProgressPercent
+    {
+        get
+        {
+            if (_conquest is null)
+            {
+                return 0;
+            }
+
+            int total = _conquest.EarnedFeatPoints + _conquest.AvailableFeatPoints;
+            return total == 0 ? 0 : (int)Math.Round((_conquest.EarnedFeatPoints * 100m) / total);
+        }
+    }
+
+    private int PendingGlobalFeats => _conquest?.Feats.Count(feat => !feat.IsComplete && feat.Scope == "Global") ?? 0;
+    private int PendingSectorFeats => _conquest?.Feats.Count(feat => !feat.IsComplete && feat.Scope == "Sector") ?? 0;
+    private int PendingBossFeats => _conquest?.Feats.Count(feat => !feat.IsComplete && feat.Scope == "Boss") ?? 0;
+
+    private string DataStatusCss => DateTimeOffset.UtcNow - _player!.UpdatedAtUtc < TimeSpan.FromHours(24)
+        ? "fresh"
+        : "stale";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _player is not null || _searched)
+        {
+            return;
+        }
+
+        try
+        {
+            long? saved = await Preferences.GetAllyCodeAsync();
+            if (saved is long allyCode)
+            {
+                _allyCode = allyCode.ToString();
+                await LoadPlayerAsync(allyCode, persistPreference: false);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (JSException)
+        {
+            // Local storage is an enhancement; the dashboard still works without it.
+        }
+    }
 
     private async Task LoadAsync()
     {
-        _error = null;
-        _player = null;
-        _analysis = null;
-        _searched = true;
-
         string normalized = _allyCode
             .Replace("-", string.Empty, StringComparison.Ordinal)
             .Replace(" ", string.Empty, StringComparison.Ordinal);
@@ -184,14 +458,42 @@ else if (_player is not null)
             return;
         }
 
+        await LoadPlayerAsync(allyCode, persistPreference: true);
+    }
+
+    private async Task LoadPlayerAsync(long allyCode, bool persistPreference)
+    {
         _loading = true;
+        _searched = true;
+        _error = null;
+        _analysis = null;
+        _planner = null;
+        _gacOptimization = null;
+        _conquest = null;
+        _conquestOptimization = null;
+
         try
         {
             _player = await PlayerClient.GetAsync(allyCode);
-            if (_player is not null)
+            if (_player is null)
             {
-                _analysis = await PlayerClient.GetAnalysisAsync(allyCode);
+                Session.Clear();
+                _error = "No hay un perfil persistido para ese Ally Code. Refresca primero el jugador desde la API.";
+                return;
             }
+
+            Session.SetPlayer(_player.AllyCode, _player.Name);
+            if (persistPreference)
+            {
+                await Preferences.SetAllyCodeAsync(_player.AllyCode);
+            }
+
+            Task<PlayerApiClient.PlayerRosterAnalysisViewModel?> analysisTask = PlayerClient.GetAnalysisAsync(allyCode);
+            Task gacTask = LoadGacAsync(allyCode);
+            Task conquestTask = LoadConquestAsync(allyCode);
+            await Task.WhenAll(analysisTask, gacTask, conquestTask);
+            _analysis = await analysisTask;
+            _showPlayerPicker = false;
         }
         catch (HttpRequestException)
         {
@@ -203,16 +505,63 @@ else if (_player is not null)
         }
     }
 
+    private async Task LoadGacAsync(long allyCode)
+    {
+        try
+        {
+            GacPlannerApiClient.PlannerResult plannerResult = await PlannerClient.GetCurrentAsync(allyCode);
+            _planner = plannerResult.Planner;
+            if (_planner is not null)
+            {
+                GacPlannerApiClient.OptimizationResult optimization = await PlannerClient.OptimizeCurrentAsync(
+                    allyCode,
+                    "FillGaps",
+                    apply: false);
+                _gacOptimization = optimization.Envelope?.Optimization;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _planner = null;
+            _gacOptimization = null;
+        }
+    }
+
+    private async Task LoadConquestAsync(long allyCode)
+    {
+        try
+        {
+            _conquest = await ConquestClient.GetCurrentAsync(allyCode);
+            if (_conquest is not null)
+            {
+                _conquestOptimization = await ConquestClient.OptimizeCurrentAsync(allyCode);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _conquest = null;
+            _conquestOptimization = null;
+        }
+    }
+
+    private void ShowPlayerPicker()
+    {
+        _showPlayerPicker = true;
+        _allyCode = string.Empty;
+        _error = null;
+    }
+
+    private void HidePlayerPicker()
+    {
+        _showPlayerPicker = false;
+        _allyCode = _player?.AllyCode.ToString() ?? string.Empty;
+        _error = null;
+    }
+
     private static string FormatAllyCode(long allyCode)
     {
         string value = allyCode.ToString("000000000");
         return $"{value[..3]}-{value[3..6]}-{value[6..]}";
-    }
-
-    private static string Initials(string name)
-    {
-        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
     }
 
     private static string CompactNumber(long value) => value switch
@@ -228,9 +577,40 @@ else if (_player is not null)
         return age.TotalMinutes switch
         {
             < 2 => "ahora",
-            < 60 => $"hace {(int)age.TotalMinutes} min",
-            < 1440 => $"hace {(int)age.TotalHours} h",
+            < 60 => $"hace {Math.Max(1, (int)age.TotalMinutes)} min",
+            < 1440 => $"hace {Math.Max(1, (int)age.TotalHours)} h",
+            < 2880 => "ayer",
             _ => updatedAt.ToLocalTime().ToString("dd/MM/yyyy")
         };
     }
+
+    private static string ConfidenceLabel(string confidence) => confidence switch
+    {
+        "High" => "Alta",
+        "Medium" => "Media",
+        "Low" => "Baja",
+        _ => confidence
+    };
+
+    private static string Percent(decimal value) => $"{Math.Clamp(value * 100m, 0m, 100m):0.#}%";
+
+    private static string? GetPortraitUrl(string? thumbnailName)
+    {
+        if (string.IsNullOrWhiteSpace(thumbnailName))
+        {
+            return null;
+        }
+
+        string asset = thumbnailName.Trim();
+        if (!asset.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            asset += ".png";
+        }
+
+        return AssetBaseUrl + Uri.EscapeDataString(asset);
+    }
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
+        ? "?"
+        : char.ToUpperInvariant(name.Trim()[0]).ToString();
 }
