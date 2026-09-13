@@ -1,0 +1,34 @@
+<section class="ui-alert ui-alert-@Tone @Class" role="@(Tone == "danger" ? "alert" : null)">
+    <span class="ui-alert-icon" aria-hidden="true">@Icon</span>
+    <div>
+        <strong>@Title</strong>
+        @if (!string.IsNullOrWhiteSpace(Description))
+        {
+            <p>@Description</p>
+        }
+        @if (ChildContent is not null)
+        {
+            <div class="ui-alert-content">@ChildContent</div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public string Tone { get; set; } = "info";
+
+    [Parameter]
+    public string Icon { get; set; } = "i";
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}
