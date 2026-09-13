@@ -1,7 +1,29 @@
 @inherits LayoutComponentBase
 
-<div class="page">
-    <main>
+<div class="app-shell">
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a class="brand" href="/" aria-label="SWGOH Planner - inicio">
+                <span class="brand-mark" aria-hidden="true">S</span>
+                <span>
+                    <strong>SWGOH Planner</strong>
+                    <small>Roster &amp; Grand Arena</small>
+                </span>
+            </a>
+
+            <nav class="main-nav" aria-label="Navegación principal">
+                <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-content">
         <article class="content">@Body</article>
     </main>
+
+    <footer class="app-footer">
+        <span>SWGOH Planner</span>
+        <span class="footer-dot">•</span>
+        <span>Datos propios y análisis de Gran Arena</span>
+    </footer>
 </div>

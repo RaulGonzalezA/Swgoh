@@ -1,0 +1,301 @@
+@page "/gac/{AllyCode:long}"
+@rendermode InteractiveServer
+@inject PlayerApiClient PlayerClient
+@inject GacApiClient GacClient
+
+<PageTitle>Gran Arena · SWGOH Planner</PageTitle>
+
+<div class="page-heading-row">
+    <div>
+        <a class="back-link" href="/">← Dashboard</a>
+        <span class="eyebrow">Grand Arena command center</span>
+        <h1>Preparación de Gran Arena</h1>
+        @if (_player is not null)
+        {
+            <p class="page-lead">@_player.Name · #@FormatAllyCode(_player.AllyCode)</p>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="loading-panel gac-loading">
+        <span class="spinner"></span>
+        <div><strong>Analizando enfrentamiento</strong><small>Rival, roster, histórico y plan de batalla</small></div>
+    </div>
+}
+else if (_error is not null)
+{
+    <div class="status-card status-error" role="alert">
+        <span class="status-icon">!</span>
+        <div><strong>No se ha podido preparar la Gran Arena</strong><p>@_error</p></div>
+    </div>
+}
+else if (_result?.Scouting is null)
+{
+    <div class="empty-state empty-state-wide">
+        <span class="empty-icon">G</span>
+        <h2>No hay enfrentamiento disponible</h2>
+        <p>@(_result?.Message ?? "No se ha detectado un evento activo de Gran Arena para este jugador.")</p>
+        <a class="secondary-button button-link" href="@($"/player/{AllyCode}")">Revisar roster</a>
+    </div>
+}
+else
+{
+    GacApiClient.CurrentGacScoutingViewModel scouting = _result.Scouting;
+    GacApiClient.CurrentGacBattlePlanViewModel? plan = scouting.BattlePlan;
+
+    <section class="matchup-hero">
+        <div class="combatant combatant-player">
+            <span class="combatant-label">Tu roster</span>
+            <div class="combatant-avatar">@Initial(_player?.Name ?? "Tú")</div>
+            <h2>@(_player?.Name ?? "Jugador")</h2>
+            @if (plan is not null)
+            {
+                <strong>@CompactNumber(plan.Comparison.PlayerGalacticPower) GP</strong>
+            }
+        </div>
+
+        <div class="matchup-center">
+            <span class="format-pill">@scouting.Opponent.Format</span>
+            <span class="vs-mark">VS</span>
+            <span>@scouting.Opponent.League</span>
+            @if (scouting.Opponent.RoundNumber is not null)
+            {
+                <small>Ronda @scouting.Opponent.RoundNumber</small>
+            }
+        </div>
+
+        <div class="combatant combatant-opponent">
+            <span class="combatant-label">Rival</span>
+            <div class="combatant-avatar opponent-avatar">@Initial(scouting.Opponent.OpponentName)</div>
+            <h2>@scouting.Opponent.OpponentName</h2>
+            @if (plan is not null)
+            {
+                <strong>@CompactNumber(plan.Comparison.OpponentGalacticPower) GP</strong>
+            }
+            <small>#@FormatAllyCode(scouting.Opponent.OpponentAllyCode)</small>
+        </div>
+    </section>
+
+    @if (plan is not null)
+    {
+        <div class="comparison-grid">
+            <div class="comparison-card">
+                <span>Ventaja GP</span>
+                <strong class="@(plan.Comparison.GalacticPowerDelta >= 0 ? "positive" : "negative")">
+                    @SignedCompact(plan.Comparison.GalacticPowerDelta)
+                </strong>
+                <small>respecto al rival</small>
+            </div>
+            <div class="comparison-card">
+                <span>GL</span>
+                <strong>@plan.Comparison.PlayerGalacticLegends <em>vs</em> @plan.Comparison.OpponentGalacticLegends</strong>
+                <small>leyendas galácticas</small>
+            </div>
+            <div class="comparison-card">
+                <span>R7+</span>
+                <strong>@plan.Comparison.PlayerRelic7Plus <em>vs</em> @plan.Comparison.OpponentRelic7Plus</strong>
+                <small>profundidad alta</small>
+            </div>
+            <div class="comparison-card">
+                <span>R9+</span>
+                <strong>@plan.Comparison.PlayerRelic9Plus <em>vs</em> @plan.Comparison.OpponentRelic9Plus</strong>
+                <small>piezas premium</small>
+            </div>
+        </div>
+
+        @if (plan.Warnings.Count > 0)
+        {
+            <section class="warning-strip">
+                <span class="warning-symbol">!</span>
+                <div>
+                    <strong>Antes de fijar la estrategia</strong>
+                    @foreach (string warning in plan.Warnings)
+                    {
+                        <p>@warning</p>
+                    }
+                </div>
+            </section>
+        }
+
+        <div class="gac-columns">
+            <section class="dashboard-section">
+                <div class="section-heading">
+                    <div><span class="section-kicker">Prioridad</span><h2>Amenazas principales</h2></div>
+                    <span class="count-badge">@plan.Threats.Count</span>
+                </div>
+
+                <div class="threat-list">
+                    @foreach (GacApiClient.BattleThreatViewModel threat in plan.Threats.Take(8))
+                    {
+                        <article class="threat-card">
+                            <div class="threat-score">@threat.Score</div>
+                            <div class="threat-body">
+                                <div class="threat-title">
+                                    <strong>@threat.Unit.Name</strong>
+                                    <span class="priority-pill priority-@threat.Priority.ToLowerInvariant()">@threat.Priority</span>
+                                </div>
+                                <span>@threat.Unit.GalacticPower.ToString("N0") GP · R@threat.Unit.RelicTier</span>
+                                <p>@threat.Reason</p>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+
+            <section class="dashboard-section">
+                <div class="section-heading">
+                    <div><span class="section-kicker">Predicción</span><h2>Defensas probables</h2></div>
+                    <span class="count-badge">@plan.DefensePredictions.Count</span>
+                </div>
+
+                <div class="prediction-list">
+                    @foreach (GacApiClient.DefensePredictionViewModel prediction in plan.DefensePredictions.Take(8))
+                    {
+                        <article class="prediction-card">
+                            <div>
+                                <strong>@prediction.LeaderName</strong>
+                                <span>@(prediction.IsFleet ? "Flota" : "Escuadrón") · @prediction.Confidence</span>
+                            </div>
+                            @if (prediction.Probability is not null)
+                            {
+                                <div class="probability">
+                                    <strong>@Percent(prediction.Probability.Value)</strong>
+                                    <div class="probability-track"><span style="width:@Percent(prediction.Probability.Value)"></span></div>
+                                </div>
+                            }
+                            @if (prediction.MemberNames.Count > 0)
+                            {
+                                <p>@string.Join(" · ", prediction.MemberNames)</p>
+                            }
+                        </article>
+                    }
+                </div>
+            </section>
+        </div>
+
+        <section class="dashboard-section counters-section">
+            <div class="section-heading">
+                <div><span class="section-kicker">Ataque</span><h2>Counters recomendados</h2></div>
+                <span class="count-badge">@plan.CounterSuggestions.Count</span>
+            </div>
+
+            @if (plan.CounterSuggestions.Count == 0)
+            {
+                <div class="inline-empty">Todavía no hay counters suficientes para generar recomendaciones.</div>
+            }
+            else
+            {
+                <div class="counter-grid">
+                    @foreach (GacApiClient.CounterSuggestionViewModel counter in plan.CounterSuggestions.Take(10))
+                    {
+                        <article class="counter-card">
+                            <div class="counter-target">
+                                <span>Contra</span>
+                                <strong>@counter.Threat.Name</strong>
+                                <small>@counter.Confidence · @FriendlySource(counter.Source)</small>
+                            </div>
+                            <div class="counter-arrow" aria-hidden="true">→</div>
+                            <div class="counter-team">
+                                @if (counter.RecommendedTeam is { Count: > 0 })
+                                {
+                                    <strong>@string.Join(" · ", counter.RecommendedTeam.Select(unit => unit.Name))</strong>
+                                }
+                                else
+                                {
+                                    <strong>@string.Join(" · ", counter.CandidateAnchors.Select(unit => unit.Name))</strong>
+                                }
+                                <p>@counter.Rationale</p>
+                            </div>
+                            <div class="counter-stats">
+                                @if (counter.WinRate is not null)
+                                {
+                                    <div><strong>@Percent(counter.WinRate.Value)</strong><span>victorias</span></div>
+                                }
+                                @if (counter.Uses is not null)
+                                {
+                                    <div><strong>@counter.Uses</strong><span>muestras</span></div>
+                                }
+                                @if (counter.AverageBanners is not null)
+                                {
+                                    <div><strong>@counter.AverageBanners.Value.ToString("0.#")</strong><span>banners</span></div>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    }
+}
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private PlayerApiClient.PlayerViewModel? _player;
+    private GacApiClient.CurrentGacResult? _result;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _player = await PlayerClient.GetAsync(AllyCode);
+            if (_player is null)
+            {
+                _error = "No se ha encontrado el jugador. Cárgalo primero desde el dashboard.";
+                return;
+            }
+
+            _result = await GacClient.GetCurrentOpponentAsync(AllyCode);
+        }
+        catch (HttpRequestException)
+        {
+            _error = "La API no está disponible en este momento.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string Percent(decimal value)
+    {
+        decimal normalized = value <= 1 ? value * 100 : value;
+        return $"{Math.Clamp(normalized, 0, 100):0.#}%";
+    }
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
+        ? "?"
+        : char.ToUpperInvariant(name.Trim()[0]).ToString();
+
+    private static string CompactNumber(long value) => value switch
+    {
+        >= 1_000_000 => $"{value / 1_000_000d:0.##}M",
+        >= 1_000 => $"{value / 1_000d:0.#}K",
+        _ => value.ToString("N0")
+    };
+
+    private static string SignedCompact(long value) => value >= 0
+        ? $"+{CompactNumber(value)}"
+        : $"-{CompactNumber(Math.Abs(value))}";
+
+    private static string FriendlySource(string source) => source switch
+    {
+        "ObservedCounterStatistics" => "Histórico observado",
+        "StoredGacHistory" => "Histórico GAC",
+        "RosterStrengthHeuristic" => "Estimación por roster",
+        _ => source
+    };
+
+    private static string FormatAllyCode(long allyCode)
+    {
+        string value = allyCode.ToString("000000000");
+        return $"{value[..3]}-{value[3..6]}-{value[6..]}";
+    }
+}

@@ -2,53 +2,165 @@
 @rendermode InteractiveServer
 @inject PlayerApiClient PlayerClient
 
-<PageTitle>SWGOH</PageTitle>
+<PageTitle>Dashboard · SWGOH Planner</PageTitle>
 
-<h1>SWGOH</h1>
-<p>Base de Clean Architecture preparada.</p>
+<section class="hero">
+    <div class="hero-copy">
+        <span class="eyebrow">Roster intelligence</span>
+        <h1>Prepara tu siguiente batalla con tus datos reales.</h1>
+        <p class="hero-text">
+            Consulta tu roster, detecta el rival actual de Gran Arena y convierte el análisis del backend
+            en una vista rápida para decidir qué guardar, qué atacar y dónde están los riesgos.
+        </p>
+    </div>
 
-<div class="search">
-    <label for="allyCode">Ally Code</label>
-    <input id="allyCode" @bind="_allyCode" />
-    <button @onclick="LoadAsync" disabled="@_loading">Buscar</button>
-</div>
+    <div class="hero-orbit" aria-hidden="true">
+        <div class="orbit-ring orbit-ring-outer"></div>
+        <div class="orbit-ring orbit-ring-inner"></div>
+        <div class="orbit-core">GAC</div>
+    </div>
+</section>
 
-@if (_loading)
+<section class="search-panel" aria-labelledby="player-search-title">
+    <div>
+        <span class="section-kicker">Empezar</span>
+        <h2 id="player-search-title">Busca un jugador</h2>
+        <p>Introduce un Ally Code. Aceptamos el formato con o sin guiones.</p>
+    </div>
+
+    <form class="player-search" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+        <label class="sr-only" for="allyCode">Ally Code</label>
+        <div class="search-input-wrap">
+            <span class="search-icon" aria-hidden="true">#</span>
+            <input id="allyCode"
+                   inputmode="numeric"
+                   autocomplete="off"
+                   placeholder="123 456 789"
+                   @bind="_allyCode" />
+        </div>
+        <button class="primary-button" type="submit" disabled="@_loading">
+            @if (_loading)
+            {
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Consultando</span>
+            }
+            else
+            {
+                <span>Analizar jugador</span>
+                <span aria-hidden="true">→</span>
+            }
+        </button>
+    </form>
+</section>
+
+@if (_error is not null)
 {
-    <p>Cargando...</p>
+    <div class="status-card status-error" role="alert">
+        <span class="status-icon" aria-hidden="true">!</span>
+        <div>
+            <strong>No hemos podido cargar el jugador</strong>
+            <p>@_error</p>
+        </div>
+    </div>
 }
-else if (_error is not null)
+else if (_searched && !_loading && _player is null)
 {
-    <p class="error">@_error</p>
-}
-else if (_searched && _player is null)
-{
-    <p>No se encontró el jugador.</p>
+    <div class="status-card">
+        <span class="status-icon" aria-hidden="true">?</span>
+        <div>
+            <strong>Jugador no encontrado</strong>
+            <p>No hay un perfil persistido para ese Ally Code. Puedes refrescarlo primero desde la API.</p>
+        </div>
+    </div>
 }
 else if (_player is not null)
 {
-    <section>
-        <h2>@_player.Name</h2>
-        <p>Ally Code: @_player.AllyCode</p>
-        <p>GP: @_player.GalacticPower.ToString("N0")</p>
+    <section class="player-dashboard" aria-labelledby="player-name">
+        <div class="player-heading">
+            <div class="player-avatar" aria-hidden="true">@Initials(_player.Name)</div>
+            <div class="player-identity">
+                <span class="eyebrow">Perfil cargado</span>
+                <h2 id="player-name">@_player.Name</h2>
+                <div class="identity-meta">
+                    <span>#@FormatAllyCode(_player.AllyCode)</span>
+                    @if (!string.IsNullOrWhiteSpace(_player.GuildName))
+                    {
+                        <span>@_player.GuildName</span>
+                    }
+                    <span>Nivel @_player.Level</span>
+                </div>
+            </div>
+            <span class="updated-badge">Actualizado @RelativeUpdated(_player.UpdatedAtUtc)</span>
+        </div>
+
+        <div class="metric-grid">
+            <div class="metric-card metric-primary">
+                <span class="metric-label">Poder galáctico</span>
+                <strong>@CompactNumber(_player.GalacticPower)</strong>
+                <small>@_player.GalacticPower.ToString("N0") GP</small>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Personajes</span>
+                <strong>@(_analysis?.CharacterCount.ToString("N0") ?? "—")</strong>
+                <small>@(_analysis is null ? "Análisis no disponible" : $"{_analysis.RelicCharacters:N0} en reliquia")</small>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">R7+</span>
+                <strong>@(_analysis?.Relic7Plus.ToString("N0") ?? "—")</strong>
+                <small>@(_analysis is null ? "Profundidad de roster" : $"{_analysis.Relic9Plus:N0} en R9+")</small>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Omicrons</span>
+                <strong>@(_analysis?.Omicrons.ToString("N0") ?? "—")</strong>
+                <small>@(_analysis is null ? "Análisis no disponible" : $"{_analysis.Zetas:N0} zetas")</small>
+            </div>
+        </div>
+
+        <div class="action-grid">
+            <a class="feature-card" href="@($"/player/{_player.AllyCode}")">
+                <span class="feature-icon">R</span>
+                <div>
+                    <span class="section-kicker">Roster</span>
+                    <h3>Explorar colección</h3>
+                    <p>Busca unidades, filtra personajes y naves y revisa reliquias, zetas, omicrons y GP.</p>
+                </div>
+                <span class="feature-arrow" aria-hidden="true">→</span>
+            </a>
+
+            <a class="feature-card feature-card-accent" href="@($"/gac/{_player.AllyCode}")">
+                <span class="feature-icon">G</span>
+                <div>
+                    <span class="section-kicker">Gran Arena</span>
+                    <h3>Preparar enfrentamiento</h3>
+                    <p>Detecta al rival actual, compara ambos rosters y revisa amenazas, defensas y counters.</p>
+                </div>
+                <span class="feature-arrow" aria-hidden="true">→</span>
+            </a>
+        </div>
     </section>
 }
 
 @code {
-    private string _allyCode = "";
+    private string _allyCode = string.Empty;
     private bool _loading;
     private bool _searched;
     private string? _error;
     private PlayerApiClient.PlayerViewModel? _player;
+    private PlayerApiClient.PlayerRosterAnalysisViewModel? _analysis;
 
     private async Task LoadAsync()
     {
         _error = null;
         _player = null;
+        _analysis = null;
         _searched = true;
-        if (!long.TryParse(_allyCode.Replace("-", "", StringComparison.Ordinal), out long allyCode))
+
+        string normalized = _allyCode
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (!long.TryParse(normalized, out long allyCode) || normalized.Length != 9)
         {
-            _error = "Introduce un Ally Code válido.";
+            _error = "Introduce un Ally Code válido de 9 dígitos.";
             return;
         }
 
@@ -56,14 +168,49 @@ else if (_player is not null)
         try
         {
             _player = await PlayerClient.GetAsync(allyCode);
+            if (_player is not null)
+            {
+                _analysis = await PlayerClient.GetAnalysisAsync(allyCode);
+            }
         }
         catch (HttpRequestException)
         {
-            _error = "No se ha podido consultar la API.";
+            _error = "La API no está disponible en este momento. Revisa que AppHost y Swgoh.Api estén arrancados.";
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private static string FormatAllyCode(long allyCode)
+    {
+        string value = allyCode.ToString("000000000");
+        return $"{value[..3]}-{value[3..6]}-{value[6..]}";
+    }
+
+    private static string Initials(string name)
+    {
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
+    }
+
+    private static string CompactNumber(long value) => value switch
+    {
+        >= 1_000_000 => $"{value / 1_000_000d:0.##}M",
+        >= 1_000 => $"{value / 1_000d:0.#}K",
+        _ => value.ToString("N0")
+    };
+
+    private static string RelativeUpdated(DateTimeOffset updatedAt)
+    {
+        TimeSpan age = DateTimeOffset.UtcNow - updatedAt;
+        return age.TotalMinutes switch
+        {
+            < 2 => "ahora",
+            < 60 => $"hace {(int)age.TotalMinutes} min",
+            < 1440 => $"hace {(int)age.TotalHours} h",
+            _ => updatedAt.ToLocalTime().ToString("dd/MM/yyyy")
+        };
     }
 }
