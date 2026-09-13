@@ -18,6 +18,23 @@ public sealed record SaveConquestFeat(
 
 public sealed record SaveConquestUnitStamina(string DefinitionId, int CurrentPercent);
 
+public sealed record SaveConquestDataDisk(
+    Guid? Id,
+    string Name,
+    int CapacityCost,
+    decimal PlannerBonus,
+    ConquestDataDiskTargetType TargetType,
+    string? Faction,
+    IReadOnlyCollection<string> UnitDefinitionIds,
+    int MinimumMatchingUnits,
+    IReadOnlyCollection<Guid> SupportedFeatIds,
+    string? Notes);
+
+public sealed record SaveConquestDiskLoadout(
+    Guid? Id,
+    string Name,
+    IReadOnlyCollection<Guid> DiskIds);
+
 public sealed record SaveConquestPlan(
     string EventId,
     string Name,
@@ -25,7 +42,10 @@ public sealed record SaveConquestPlan(
     IReadOnlyCollection<SaveConquestFeat> Feats,
     int StaminaCostPerBattle = ConquestPlan.DefaultStaminaCostPerBattle,
     int ReserveFloorPercent = ConquestPlan.DefaultReserveFloorPercent,
-    IReadOnlyCollection<SaveConquestUnitStamina>? Stamina = null);
+    IReadOnlyCollection<SaveConquestUnitStamina>? Stamina = null,
+    int DiskCapacityLimit = ConquestPlan.DefaultDiskCapacityLimit,
+    IReadOnlyCollection<SaveConquestDataDisk>? DataDisks = null,
+    IReadOnlyCollection<SaveConquestDiskLoadout>? DiskLoadouts = null);
 
 public sealed record ConquestFeatDetails(
     Guid Id,
@@ -54,6 +74,9 @@ public sealed record ConquestPlanDetails(
     int StaminaCostPerBattle,
     int ReserveFloorPercent,
     IReadOnlyCollection<ConquestUnitStamina> Stamina,
+    int DiskCapacityLimit,
+    IReadOnlyCollection<ConquestDataDisk> DataDisks,
+    IReadOnlyCollection<ConquestDiskLoadout> DiskLoadouts,
     DateTimeOffset UpdatedAtUtc);
 
 public sealed record ConquestOptimizationUnit(
@@ -76,6 +99,15 @@ public sealed record ConquestFeatContribution(
     int ExpectedProgress,
     decimal PointValueThisBattle);
 
+public sealed record ConquestDiskRecommendation(
+    Guid LoadoutId,
+    string LoadoutName,
+    int CapacityUsed,
+    int CapacityLimit,
+    decimal PlannerBonus,
+    IReadOnlyCollection<ConquestDataDisk> Disks,
+    IReadOnlyCollection<Guid> MatchedFeatIds);
+
 public sealed record ConquestTeamRecommendation(
     int Rank,
     decimal Score,
@@ -86,6 +118,7 @@ public sealed record ConquestTeamRecommendation(
     decimal ExpectedPostBattleAverageStamina,
     decimal StaminaOpportunityCost,
     int ReserveRiskUnits,
+    ConquestDiskRecommendation? DiskLoadout,
     IReadOnlyCollection<ConquestOptimizationUnit> Team,
     IReadOnlyCollection<ConquestFeatContribution> AdvancesFeats,
     string Rationale);
@@ -97,5 +130,6 @@ public sealed record ConquestOptimizationResult(
     int CandidateCharacters,
     int StaminaCostPerBattle,
     int ReserveFloorPercent,
+    int DiskCapacityLimit,
     IReadOnlyCollection<ConquestTeamRecommendation> Recommendations,
     IReadOnlyCollection<Guid> UncoveredFeatIds);
