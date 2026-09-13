@@ -1,0 +1,98 @@
+name: GAC Player Context Probe
+
+on:
+  push:
+    branches: [ diagnostics/gac-player-context-v2 ]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start Comlink
+        run: |
+          set -euo pipefail
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-gac-player-context \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+
+          for attempt in {1..60}; do
+            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs comlink || true
+          exit 1
+
+      - name: Capture player context
+        run: |
+          set -euo pipefail
+          mkdir -p gac-player-context
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import urllib.request
+
+          def post(path, payload):
+              request = urllib.request.Request(
+                  f"http://127.0.0.1:3000/{path}",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          ally_code = "476825771"
+          player = post(
+              "player",
+              {"payload": {"allyCode": ally_code}, "enums": False},
+          )
+          arena_full = post(
+              "playerArena",
+              {"payload": {"allyCode": ally_code, "playerDetailsOnly": False}, "enums": False},
+          )
+
+          def interesting(value):
+              if not isinstance(value, dict):
+                  return value
+              return {
+                  "allyCode": value.get("allyCode"),
+                  "playerId": value.get("playerId") or value.get("id"),
+                  "name": value.get("name"),
+                  "playerRating": value.get("playerRating"),
+                  "seasonStatus": value.get("seasonStatus"),
+                  "pvpProfile": value.get("pvpProfile"),
+              }
+
+          result = {
+              "player": interesting(player),
+              "playerArenaFull": interesting(arena_full),
+          }
+          pathlib.Path("gac-player-context/result.json").write_text(
+              json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(result, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gac-player-context
+          path: gac-player-context/
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
