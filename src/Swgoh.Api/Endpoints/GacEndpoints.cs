@@ -422,7 +422,7 @@ internal static class GacEndpoints
             FormatName(transition.To.Format),
             transition.From.SquadDefenseCount,
             transition.To.SquadDefenseCount,
-            transition.FromFleetDefenseCount,
+            transition.From.FleetDefenseCount,
             transition.To.FleetDefenseCount,
             transition.SquadDefenseDelta,
             transition.FleetDefenseDelta,
