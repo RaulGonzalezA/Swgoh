@@ -54,7 +54,7 @@ public static class DependencyInjection
                         Name = PlayerSnapshotMongoRepository.AllyCodeCapturedAtIndexName
                     }));
 
-        services.AddMongoRepository<SquadDefinitionDocument, Guid>(
+        services.AddMongoRepository<SquadDefinitionDocument, string>(
             SquadMongoRepository.CollectionName,
             squad => squad.Id,
             collection => collection.CreateIfMissing());
