@@ -1,6 +1,7 @@
 @page "/player/{AllyCode:long}"
 @rendermode InteractiveServer
 @inject PlayerApiClient PlayerClient
+@inject GacApiClient GacClient
 
 <PageTitle>@(_player is null ? "Roster" : $"{_player.Name} · Roster") · SWGOH Planner</PageTitle>
 
@@ -173,7 +174,7 @@ else
                 <span class="section-kicker">Colección</span>
                 <h2>Unidades del roster</h2>
             </div>
-            <small>Los retratos usan el asset de Game Data cuando está disponible.</small>
+            <small>Abre una ficha para ver progreso y contexto de Gran Arena.</small>
         </div>
 
         <div class="roster-grid roster-grid-v2 roster-collection-grid">
@@ -237,6 +238,7 @@ else
                                 }
                             </div>
                         }
+                        <button class="unit-detail-trigger" type="button" @onclick="() => OpenUnitDetails(unit)">Ver ficha y uso GAC →</button>
                     </div>
                 </article>
             }
@@ -250,6 +252,15 @@ else
     }
 }
 
+<UnitDetailDrawer Unit="_selectedUnit"
+                  Eyebrow="Ficha de roster"
+                  ContextTitle="Uso en la Gran Arena actual"
+                  Context="El contexto se calcula a partir del plan de batalla ya generado por la aplicación."
+                  TacticalNotes="SelectedUnitTacticalNotes"
+                  RosterAllyCode="AllyCode"
+                  GacAllyCode="AllyCode"
+                  OnClose="CloseUnitDetails" />
+
 @code {
     private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
 
@@ -259,6 +270,8 @@ else
     private PlayerApiClient.PlayerViewModel? _player;
     private PlayerApiClient.PlayerRosterAnalysisViewModel? _analysis;
     private PlayerApiClient.RosterPageViewModel? _roster;
+    private GacApiClient.CurrentGacBattlePlanViewModel? _currentGacPlan;
+    private PlayerApiClient.RosterUnitViewModel? _selectedUnit;
     private string _search = string.Empty;
     private string _type = "All";
     private string _minRelic = string.Empty;
@@ -269,6 +282,9 @@ else
     private bool _loadingProfile = true;
     private bool _loadingRoster;
     private int _page = 1;
+
+    private IReadOnlyCollection<string> SelectedUnitTacticalNotes =>
+        _selectedUnit is null ? [] : BuildUnitTacticalNotes(_selectedUnit);
 
     private bool HasActiveFilters =>
         !string.IsNullOrWhiteSpace(_search) ||
@@ -307,6 +323,8 @@ else
     {
         _loadingProfile = true;
         _error = null;
+        _selectedUnit = null;
+        _currentGacPlan = null;
         try
         {
             _player = await PlayerClient.GetAsync(AllyCode);
@@ -317,6 +335,7 @@ else
 
             _analysis = await PlayerClient.GetAnalysisAsync(AllyCode);
             await LoadRosterAsync();
+            await LoadCurrentGacContextAsync();
         }
         catch (HttpRequestException)
         {
@@ -325,6 +344,19 @@ else
         finally
         {
             _loadingProfile = false;
+        }
+    }
+
+    private async Task LoadCurrentGacContextAsync()
+    {
+        try
+        {
+            GacApiClient.CurrentGacResult result = await GacClient.GetCurrentOpponentAsync(AllyCode);
+            _currentGacPlan = result.Scouting?.BattlePlan;
+        }
+        catch (HttpRequestException)
+        {
+            _currentGacPlan = null;
         }
     }
 
@@ -398,6 +430,51 @@ else
         }
     }
 
+    private void OpenUnitDetails(PlayerApiClient.RosterUnitViewModel unit) => _selectedUnit = unit;
+
+    private void CloseUnitDetails() => _selectedUnit = null;
+
+    private IReadOnlyCollection<string> BuildUnitTacticalNotes(PlayerApiClient.RosterUnitViewModel unit)
+    {
+        if (_currentGacPlan is null)
+        {
+            return ["No hay un plan de Gran Arena activo disponible para cruzar esta unidad."];
+        }
+
+        var notes = new List<string>();
+
+        foreach (GacApiClient.AttackReserveViewModel reserve in _currentGacPlan.AttackReserves
+                     .Where(reserve => SameUnit(reserve.Unit.DefinitionId, unit.DefinitionId))
+                     .Take(2))
+        {
+            notes.Add($"Reserva de ataque · {FriendlyRole(reserve.Role)} · prioridad {FriendlyPriority(reserve.Priority)}. {reserve.Reason}");
+        }
+
+        foreach (GacApiClient.CounterSuggestionViewModel counter in _currentGacPlan.CounterSuggestions
+                     .Where(counter => CounterUsesUnit(counter, unit.DefinitionId))
+                     .Take(3))
+        {
+            string evidence = counter.Uses is null
+                ? $"{FriendlyConfidence(counter.Confidence)} · {FriendlySource(counter.Source)}"
+                : $"{counter.Uses} muestras · {FriendlyConfidence(counter.Confidence)} · {FriendlySource(counter.Source)}";
+            notes.Add($"Counter contra {counter.Threat.Name} · {evidence}.");
+        }
+
+        if (notes.Count == 0)
+        {
+            notes.Add("No aparece como reserva prioritaria ni como pieza de los counters recomendados para el enfrentamiento actual.");
+        }
+
+        return notes;
+    }
+
+    private static bool CounterUsesUnit(GacApiClient.CounterSuggestionViewModel counter, string definitionId) =>
+        (counter.RecommendedTeam?.Any(unit => SameUnit(unit.DefinitionId, definitionId)) ?? false) ||
+        counter.CandidateAnchors.Any(unit => SameUnit(unit.DefinitionId, definitionId));
+
+    private static bool SameUnit(string left, string right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
     private string SortLabel()
     {
         string field = _orderBy switch
@@ -410,6 +487,43 @@ else
         };
         return $"{field} {(_direction == "Ascending" ? "↑" : "↓")}";
     }
+
+    private static string FriendlySource(string source) => source switch
+    {
+        "GlobalHistoricalCounterData" => "histórico global",
+        "HistoricalCounterPattern" => "histórico del rival",
+        "ObservedCounterStatistics" => "histórico observado",
+        "StoredGacHistory" => "histórico GAC",
+        "RosterStrengthHeuristic" => "estimación por roster",
+        _ => source
+    };
+
+    private static string FriendlyPriority(string priority) => priority switch
+    {
+        "Critical" => "crítica",
+        "High" => "alta",
+        "Medium" => "media",
+        "Watch" => "vigilar",
+        "Low" => "baja",
+        _ => priority
+    };
+
+    private static string FriendlyRole(string role) => role switch
+    {
+        "GlAnswer" => "respuesta GL",
+        "GacSpecialist" => "especialista GAC",
+        "FleetAnchor" => "ancla de flota",
+        "HighPowerFlex" => "comodín de alto GP",
+        _ => role
+    };
+
+    private static string FriendlyConfidence(string confidence) => confidence switch
+    {
+        "High" => "confianza alta",
+        "Medium" => "confianza media",
+        "Low" => "confianza baja",
+        _ => confidence
+    };
 
     private static string? GetPortraitUrl(string? thumbnailName)
     {
