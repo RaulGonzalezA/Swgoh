@@ -1,0 +1,166 @@
+name: GAC Season Bracket Probe
+
+on:
+  push:
+    branches: [ diagnostics/gac-player-context-v2 ]
+    paths:
+      - .github/workflows/gac-season-bracket-probe.yml
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start Comlink
+        run: |
+          set -euo pipefail
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-gac-season-bracket-probe \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+          for attempt in {1..60}; do
+            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then exit 0; fi
+            sleep 2
+          done
+          docker logs comlink || true
+          exit 1
+
+      - name: Find bracket from season status
+        run: |
+          set -euo pipefail
+          mkdir -p gac-season-bracket
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import time
+          import urllib.error
+          import urllib.request
+
+          BASE = "http://127.0.0.1:3000"
+          ALLY = "476825771"
+          PLAYER_ID = "NpRyim2GQpmXWWUhZ4eR-g"
+
+          def post(path, payload, retries=6):
+              body = json.dumps(payload).encode("utf-8")
+              for attempt in range(retries):
+                  request = urllib.request.Request(
+                      f"{BASE}/{path}", data=body,
+                      headers={"Content-Type": "application/json"}, method="POST")
+                  try:
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          raw = response.read().decode("utf-8")
+                          return response.status, json.loads(raw) if raw else {}
+                  except urllib.error.HTTPError as error:
+                      raw = error.read().decode("utf-8")
+                      try: parsed = json.loads(raw) if raw else {}
+                      except json.JSONDecodeError: parsed = {"raw": raw}
+                      message = str(parsed.get("message", "")) if isinstance(parsed, dict) else ""
+                      if error.code == 400 and "rate exceeded" in message.lower() and attempt + 1 < retries:
+                          time.sleep(0.35 * (attempt + 1))
+                          continue
+                      return error.code, parsed
+              return 0, {"message": "retry limit exceeded"}
+
+          _, player = post("player", {"payload": {"allyCode": ALLY}, "enums": False})
+          seasons = player.get("seasonStatus") or []
+          current = max(
+              (s for s in seasons if isinstance(s, dict)),
+              key=lambda s: int(str(s.get("seasonId", "")).split("_")[-1].rstrip("aA") or 0),
+          )
+          event_instance = current["eventInstanceId"]
+          league = str(current.get("league") or "KYBER")
+          rank = int(current.get("rank") or 0)
+          estimated = max(0, (rank - 1) // 8)
+
+          def players_from(response):
+              if not isinstance(response, dict): return []
+              root = response.get("player")
+              if isinstance(root, list) and root: return root
+              result = []
+              for board in response.get("leaderboard") or []:
+                  if isinstance(board, dict) and isinstance(board.get("player"), list):
+                      result.extend(board["player"])
+              return result
+
+          def is_self(value):
+              if not isinstance(value, dict): return False
+              return (value.get("id") or value.get("playerId")) == PLAYER_ID or str(value.get("allyCode") or "") == ALLY
+
+          offsets = [0]
+          for distance in range(1, 513):
+              offsets.extend([-distance, distance])
+
+          attempts = []
+          found = None
+          for token in [league.upper(), league.lower()]:
+              for offset in offsets:
+                  index = estimated + offset
+                  if index < 0: continue
+                  group_id = f"{event_instance}:{token}:{index}"
+                  status, response = post("getLeaderboard", {
+                      "payload": {
+                          "leaderboardType": 4,
+                          "eventInstanceId": event_instance,
+                          "groupId": group_id,
+                      },
+                      "enums": False,
+                  })
+                  players = players_from(response)
+                  if len(attempts) < 30 or players:
+                      attempts.append({
+                          "index": index,
+                          "groupId": group_id,
+                          "status": status,
+                          "playerCount": len(players),
+                          "message": response.get("message") if isinstance(response, dict) else None,
+                          "players": [
+                              {"id": p.get("id"), "playerId": p.get("playerId"), "allyCode": p.get("allyCode"), "name": p.get("name")}
+                              for p in players if isinstance(p, dict)
+                          ],
+                      })
+                  for player_index, participant in enumerate(players):
+                      if is_self(participant):
+                          found = {
+                              "index": index,
+                              "groupId": group_id,
+                              "playerIndex": player_index,
+                              "players": [
+                                  {"id": p.get("id"), "playerId": p.get("playerId"), "allyCode": p.get("allyCode"), "name": p.get("name")}
+                                  for p in players if isinstance(p, dict)
+                              ],
+                          }
+                          break
+                  if found: break
+                  time.sleep(0.04)
+              if found: break
+
+          result = {
+              "seasonStatus": current,
+              "estimatedBracket": estimated,
+              "found": found,
+              "attemptSamples": attempts,
+          }
+          pathlib.Path("gac-season-bracket/result.json").write_text(
+              json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+          print(json.dumps(result, indent=2, ensure_ascii=False))
+          if not found:
+              raise SystemExit("Player bracket not found within estimated +/-512 range")
+          PY
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gac-season-bracket
+          path: gac-season-bracket/
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
