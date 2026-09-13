@@ -1,0 +1,436 @@
+name: GAC Diagnostics
+run-name: GAC Diagnostics · ally ${{ inputs.ally_code || '476825771' }}
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/gac-diagnostics.yml
+  workflow_dispatch:
+    inputs:
+      ally_code:
+        description: SWGOH ally code to diagnose
+        required: true
+        default: '476825771'
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: gac-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
+
+jobs:
+  diagnose:
+    name: Inspect live Comlink GAC context
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start Comlink
+        run: |
+          set -euo pipefail
+
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-gac-diagnostics \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+
+          ready=false
+          for attempt in {1..60}; do
+            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
+              ready=true
+              break
+            fi
+
+            if ! docker ps --format '{{.Names}}' | grep -qx comlink; then
+              docker logs comlink || true
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          if [[ "${ready}" != true ]]; then
+            docker logs comlink || true
+            exit 1
+          fi
+
+      - name: Diagnose GAC event and bracket discovery
+        env:
+          COMLINK_URL: http://127.0.0.1:3000
+          MAX_BRACKET_INDEX: '20000'
+          WORKERS: '32'
+        run: |
+          set -euo pipefail
+          mkdir -p gac-diagnostics
+
+          python3 - <<'PY'
+          import concurrent.futures
+          import json
+          import os
+          import pathlib
+          import urllib.error
+          import urllib.request
+          from collections import Counter
+
+          base_url = os.environ["COMLINK_URL"].rstrip("/")
+          ally_code = str(os.environ["SWGOH_TEST_ALLY_CODE"])
+          max_bracket_index = int(os.environ["MAX_BRACKET_INDEX"])
+          workers = int(os.environ["WORKERS"])
+          output_dir = pathlib.Path("gac-diagnostics")
+
+          def post(path, payload):
+              body = json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  f"{base_url}/{path}",
+                  data=body,
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      raw = response.read().decode("utf-8")
+                      return response.status, json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as error:
+                  raw = error.read().decode("utf-8")
+                  try:
+                      parsed = json.loads(raw) if raw else {}
+                  except json.JSONDecodeError:
+                      parsed = {"raw": raw}
+                  return error.code, parsed
+
+          def write_json(name, value):
+              (output_dir / name).write_text(
+                  json.dumps(value, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          player_status, player = post(
+              "playerArena",
+              {
+                  "payload": {
+                      "allyCode": ally_code,
+                      "playerDetailsOnly": True,
+                  },
+                  "enums": False,
+              },
+          )
+          events_status, events = post(
+              "getEvents",
+              {"payload": {}, "enums": False},
+          )
+
+          write_json("player-arena.json", player)
+          write_json("events.json", events)
+
+          if player_status != 200:
+              raise SystemExit(f"playerArena returned HTTP {player_status}")
+          if events_status != 200:
+              raise SystemExit(f"getEvents returned HTTP {events_status}")
+
+          player_id = player.get("playerId") or player.get("id")
+          player_rating = player.get("playerRating") or {}
+          raw_league = player_rating.get("league")
+          league_map = {
+              100: "kyber",
+              80: "aurodium",
+              60: "chromium",
+              40: "bronzium",
+              20: "carbonite",
+          }
+          if isinstance(raw_league, str) and raw_league:
+              league = raw_league.lower()
+          else:
+              league = league_map.get(raw_league, "kyber")
+
+          season_status = player.get("seasonStatus") or []
+          if isinstance(season_status, dict):
+              season_status = [season_status]
+
+          candidates = []
+          candidate_index = {}
+
+          def add_candidate(event_instance_id, source):
+              if not event_instance_id:
+                  return
+              event_instance_id = str(event_instance_id)
+              existing = candidate_index.get(event_instance_id)
+              if existing is not None:
+                  if source not in candidates[existing]["sources"]:
+                      candidates[existing]["sources"].append(source)
+                  return
+              candidate_index[event_instance_id] = len(candidates)
+              candidates.append({
+                  "eventInstanceId": event_instance_id,
+                  "sources": [source],
+              })
+
+          for index, season in enumerate(season_status):
+              if isinstance(season, dict):
+                  add_candidate(season.get("eventInstanceId"), f"seasonStatus[{index}]")
+
+          gac_events = []
+          for event_index, event in enumerate(events.get("gameEvent") or []):
+              if not isinstance(event, dict):
+                  continue
+              event_type = event.get("type")
+              if str(event_type) != "10":
+                  continue
+              event_id = event.get("id")
+              instances = event.get("instance") or []
+              gac_event = {
+                  "id": event_id,
+                  "type": event_type,
+                  "instances": [],
+              }
+              for instance_index, instance in enumerate(instances):
+                  if not isinstance(instance, dict):
+                      continue
+                  instance_id = instance.get("id")
+                  if not event_id or instance_id is None:
+                      continue
+                  event_instance_id = f"{event_id}:{instance_id}"
+                  gac_event["instances"].append({
+                      "id": instance_id,
+                      "eventInstanceId": event_instance_id,
+                  })
+                  add_candidate(event_instance_id, f"getEvents[{event_index}].instance[{instance_index}]")
+              gac_events.append(gac_event)
+
+          def bracket_request(event_instance_id, bracket_index):
+              group_id = f"{event_instance_id}:{league}:{bracket_index}"
+              status, response = post(
+                  "getLeaderboard",
+                  {
+                      "payload": {
+                          "leaderboardType": 4,
+                          "eventInstanceId": event_instance_id,
+                          "groupId": group_id,
+                      },
+                      "enums": False,
+                  },
+              )
+              players = response.get("player") if isinstance(response, dict) else None
+              if not isinstance(players, list):
+                  players = []
+              return {
+                  "index": bracket_index,
+                  "groupId": group_id,
+                  "status": status,
+                  "players": players,
+              }
+
+          def participant_summary(participant):
+              if not isinstance(participant, dict):
+                  return {}
+              return {
+                  "id": participant.get("id"),
+                  "playerId": participant.get("playerId"),
+                  "allyCode": participant.get("allyCode"),
+                  "name": participant.get("name"),
+              }
+
+          probe_indexes = sorted(set([
+              *range(0, 32),
+              64,
+              128,
+              256,
+              512,
+              1024,
+              2048,
+              4096,
+              6144,
+              8190,
+              8191,
+              8192,
+              8193,
+              8448,
+              9216,
+              10240,
+              12288,
+              14336,
+              16384,
+              18432,
+              20000,
+          ]))
+
+          def probe_candidate(candidate):
+              event_instance_id = candidate["eventInstanceId"]
+              results = []
+              with concurrent.futures.ThreadPoolExecutor(max_workers=min(workers, 16)) as executor:
+                  futures = {
+                      executor.submit(bracket_request, event_instance_id, index): index
+                      for index in probe_indexes
+                  }
+                  for future in concurrent.futures.as_completed(futures):
+                      results.append(future.result())
+              results.sort(key=lambda item: item["index"])
+              non_empty = [item for item in results if item["players"]]
+              candidate["probe"] = {
+                  "statusCounts": dict(Counter(str(item["status"]) for item in results)),
+                  "nonEmptyIndexes": [item["index"] for item in non_empty],
+                  "validAbove8191": any(item["index"] > 8191 for item in non_empty),
+                  "samples": [
+                      {
+                          "index": item["index"],
+                          "groupId": item["groupId"],
+                          "status": item["status"],
+                          "playerCount": len(item["players"]),
+                          "participants": [participant_summary(value) for value in item["players"]],
+                      }
+                      for item in non_empty[:3]
+                  ],
+              }
+              return bool(non_empty)
+
+          def is_self(participant):
+              if not isinstance(participant, dict):
+                  return False
+              participant_id = participant.get("id") or participant.get("playerId")
+              if player_id and participant_id == player_id:
+                  return True
+              participant_ally_code = participant.get("allyCode")
+              return participant_ally_code is not None and str(participant_ally_code) == ally_code
+
+          def search_candidate(candidate):
+              event_instance_id = candidate["eventInstanceId"]
+              status_counts = Counter()
+              first_non_empty = None
+              last_non_empty = None
+              batch_size = 128
+
+              for start in range(0, max_bracket_index + 1, batch_size):
+                  end = min(start + batch_size - 1, max_bracket_index)
+                  with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                      futures = [
+                          executor.submit(bracket_request, event_instance_id, index)
+                          for index in range(start, end + 1)
+                      ]
+                      batch = [future.result() for future in concurrent.futures.as_completed(futures)]
+
+                  batch.sort(key=lambda item: item["index"])
+                  for item in batch:
+                      status_counts[str(item["status"])] += 1
+                      if item["players"]:
+                          if first_non_empty is None:
+                              first_non_empty = item["index"]
+                          last_non_empty = item["index"]
+
+                      for player_index, participant in enumerate(item["players"]):
+                          if not is_self(participant):
+                              continue
+                          candidate["search"] = {
+                              "found": True,
+                              "bracketIndex": item["index"],
+                              "groupId": item["groupId"],
+                              "playerIndex": player_index,
+                              "scannedThrough": end,
+                              "firstNonEmptyIndex": first_non_empty,
+                              "lastNonEmptyIndex": last_non_empty,
+                              "statusCounts": dict(status_counts),
+                              "participants": [
+                                  participant_summary(value) for value in item["players"]
+                              ],
+                          }
+                          return True
+
+              candidate["search"] = {
+                  "found": False,
+                  "scannedThrough": max_bracket_index,
+                  "firstNonEmptyIndex": first_non_empty,
+                  "lastNonEmptyIndex": last_non_empty,
+                  "statusCounts": dict(status_counts),
+              }
+              return False
+
+          for candidate in candidates:
+              candidate["hasLiveProbe"] = probe_candidate(candidate)
+
+          found_candidate = None
+          for candidate in candidates:
+              if not candidate["hasLiveProbe"]:
+                  candidate["search"] = {
+                      "found": False,
+                      "skipped": True,
+                      "reason": "No non-empty bracket was found in diagnostic probes.",
+                  }
+                  continue
+              if search_candidate(candidate):
+                  found_candidate = candidate
+                  break
+
+          for candidate in candidates:
+              if "search" not in candidate:
+                  candidate["search"] = {
+                      "found": False,
+                      "skipped": True,
+                      "reason": "A matching bracket was already found in a higher-priority event instance.",
+                  }
+
+          diagnostics = {
+              "requestedAllyCode": ally_code,
+              "player": {
+                  "allyCode": player.get("allyCode"),
+                  "playerId": player_id,
+                  "name": player.get("name"),
+                  "playerRating": player_rating,
+                  "seasonStatus": season_status,
+              },
+              "leagueToken": league,
+              "gacEvents": gac_events,
+              "eventCandidates": candidates,
+              "configuredApplicationLimit": 8191,
+              "diagnosticSearchLimit": max_bracket_index,
+              "found": found_candidate is not None,
+              "foundEventInstanceId": (
+                  found_candidate["eventInstanceId"] if found_candidate else None
+              ),
+          }
+          write_json("gac-diagnostics.json", diagnostics)
+
+          concise = {
+              "requestedAllyCode": diagnostics["requestedAllyCode"],
+              "player": diagnostics["player"],
+              "leagueToken": diagnostics["leagueToken"],
+              "configuredApplicationLimit": diagnostics["configuredApplicationLimit"],
+              "diagnosticSearchLimit": diagnostics["diagnosticSearchLimit"],
+              "found": diagnostics["found"],
+              "foundEventInstanceId": diagnostics["foundEventInstanceId"],
+              "eventCandidates": [
+                  {
+                      "eventInstanceId": candidate["eventInstanceId"],
+                      "sources": candidate["sources"],
+                      "probe": candidate["probe"],
+                      "search": candidate["search"],
+                  }
+                  for candidate in candidates
+              ],
+          }
+          write_json("summary.json", concise)
+          print(json.dumps(concise, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload GAC diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gac-diagnostics-${{ github.run_number }}
+          path: gac-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Dump Comlink logs on failure
+        if: failure()
+        run: docker logs comlink || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
