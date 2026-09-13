@@ -161,7 +161,18 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         decimal? WinRate,
         decimal? OneShotRate,
         decimal? AverageBanners,
-        int? Uses);
+        int? Uses,
+        decimal TacticalAdjustment,
+        decimal? TeamAverageSpeed,
+        decimal? DefenseAverageSpeed,
+        decimal? TeamModSpeedBonus,
+        decimal? DefenseModSpeedBonus,
+        string DatacronStatus,
+        decimal BaseStrategicCost,
+        decimal OpportunityCost,
+        int StrategicAlternatives,
+        int FutureDefensesAtRisk,
+        string StrategicRationale);
 
     public sealed record PlannerViewModel(
         PlannerOpponentViewModel Opponent,
