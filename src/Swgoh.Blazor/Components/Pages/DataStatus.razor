@@ -1,0 +1,176 @@
+@page "/data"
+@rendermode InteractiveServer
+@implements IDisposable
+@using Swgoh.Blazor.State
+@inject PlayerApiClient PlayerClient
+@inject GacPlannerApiClient PlannerClient
+@inject ConquestApiClient ConquestClient
+@inject PlayerSessionState Session
+
+<PageTitle>Datos · SWGOH Assistant</PageTitle>
+
+<section class="command-page">
+    <header class="command-page-heading">
+        <div>
+            <span class="section-kicker">Datos</span>
+            <h1>Estado y frescura de tus datos</h1>
+            <p>Comprueba qué información está disponible para el jugador activo y cuándo se actualizó por última vez.</p>
+        </div>
+    </header>
+
+    @if (Session.AllyCode is not long allyCode)
+    {
+        <div class="command-panel command-panel-empty">Selecciona primero un jugador desde Inicio.</div>
+    }
+    else if (_loading)
+    {
+        <div class="command-loading">
+            <span class="spinner" aria-hidden="true"></span>
+            <strong>Cargando estado de datos…</strong>
+        </div>
+    }
+    else
+    {
+        <div class="command-secondary-grid data-status-grid">
+            <article class="command-panel">
+                <div class="command-panel-heading compact">
+                    <div><span class="section-kicker">Perfil</span><h2>Roster</h2></div>
+                    <span class="command-status-dot @FreshnessCss(_player?.UpdatedAtUtc)"></span>
+                </div>
+                <div class="command-data-list">
+                    <div><span>Jugador</span><strong>@(_player?.Name ?? "No disponible")</strong></div>
+                    <div><span>Última actualización</span><strong>@RelativeUpdated(_player?.UpdatedAtUtc)</strong></div>
+                    <div><span>Unidades</span><strong>@(_player?.RosterCount.ToString("N0") ?? "—")</strong></div>
+                    <div><span>Datacrons</span><strong>@(_player?.AvailableDatacrons.Count.ToString("N0") ?? "—")</strong></div>
+                </div>
+                <a class="command-secondary-link" href="@($"/player/{allyCode}")">Abrir roster →</a>
+            </article>
+
+            <article class="command-panel">
+                <div class="command-panel-heading compact">
+                    <div><span class="section-kicker">Gran Arena</span><h2>Plan actual</h2></div>
+                    <span class="command-status-dot @FreshnessCss(_planner?.Plan.UpdatedAtUtc)"></span>
+                </div>
+                <div class="command-data-list">
+                    <div><span>Estado</span><strong>@(_planner is null ? "No disponible" : "Disponible")</strong></div>
+                    <div><span>Última actualización</span><strong>@RelativeUpdated(_planner?.Plan.UpdatedAtUtc)</strong></div>
+                    <div><span>Rival</span><strong>@(_planner?.Opponent.OpponentName ?? "—")</strong></div>
+                    <div><span>Formato</span><strong>@(_planner?.Opponent.Format ?? "—")</strong></div>
+                </div>
+                <a class="command-secondary-link" href="@($"/gac/{allyCode}/planner")">Abrir Planner →</a>
+            </article>
+
+            <article class="command-panel">
+                <div class="command-panel-heading compact">
+                    <div><span class="section-kicker">Conquista</span><h2>Plan actual</h2></div>
+                    <span class="command-status-dot @FreshnessCss(_conquest?.UpdatedAtUtc)"></span>
+                </div>
+                <div class="command-data-list">
+                    <div><span>Estado</span><strong>@(_conquest is null ? "No disponible" : "Disponible")</strong></div>
+                    <div><span>Última actualización</span><strong>@RelativeUpdated(_conquest?.UpdatedAtUtc)</strong></div>
+                    <div><span>Hazañas</span><strong>@(_conquest is null ? "—" : $"{_conquest.CompletedFeats}/{_conquest.TotalFeats}")</strong></div>
+                    <div><span>Puntos</span><strong>@(_conquest is null ? "—" : _conquest.EarnedFeatPoints.ToString())</strong></div>
+                </div>
+                <a class="command-secondary-link" href="@($"/conquest/{allyCode}")">Abrir Conquista →</a>
+            </article>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <p class="command-inline-error">@_error</p>
+        }
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private long? _loadedAllyCode;
+    private PlayerApiClient.PlayerViewModel? _player;
+    private GacPlannerApiClient.PlannerViewModel? _planner;
+    private ConquestApiClient.PlanViewModel? _conquest;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    protected override Task OnParametersSetAsync() => LoadDataAsync();
+
+    private void OnSessionChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadDataAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (Session.AllyCode is not long allyCode)
+        {
+            _loadedAllyCode = null;
+            _player = null;
+            _planner = null;
+            _conquest = null;
+            _loading = false;
+            return;
+        }
+
+        if (_loadedAllyCode == allyCode && _player is not null)
+        {
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        try
+        {
+            Task<PlayerApiClient.PlayerViewModel?> playerTask = PlayerClient.GetAsync(allyCode);
+            Task<GacPlannerApiClient.PlannerResult> plannerTask = PlannerClient.GetCurrentAsync(allyCode);
+            Task<ConquestApiClient.PlanViewModel?> conquestTask = ConquestClient.GetCurrentAsync(allyCode);
+            await Task.WhenAll(playerTask, plannerTask, conquestTask);
+
+            _player = await playerTask;
+            _planner = (await plannerTask).Planner;
+            _conquest = await conquestTask;
+            _loadedAllyCode = allyCode;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido consultar el estado completo de los datos.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FreshnessCss(DateTimeOffset? updatedAt) => updatedAt is null
+        ? "missing"
+        : DateTimeOffset.UtcNow - updatedAt.Value < TimeSpan.FromHours(24) ? "fresh" : "stale";
+
+    private static string RelativeUpdated(DateTimeOffset? updatedAt)
+    {
+        if (updatedAt is null)
+        {
+            return "No disponible";
+        }
+
+        TimeSpan age = DateTimeOffset.UtcNow - updatedAt.Value;
+        return age.TotalMinutes switch
+        {
+            < 2 => "ahora",
+            < 60 => $"hace {Math.Max(1, (int)age.TotalMinutes)} min",
+            < 1440 => $"hace {Math.Max(1, (int)age.TotalHours)} h",
+            < 2880 => "ayer",
+            _ => updatedAt.Value.ToLocalTime().ToString("dd/MM/yyyy")
+        };
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+    }
+}
