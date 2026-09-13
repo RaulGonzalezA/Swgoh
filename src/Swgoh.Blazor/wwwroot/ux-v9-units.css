@@ -226,6 +226,26 @@
     width: 76px;
 }
 
+.conquest-visual-meta {
+    margin: 4px 0 13px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.conquest-visual-meta > span:not(.rich-team-warning) {
+    padding: 4px 7px;
+    border-radius: 7px;
+    color: #7892a4;
+    background: rgba(255, 255, 255, .035);
+    font-size: .61rem;
+}
+
+.conquest-visual-meta strong {
+    color: #dcecf6;
+}
+
 .planner-preset-card .rich-squad {
     gap: 6px;
     margin-top: 10px;
@@ -245,8 +265,55 @@
     font-size: .48rem;
 }
 
-.planner-enemy-card .rich-squad {
+.planner-enemy-card .rich-squad,
+.planner-own-defense-card .rich-squad,
+.planner-counter-hint .rich-squad {
     margin: 13px 0;
+}
+
+.planner-own-defense-card .planner-defense-main {
+    min-width: 0;
+}
+
+.planner-own-defense-card .rich-unit-compact,
+.planner-attempt .rich-unit-compact {
+    width: 50px;
+}
+
+.planner-own-defense-card .rich-unit-compact .rich-unit-portrait,
+.planner-attempt .rich-unit-compact .rich-unit-portrait {
+    width: 50px;
+    border-radius: 12px;
+}
+
+.planner-attempt .rich-squad {
+    gap: 5px;
+    margin-top: 8px;
+}
+
+.optimizer-recommendation-card .rich-squad {
+    gap: 7px;
+}
+
+.optimizer-recommendation-card .rich-unit {
+    width: 68px;
+}
+
+.optimizer-recommendation-card .rich-unit-portrait {
+    width: 68px;
+    border-radius: 16px;
+}
+
+@media (max-width: 1040px) {
+    .rich-matchup {
+        grid-template-columns: 1fr;
+        gap: 9px;
+    }
+
+    .rich-matchup-arrow {
+        transform: rotate(90deg);
+        justify-self: center;
+    }
 }
 
 @media (max-width: 760px) {
@@ -263,18 +330,19 @@
         font-size: .49rem;
     }
 
-    .rich-matchup {
-        grid-template-columns: 1fr;
-        gap: 9px;
-    }
-
-    .rich-matchup-arrow {
-        transform: rotate(90deg);
-        justify-self: center;
+    .rich-squad {
+        gap: 7px;
     }
 
     .conquest-team-card .rich-unit,
-    .conquest-team-card .rich-unit-portrait {
-        width: 62px;
+    .conquest-team-card .rich-unit-portrait,
+    .optimizer-recommendation-card .rich-unit,
+    .optimizer-recommendation-card .rich-unit-portrait {
+        width: 60px;
+    }
+
+    .conquest-visual-meta {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }
