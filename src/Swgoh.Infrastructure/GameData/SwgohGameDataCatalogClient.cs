@@ -153,7 +153,7 @@ internal sealed class SwgohGameDataCatalogClient : ISwgohGameDataCatalog
             string[] factions =
             [
                 .. tags
-                    .Where(IsFactionCategory)
+                    .Where(tag => IsVisibleFactionCategory(tag, categories))
                     .Select(tag => categories.TryGetValue(tag, out CategoryDefinition? category)
                         ? ResolveText(localization, category.DescriptionKey) ?? FormatCategoryId(tag)
                         : FormatCategoryId(tag))
@@ -462,6 +462,12 @@ internal sealed class SwgohGameDataCatalogClient : ISwgohGameDataCatalog
         return string.Equals(text, "2", StringComparison.Ordinal)
             || text?.Contains("SHIP", StringComparison.OrdinalIgnoreCase) is true;
     }
+
+    private static bool IsVisibleFactionCategory(
+        string categoryId,
+        IReadOnlyDictionary<string, CategoryDefinition> categories) =>
+        IsFactionCategory(categoryId)
+        && (!categories.TryGetValue(categoryId, out CategoryDefinition? category) || category.Visible);
 
     private static bool IsFactionCategory(string categoryId) =>
         categoryId.StartsWith("affiliation_", StringComparison.Ordinal)
