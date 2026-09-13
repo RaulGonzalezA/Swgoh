@@ -145,6 +145,77 @@ public sealed class ConquestServiceTests
         Assert.Empty(result.Recommendations);
     }
 
+    [Fact]
+    public async Task OptimizeCurrentAsync_PrefersRestedTeamWhenFeatCoverageIsEqual()
+    {
+        DateTimeOffset now = new(2026, 9, 13, 18, 0, 0, TimeSpan.Zero);
+        ConquestFeat feat = ConquestFeat.Create(
+            Guid.NewGuid(),
+            "Win battles",
+            ConquestFeatScope.Global,
+            null,
+            10,
+            5,
+            0,
+            1,
+            ConquestFeatRule.Create(ConquestFeatRuleType.AnyCharacter, null, [], 1));
+        ConquestUnitStamina[] stamina =
+        [
+            .. Enumerable.Range(1, 5).Select(index => ConquestUnitStamina.Create($"PREMIUM{index}", 20))
+        ];
+        ConquestPlan plan = ConquestPlan.Create(
+            123_456_789,
+            "event",
+            "Conquista",
+            ConquestDifficulty.Hard,
+            [feat],
+            now,
+            staminaCostPerBattle: 10,
+            reserveFloorPercent: 40,
+            stamina);
+        RosterUnit[] units =
+        [
+            .. Enumerable.Range(1, 5).Select(index => Unit($"PREMIUM{index}", 100_000)),
+            .. Enumerable.Range(1, 5).Select(index => Unit($"REST{index}", 30_000))
+        ];
+        PlayerProfile profile = PlayerProfile.Import(
+            123_456_789,
+            "player",
+            "Player",
+            null,
+            null,
+            85,
+            10_000_000,
+            now,
+            units);
+        var definitions = new Dictionary<string, GameUnitDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (RosterUnit unit in units)
+        {
+            definitions[unit.DefinitionId] = Definition(unit.DefinitionId, unit.DefinitionId, "ANY");
+        }
+
+        var service = new ConquestService(
+            new FakeRepository(plan),
+            new FakePlayerProfileService(profile),
+            new FakeCatalog(new GameDataCatalog(
+                definitions,
+                new Dictionary<string, GameSkillDefinition>(),
+                [])),
+            new FakeClock(now));
+
+        ConquestOptimizationResult? result = await service.OptimizeCurrentAsync(
+            123_456_789,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        ConquestTeamRecommendation best = result!.Recommendations.First();
+        Assert.All(best.Team, unit => Assert.StartsWith("REST", unit.DefinitionId, StringComparison.Ordinal));
+        Assert.Equal(100m, best.AverageStamina);
+        Assert.Equal(90m, best.ExpectedPostBattleAverageStamina);
+        Assert.Equal(0, best.ReserveRiskUnits);
+        Assert.Equal(0m, best.StaminaOpportunityCost);
+    }
+
     private static RosterUnit Unit(string id, long gp) => new(
         id,
         id,
