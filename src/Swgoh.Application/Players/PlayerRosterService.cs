@@ -102,7 +102,9 @@ internal sealed class PlayerRosterService(
             unit.GalacticPower,
             unit.IsShip,
             unit.ZetaCount,
-            unit.OmicronCount);
+            unit.OmicronCount,
+            unit.Stats,
+            unit.Mods);
     }
 
     private static bool MatchesSearch(PlayerRosterUnit unit, string search) =>
