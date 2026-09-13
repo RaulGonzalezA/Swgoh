@@ -110,6 +110,12 @@ else
 
     @if (plan is not null)
     {
+        int urgentThreats = plan.Threats.Count(threat => threat.Priority is "Critical" or "High");
+        int criticalThreats = plan.Threats.Count(threat => threat.Priority == "Critical");
+        int observedCounters = plan.CounterSuggestions.Count(counter =>
+            counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null);
+        int historicalDefenses = plan.DefensePredictions.Count(prediction => prediction.Source == "HistoricalPattern");
+
         <div class="comparison-grid">
             <div class="comparison-card">
                 <span>Ventaja GP</span>
@@ -135,29 +141,68 @@ else
             </div>
         </div>
 
-        @if (plan.Warnings.Count > 0)
-        {
-            <section class="warning-strip">
-                <span class="warning-symbol">!</span>
-                <div>
-                    <strong>Antes de fijar la estrategia</strong>
-                    @foreach (string warning in plan.Warnings)
-                    {
-                        <p>@warning</p>
-                    }
-                </div>
-            </section>
-        }
+        <section class="war-room-command" aria-labelledby="war-room-title">
+            <div class="war-room-command-copy">
+                <span class="eyebrow">War Room</span>
+                <h2 id="war-room-title">Plan de batalla</h2>
+                <p>Prioriza riesgos, anticipa la defensa rival y evita gastar tus mejores respuestas antes de ver el tablero.</p>
+            </div>
+            <nav class="war-room-nav" aria-label="Plan de batalla">
+                <a href="#war-risks" class="war-room-nav-card war-room-nav-risk">
+                    <span>Riesgos</span>
+                    <strong>@urgentThreats</strong>
+                    <small>@criticalThreats críticos</small>
+                </a>
+                <a href="#war-defense" class="war-room-nav-card">
+                    <span>Defensa rival</span>
+                    <strong>@plan.DefensePredictions.Count</strong>
+                    <small>@historicalDefenses con histórico</small>
+                </a>
+                <a href="#war-attack" class="war-room-nav-card">
+                    <span>Guardar ataque</span>
+                    <strong>@plan.AttackReserves.Count</strong>
+                    <small>reservas prioritarias</small>
+                </a>
+                <a href="#war-counters" class="war-room-nav-card war-room-nav-counter">
+                    <span>Counters</span>
+                    <strong>@plan.CounterSuggestions.Count</strong>
+                    <small>@observedCounters observados</small>
+                </a>
+            </nav>
+        </section>
 
-        <div class="gac-columns">
-            <section class="dashboard-section">
+        <section id="war-risks" class="war-room-zone">
+            <div class="war-zone-heading">
+                <div>
+                    <span class="section-kicker">1 · Riesgos</span>
+                    <h2>Qué puede complicar la ronda</h2>
+                    <p>Empieza por las amenazas de mayor prioridad y por las limitaciones del análisis.</p>
+                </div>
+                <span class="war-zone-index">01</span>
+            </div>
+
+            @if (plan.Warnings.Count > 0)
+            {
+                <section class="warning-strip war-room-warning">
+                    <span class="warning-symbol">!</span>
+                    <div>
+                        <strong>Antes de fijar la estrategia</strong>
+                        @foreach (string warning in plan.Warnings)
+                        {
+                            <p>@warning</p>
+                        }
+                    </div>
+                </section>
+            }
+
+            <section class="dashboard-section war-room-panel">
                 <div class="section-heading">
-                    <div><span class="section-kicker">Prioridad</span><h2>Amenazas principales</h2></div>
+                    <div><span class="section-kicker">Prioridad del rival</span><h2>Amenazas principales</h2></div>
                     <span class="count-badge">@plan.Threats.Count</span>
                 </div>
 
-                <div class="threat-list">
-                    @foreach (GacApiClient.BattleThreatViewModel threat in plan.Threats.Take(8))
+                <div class="threat-list war-threat-grid">
+                    @foreach (GacApiClient.BattleThreatViewModel threat in plan.Threats.Take(10))
                     {
                         <article class="threat-card">
                             <div class="threat-score">@threat.Score</div>
@@ -180,142 +225,182 @@ else
                     }
                 </div>
             </section>
+        </section>
 
-            <section class="dashboard-section">
+        <section id="war-defense" class="war-room-zone">
+            <div class="war-zone-heading">
+                <div>
+                    <span class="section-kicker">2 · Defensa rival</span>
+                    <h2>Qué esperamos encontrar</h2>
+                    <p>Distingue patrones históricos de estimaciones basadas únicamente en la fuerza del roster.</p>
+                </div>
+                <span class="war-zone-index">02</span>
+            </div>
+
+            <section class="dashboard-section war-room-panel">
                 <div class="section-heading">
                     <div><span class="section-kicker">Predicción</span><h2>Defensas probables</h2></div>
                     <span class="count-badge">@plan.DefensePredictions.Count</span>
                 </div>
 
-                <div class="prediction-list">
-                    @foreach (GacApiClient.DefensePredictionViewModel prediction in plan.DefensePredictions.Take(8))
-                    {
-                        <article class="prediction-card">
-                            <div>
-                                <strong>@prediction.LeaderName</strong>
-                                <span>@(prediction.IsFleet ? "Flota" : "Escuadrón") · @FriendlyConfidence(prediction.Confidence)</span>
-                            </div>
-                            @if (prediction.Probability is not null)
-                            {
-                                <div class="probability">
-                                    <strong>@Percent(prediction.Probability.Value)</strong>
-                                    <div class="probability-track"><span style="width:@Percent(prediction.Probability.Value)"></span></div>
+                @if (plan.DefensePredictions.Count == 0)
+                {
+                    <div class="inline-empty">No hay suficientes datos para anticipar defensas.</div>
+                }
+                else
+                {
+                    <div class="prediction-list war-defense-grid">
+                        @foreach (GacApiClient.DefensePredictionViewModel prediction in plan.DefensePredictions.Take(10))
+                        {
+                            <article class="prediction-card war-defense-card">
+                                <div>
+                                    <strong>@prediction.LeaderName</strong>
+                                    <span>@(prediction.IsFleet ? "Flota" : "Escuadrón") · @FriendlyConfidence(prediction.Confidence)</span>
                                 </div>
-                            }
-                            @if (prediction.MemberNames.Count > 0)
-                            {
-                                <p>@string.Join(" · ", prediction.MemberNames)</p>
-                            }
-                            <small class="prediction-source">@FriendlyDefenseSource(prediction.Source)</small>
-                        </article>
-                    }
-                </div>
+                                @if (prediction.Probability is not null)
+                                {
+                                    <div class="probability">
+                                        <strong>@Percent(prediction.Probability.Value)</strong>
+                                        <div class="probability-track"><span style="width:@Percent(prediction.Probability.Value)"></span></div>
+                                    </div>
+                                }
+                                @if (prediction.MemberNames.Count > 0)
+                                {
+                                    <p>@string.Join(" · ", prediction.MemberNames)</p>
+                                }
+                                <small class="prediction-source">@FriendlyDefenseSource(prediction.Source)</small>
+                            </article>
+                        }
+                    </div>
+                }
             </section>
-        </div>
-
-        <section class="dashboard-section reserves-section">
-            <div class="section-heading">
-                <div>
-                    <span class="section-kicker">No comprometer demasiado pronto</span>
-                    <h2>Reservas de ataque</h2>
-                </div>
-                <span class="count-badge">@plan.AttackReserves.Count</span>
-            </div>
-
-            @if (plan.AttackReserves.Count == 0)
-            {
-                <div class="inline-empty">No hay reservas prioritarias calculadas para este enfrentamiento.</div>
-            }
-            else
-            {
-                <div class="reserve-grid">
-                    @foreach (GacApiClient.AttackReserveViewModel reserve in plan.AttackReserves.Take(12))
-                    {
-                        <article class="reserve-card">
-                            <div class="reserve-avatar @(reserve.Unit.IsShip ? "ship-avatar" : string.Empty)">@Initial(reserve.Unit.Name)</div>
-                            <div class="reserve-main">
-                                <div class="reserve-title">
-                                    <strong>@reserve.Unit.Name</strong>
-                                    <span class="priority-pill priority-@reserve.Priority.ToLowerInvariant()">@FriendlyPriority(reserve.Priority)</span>
-                                </div>
-                                <span>@FriendlyRole(reserve.Role) · @reserve.Unit.GalacticPower.ToString("N0") GP · @UnitProgress(reserve.Unit)</span>
-                                <p>@reserve.Reason</p>
-                            </div>
-                        </article>
-                    }
-                </div>
-            }
         </section>
 
-        <section class="dashboard-section counters-section">
-            <div class="section-heading">
-                <div><span class="section-kicker">Ataque</span><h2>Counters recomendados</h2></div>
-                <span class="count-badge">@plan.CounterSuggestions.Count</span>
+        <section id="war-attack" class="war-room-zone">
+            <div class="war-zone-heading">
+                <div>
+                    <span class="section-kicker">3 · Guardar para ataque</span>
+                    <h2>No gastes estas piezas demasiado pronto</h2>
+                    <p>Mantén flexibilidad para responder a las amenazas más duras del rival.</p>
+                </div>
+                <span class="war-zone-index">03</span>
             </div>
 
-            @if (plan.CounterSuggestions.Count == 0)
-            {
-                <div class="inline-empty">Todavía no hay counters suficientes para generar recomendaciones.</div>
-            }
-            else
-            {
-                <div class="counter-grid">
-                    @foreach (GacApiClient.CounterSuggestionViewModel counter in plan.CounterSuggestions.Take(10))
-                    {
-                        bool observed = counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null;
-                        <article class="counter-card @(observed ? "counter-card-observed" : string.Empty)">
-                            <div class="counter-target">
-                                <span>Contra</span>
-                                <strong>@counter.Threat.Name</strong>
-                                <div class="counter-badges">
-                                    <span class="confidence-badge confidence-@counter.Confidence.ToLowerInvariant()">@FriendlyConfidence(counter.Confidence)</span>
-                                    <span class="source-badge">@FriendlySource(counter.Source)</span>
-                                </div>
-                            </div>
-                            <div class="counter-arrow" aria-hidden="true">→</div>
-                            <div class="counter-team">
-                                @if (counter.RecommendedTeam is { Count: > 0 })
-                                {
-                                    <span class="counter-team-label">Equipo observado disponible en tu roster</span>
-                                    <strong>@string.Join(" · ", counter.RecommendedTeam.Select(unit => unit.Name))</strong>
-                                }
-                                else
-                                {
-                                    <span class="counter-team-label">Anclas sugeridas</span>
-                                    <strong>@string.Join(" · ", counter.CandidateAnchors.Select(unit => unit.Name))</strong>
-                                }
-                                <p>@counter.Rationale</p>
-                                @if (counter.RequiresDatacronVerification)
-                                {
-                                    <span class="datacron-note">Verificar datacron y mods antes de atacar</span>
-                                }
-                            </div>
-                            <div class="counter-stats counter-stats-v2">
-                                @if (counter.WinRate is not null)
-                                {
-                                    <div><strong>@Percent(counter.WinRate.Value)</strong><span>victorias</span></div>
-                                }
-                                @if (counter.OneShotRate is not null)
-                                {
-                                    <div><strong>@Percent(counter.OneShotRate.Value)</strong><span>one-shot</span></div>
-                                }
-                                @if (counter.Uses is not null)
-                                {
-                                    <div><strong>@counter.Uses</strong><span>muestras</span></div>
-                                }
-                                @if (counter.PlayersObserved is not null)
-                                {
-                                    <div><strong>@counter.PlayersObserved</strong><span>jugadores</span></div>
-                                }
-                                @if (counter.AverageBanners is not null)
-                                {
-                                    <div><strong>@counter.AverageBanners.Value.ToString("0.#")</strong><span>banners</span></div>
-                                }
-                            </div>
-                        </article>
-                    }
+            <section class="dashboard-section war-room-panel reserves-section">
+                <div class="section-heading">
+                    <div>
+                        <span class="section-kicker">Reserva táctica</span>
+                        <h2>Reservas de ataque</h2>
+                    </div>
+                    <span class="count-badge">@plan.AttackReserves.Count</span>
                 </div>
-            }
+
+                @if (plan.AttackReserves.Count == 0)
+                {
+                    <div class="inline-empty">No hay reservas prioritarias calculadas para este enfrentamiento.</div>
+                }
+                else
+                {
+                    <div class="reserve-grid war-reserve-grid">
+                        @foreach (GacApiClient.AttackReserveViewModel reserve in plan.AttackReserves.Take(12))
+                        {
+                            <article class="reserve-card">
+                                <div class="reserve-avatar @(reserve.Unit.IsShip ? "ship-avatar" : string.Empty)">@Initial(reserve.Unit.Name)</div>
+                                <div class="reserve-main">
+                                    <div class="reserve-title">
+                                        <strong>@reserve.Unit.Name</strong>
+                                        <span class="priority-pill priority-@reserve.Priority.ToLowerInvariant()">@FriendlyPriority(reserve.Priority)</span>
+                                    </div>
+                                    <span>@FriendlyRole(reserve.Role) · @reserve.Unit.GalacticPower.ToString("N0") GP · @UnitProgress(reserve.Unit)</span>
+                                    <p>@reserve.Reason</p>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        </section>
+
+        <section id="war-counters" class="war-room-zone war-room-zone-last">
+            <div class="war-zone-heading">
+                <div>
+                    <span class="section-kicker">4 · Counters</span>
+                    <h2>Respuestas para abrir el tablero</h2>
+                    <p>Da prioridad a equipos observados y usa las anclas heurísticas solo como punto de partida.</p>
+                </div>
+                <span class="war-zone-index">04</span>
+            </div>
+
+            <section class="dashboard-section war-room-panel counters-section">
+                <div class="section-heading">
+                    <div><span class="section-kicker">Ataque</span><h2>Counters recomendados</h2></div>
+                    <span class="count-badge">@plan.CounterSuggestions.Count</span>
+                </div>
+
+                @if (plan.CounterSuggestions.Count == 0)
+                {
+                    <div class="inline-empty">Todavía no hay counters suficientes para generar recomendaciones.</div>
+                }
+                else
+                {
+                    <div class="counter-grid">
+                        @foreach (GacApiClient.CounterSuggestionViewModel counter in plan.CounterSuggestions.Take(10))
+                        {
+                            bool observed = counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null;
+                            <article class="counter-card @(observed ? "counter-card-observed" : string.Empty)">
+                                <div class="counter-target">
+                                    <span>Contra</span>
+                                    <strong>@counter.Threat.Name</strong>
+                                    <div class="counter-badges">
+                                        <span class="confidence-badge confidence-@counter.Confidence.ToLowerInvariant()">@FriendlyConfidence(counter.Confidence)</span>
+                                        <span class="source-badge">@FriendlySource(counter.Source)</span>
+                                    </div>
+                                </div>
+                                <div class="counter-arrow" aria-hidden="true">→</div>
+                                <div class="counter-team">
+                                    @if (counter.RecommendedTeam is { Count: > 0 })
+                                    {
+                                        <span class="counter-team-label">Equipo observado disponible en tu roster</span>
+                                        <strong>@string.Join(" · ", counter.RecommendedTeam.Select(unit => unit.Name))</strong>
+                                    }
+                                    else
+                                    {
+                                        <span class="counter-team-label">Anclas sugeridas</span>
+                                        <strong>@string.Join(" · ", counter.CandidateAnchors.Select(unit => unit.Name))</strong>
+                                    }
+                                    <p>@counter.Rationale</p>
+                                    @if (counter.RequiresDatacronVerification)
+                                    {
+                                        <span class="datacron-note">Verificar datacron y mods antes de atacar</span>
+                                    }
+                                </div>
+                                <div class="counter-stats counter-stats-v2">
+                                    @if (counter.WinRate is not null)
+                                    {
+                                        <div><strong>@Percent(counter.WinRate.Value)</strong><span>victorias</span></div>
+                                    }
+                                    @if (counter.OneShotRate is not null)
+                                    {
+                                        <div><strong>@Percent(counter.OneShotRate.Value)</strong><span>one-shot</span></div>
+                                    }
+                                    @if (counter.Uses is not null)
+                                    {
+                                        <div><strong>@counter.Uses</strong><span>muestras</span></div>
+                                    }
+                                    @if (counter.PlayersObserved is not null)
+                                    {
+                                        <div><strong>@counter.PlayersObserved</strong><span>jugadores</span></div>
+                                    }
+                                    @if (counter.AverageBanners is not null)
+                                    {
+                                        <div><strong>@counter.AverageBanners.Value.ToString("0.#")</strong><span>banners</span></div>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
         </section>
     }
 }
