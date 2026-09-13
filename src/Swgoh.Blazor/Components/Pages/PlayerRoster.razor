@@ -168,22 +168,45 @@ else
     }
     else
     {
-        <div class="roster-grid roster-grid-v2">
+        <div class="collection-heading-row">
+            <div>
+                <span class="section-kicker">Colección</span>
+                <h2>Unidades del roster</h2>
+            </div>
+            <small>Los retratos usan el asset de Game Data cuando está disponible.</small>
+        </div>
+
+        <div class="roster-grid roster-grid-v2 roster-collection-grid">
             @foreach (PlayerApiClient.RosterUnitViewModel unit in _roster.Items)
             {
-                <article class="unit-card unit-card-v2" @key="unit.Id">
-                    <div class="unit-avatar @(unit.IsShip ? "ship-avatar" : string.Empty)">@Initial(unit.Name)</div>
-                    <div class="unit-main">
+                string? portraitUrl = GetPortraitUrl(unit.ThumbnailName);
+                <article class="unit-card unit-card-v2 unit-card-collection" @key="unit.Id">
+                    <div class="unit-portrait-shell @(unit.IsShip ? "unit-portrait-ship" : string.Empty)">
+                        <span class="unit-portrait-fallback" aria-hidden="true">@Initial(unit.Name)</span>
+                        @if (portraitUrl is not null)
+                        {
+                            <img class="unit-portrait"
+                                 src="@portraitUrl"
+                                 alt="Retrato de @unit.Name"
+                                 loading="lazy"
+                                 decoding="async"
+                                 referrerpolicy="no-referrer"
+                                 onerror="this.style.display='none'" />
+                        }
+                        <span class="unit-kind-chip">@(unit.IsShip ? "Nave" : "Personaje")</span>
+                        @if (unit.RelicTier > 0)
+                        {
+                            <span class="portrait-progress portrait-relic">R@unit.RelicTier</span>
+                        }
+                        else
+                        {
+                            <span class="portrait-progress">G@unit.GearTier</span>
+                        }
+                    </div>
+
+                    <div class="unit-main unit-collection-main">
                         <div class="unit-title-row">
                             <h2 title="@unit.Name">@unit.Name</h2>
-                            @if (unit.RelicTier > 0)
-                            {
-                                <span class="relic-badge">R@unit.RelicTier</span>
-                            }
-                            else
-                            {
-                                <span class="gear-badge">G@unit.GearTier</span>
-                            }
                         </div>
                         <div class="unit-stars" aria-label="@unit.Rarity estrellas">@RarityLabel(unit.Rarity)</div>
                         <div class="unit-meta unit-meta-v2">
@@ -206,7 +229,7 @@ else
                             <div class="faction-row">
                                 @foreach (string faction in unit.Factions.Take(2))
                                 {
-                                    <span>@faction</span>
+                                    <span title="@faction">@faction</span>
                                 }
                                 @if (unit.Factions.Count > 2)
                                 {
@@ -228,6 +251,8 @@ else
 }
 
 @code {
+    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+
     [Parameter]
     public long AllyCode { get; set; }
 
@@ -384,6 +409,22 @@ else
             _ => "GP"
         };
         return $"{field} {(_direction == "Ascending" ? "↑" : "↓")}";
+    }
+
+    private static string? GetPortraitUrl(string? thumbnailName)
+    {
+        if (string.IsNullOrWhiteSpace(thumbnailName))
+        {
+            return null;
+        }
+
+        string assetName = thumbnailName.Trim();
+        if (!assetName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            assetName += ".png";
+        }
+
+        return AssetBaseUrl + Uri.EscapeDataString(assetName);
     }
 
     private static int? ParseOptionalInt(string value) =>
