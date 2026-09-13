@@ -7,8 +7,11 @@ namespace Swgoh.Blazor.Components.Pages;
 public partial class Conquest
 {
     private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+    private const int DefaultStaminaCostPerBattle = 10;
+    private const int DefaultReserveFloorPercent = 40;
     private readonly List<PlayerApiClient.RosterUnitViewModel> roster = [];
     private readonly List<FeatDraft> feats = [];
+    private readonly Dictionary<string, int> stamina = new(StringComparer.OrdinalIgnoreCase);
 
     [Inject]
     private PlayerApiClient PlayerClient { get; set; } = null!;
@@ -23,12 +26,17 @@ public partial class Conquest
     protected bool Saving { get; private set; }
     protected bool Optimizing { get; private set; }
     protected bool ShowFeatBuilder { get; private set; }
+    protected bool ShowStaminaEditor { get; private set; }
     protected string? Error { get; private set; }
     protected ConquestApiClient.OptimizationViewModel? Optimization { get; private set; }
 
     protected string EventId { get; set; } = $"conquest-{DateTimeOffset.UtcNow:yyyy-MM}";
     protected string EventName { get; set; } = "Conquista actual";
     protected string Difficulty { get; set; } = "Hard";
+    protected int StaminaCostPerBattle { get; set; } = DefaultStaminaCostPerBattle;
+    protected int ReserveFloorPercent { get; set; } = DefaultReserveFloorPercent;
+    protected string StaminaUnitDefinitionId { get; set; } = string.Empty;
+    protected int StaminaPercent { get; set; } = 100;
 
     protected string NewFeatName { get; set; } = string.Empty;
     protected string NewFeatScope { get; set; } = "Sector";
@@ -47,6 +55,7 @@ public partial class Conquest
     protected int CompletedFeatCount => feats.Count(feat => feat.IsComplete);
     protected int EarnedFeatPoints => feats.Where(feat => feat.IsComplete).Sum(feat => feat.Points);
     protected int AvailableFeatPoints => feats.Where(feat => !feat.IsComplete).Sum(feat => feat.Points);
+    protected int TrackedStaminaCount => stamina.Count;
 
     protected IReadOnlyCollection<string> FactionOptions =>
         [
@@ -66,6 +75,14 @@ public partial class Conquest
                 .ThenBy(unit => unit.Name, StringComparer.OrdinalIgnoreCase)
         ];
 
+    protected IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> TrackedStaminaUnits =>
+        [
+            .. roster
+                .Where(unit => !unit.IsShip && stamina.ContainsKey(unit.DefinitionId))
+                .OrderBy(unit => GetCurrentStamina(unit.DefinitionId))
+                .ThenByDescending(unit => unit.GalacticPower)
+        ];
+
     protected bool CanAddFeat =>
         !string.IsNullOrWhiteSpace(NewFeatName) &&
         NewFeatPoints > 0 &&
@@ -81,6 +98,10 @@ public partial class Conquest
             _ => true
         });
 
+    protected bool CanSetStamina =>
+        !string.IsNullOrWhiteSpace(StaminaUnitDefinitionId) &&
+        StaminaPercent is >= 0 and <= 100;
+
     protected override async Task OnParametersSetAsync()
     {
         Loading = true;
@@ -88,6 +109,9 @@ public partial class Conquest
         Optimization = null;
         roster.Clear();
         feats.Clear();
+        stamina.Clear();
+        StaminaCostPerBattle = DefaultStaminaCostPerBattle;
+        ReserveFloorPercent = DefaultReserveFloorPercent;
 
         try
         {
@@ -113,6 +137,52 @@ public partial class Conquest
     }
 
     protected void ToggleFeatBuilder() => ShowFeatBuilder = !ShowFeatBuilder;
+
+    protected void ToggleStaminaEditor() => ShowStaminaEditor = !ShowStaminaEditor;
+
+    protected void SetStaminaPreset(int percent) => StaminaPercent = Math.Clamp(percent, 0, 100);
+
+    protected void SetStamina()
+    {
+        if (!CanSetStamina)
+        {
+            return;
+        }
+
+        int value = Math.Clamp(StaminaPercent, 0, 100);
+        if (value == 100)
+        {
+            stamina.Remove(StaminaUnitDefinitionId);
+        }
+        else
+        {
+            stamina[StaminaUnitDefinitionId] = value;
+        }
+
+        StaminaUnitDefinitionId = string.Empty;
+        StaminaPercent = 100;
+        Optimization = null;
+    }
+
+    protected void RemoveStamina(string definitionId)
+    {
+        stamina.Remove(definitionId);
+        Optimization = null;
+    }
+
+    protected int GetCurrentStamina(string definitionId) =>
+        stamina.TryGetValue(definitionId, out int value) ? value : 100;
+
+    protected int GetExpectedPostBattleStamina(string definitionId) =>
+        Math.Max(0, GetCurrentStamina(definitionId) - Math.Clamp(StaminaCostPerBattle, 1, 100));
+
+    protected static string StaminaCss(int percent) => percent switch
+    {
+        >= 70 => "ready",
+        >= 40 => "watch",
+        > 0 => "low",
+        _ => "empty"
+    };
 
     protected void AddFeat()
     {
@@ -159,7 +229,7 @@ public partial class Conquest
         }
         catch (HttpRequestException)
         {
-            Error = "No se ha podido guardar la Conquista. Revisa los objetivos, progreso y requisitos de las hazañas.";
+            Error = "No se ha podido guardar la Conquista. Revisa los objetivos, progreso, stamina y requisitos de las hazañas.";
         }
         finally
         {
@@ -249,6 +319,11 @@ public partial class Conquest
                     feat.Faction,
                     feat.UnitDefinitionIds,
                     feat.MinimumMatchingUnits))
+            ],
+            Math.Clamp(StaminaCostPerBattle, 1, 100),
+            Math.Clamp(ReserveFloorPercent, 0, 100),
+            [
+                .. stamina.Select(value => new ConquestApiClient.SaveUnitStaminaRequest(value.Key, value.Value))
             ]);
         ConquestApiClient.PlanViewModel plan = await ConquestClient.SaveCurrentAsync(AllyCode, request);
         MapPlan(plan);
@@ -260,6 +335,14 @@ public partial class Conquest
         EventId = plan.EventId;
         EventName = plan.Name;
         Difficulty = plan.Difficulty;
+        StaminaCostPerBattle = plan.StaminaCostPerBattle;
+        ReserveFloorPercent = plan.ReserveFloorPercent;
+        stamina.Clear();
+        foreach (ConquestApiClient.UnitStaminaViewModel value in plan.Stamina)
+        {
+            stamina[value.DefinitionId] = value.CurrentPercent;
+        }
+
         feats.Clear();
         feats.AddRange(plan.Feats.Select(feat => new FeatDraft
         {
