@@ -123,7 +123,9 @@ internal static class GacEndpoints
                 league,
                 maxRounds ?? 30,
                 cancellationToken);
-            return report is null ? Results.NotFound() : Results.Ok(report);
+            return report is null
+                ? Results.NotFound()
+                : Results.Ok(OpponentScoutingResponse.From(report));
         }
         catch (ArgumentException exception)
         {
@@ -255,6 +257,47 @@ internal static class GacEndpoints
             round.Source,
             round.Defenses,
             round.OffenseBattles);
+    }
+
+    internal sealed record OpponentScoutingResponse(
+        long AllyCode,
+        string Format,
+        int RoundsAnalyzed,
+        int SeasonsAnalyzed,
+        DateTimeOffset? EarliestRoundUtc,
+        DateTimeOffset? LatestRoundUtc,
+        string? LatestObservedLeague,
+        string TargetLeague,
+        int RequiredSquadDefenses,
+        int RequiredFleetDefenses,
+        int AdditionalUnobservedSquadSlots,
+        int AdditionalUnobservedFleetSlots,
+        decimal? FullClearRate,
+        decimal? AverageFirstAttackDelayMinutes,
+        IReadOnlyCollection<GacDefensePatternDetails> DefensePatterns,
+        IReadOnlyCollection<GacCounterPatternDetails> CounterPatterns,
+        IReadOnlyCollection<GacPredictedDefenseDetails> PredictedSquadDefenses,
+        IReadOnlyCollection<GacPredictedDefenseDetails> PredictedFleetDefenses)
+    {
+        public static OpponentScoutingResponse From(OpponentScoutingReport report) => new(
+            report.AllyCode,
+            FormatName(report.Format),
+            report.RoundsAnalyzed,
+            report.SeasonsAnalyzed,
+            report.EarliestRoundUtc,
+            report.LatestRoundUtc,
+            report.LatestObservedLeague?.ToString(),
+            report.TargetLeague.ToString(),
+            report.RequiredSquadDefenses,
+            report.RequiredFleetDefenses,
+            report.AdditionalUnobservedSquadSlots,
+            report.AdditionalUnobservedFleetSlots,
+            report.FullClearRate,
+            report.AverageFirstAttackDelayMinutes,
+            report.DefensePatterns,
+            report.CounterPatterns,
+            report.PredictedSquadDefenses,
+            report.PredictedFleetDefenses);
     }
 
     private sealed record GacDefenseRequirementsResponse(
