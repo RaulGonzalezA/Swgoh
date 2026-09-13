@@ -90,7 +90,7 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         {
             PlannerUnavailableViewModel? unavailable =
                 await response.Content.ReadFromJsonAsync<PlannerUnavailableViewModel>(cancellationToken);
-            return new PlannerResult(planner: null, unavailable?.Message ?? "No hay una ronda de Gran Arena disponible.");
+            return new PlannerResult(null, unavailable?.Message ?? "No hay una ronda de Gran Arena disponible.");
         }
 
         response.EnsureSuccessStatusCode();
