@@ -94,6 +94,7 @@ app.UseRateLimiter();
 app.MapDefaultEndpoints();
 app.MapPlayerEndpoints();
 app.MapSquadEndpoints();
+app.MapGacEndpoints();
 app.MapOpenApi().WithDocumentPerVersion();
 app.MapScalarApiReference("/scalar", options =>
 {
