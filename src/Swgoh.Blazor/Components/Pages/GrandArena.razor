@@ -89,22 +89,10 @@ else
     @if (scouting.Scouting is not null)
     {
         <section class="scouting-strip" aria-label="Histórico del rival">
-            <div>
-                <span>Rondas analizadas</span>
-                <strong>@scouting.Scouting.RoundsAnalyzed</strong>
-            </div>
-            <div>
-                <span>Temporadas</span>
-                <strong>@scouting.Scouting.SeasonsAnalyzed</strong>
-            </div>
-            <div>
-                <span>Full clear</span>
-                <strong>@(scouting.Scouting.FullClearRate is null ? "—" : Percent(scouting.Scouting.FullClearRate.Value))</strong>
-            </div>
-            <div>
-                <span>Primer ataque</span>
-                <strong>@FormatDelay(scouting.Scouting.AverageFirstAttackDelayMinutes)</strong>
-            </div>
+            <div><span>Rondas analizadas</span><strong>@scouting.Scouting.RoundsAnalyzed</strong></div>
+            <div><span>Temporadas</span><strong>@scouting.Scouting.SeasonsAnalyzed</strong></div>
+            <div><span>Full clear</span><strong>@(scouting.Scouting.FullClearRate is null ? "—" : Percent(scouting.Scouting.FullClearRate.Value))</strong></div>
+            <div><span>Primer ataque</span><strong>@FormatDelay(scouting.Scouting.AverageFirstAttackDelayMinutes)</strong></div>
         </section>
     }
 
@@ -112,16 +100,13 @@ else
     {
         int urgentThreats = plan.Threats.Count(threat => threat.Priority is "Critical" or "High");
         int criticalThreats = plan.Threats.Count(threat => threat.Priority == "Critical");
-        int observedCounters = plan.CounterSuggestions.Count(counter =>
-            counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null);
+        int observedCounters = plan.CounterSuggestions.Count(counter => counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null);
         int historicalDefenses = plan.DefensePredictions.Count(prediction => prediction.Source == "HistoricalPattern");
 
         <div class="comparison-grid">
             <div class="comparison-card">
                 <span>Ventaja GP</span>
-                <strong class="@(plan.Comparison.GalacticPowerDelta >= 0 ? "positive" : "negative")">
-                    @SignedCompact(plan.Comparison.GalacticPowerDelta)
-                </strong>
+                <strong class="@(plan.Comparison.GalacticPowerDelta >= 0 ? "positive" : "negative")">@SignedCompact(plan.Comparison.GalacticPowerDelta)</strong>
                 <small>respecto al rival</small>
             </div>
             <div class="comparison-card">
@@ -145,39 +130,19 @@ else
             <div class="war-room-command-copy">
                 <span class="eyebrow">War Room</span>
                 <h2 id="war-room-title">Plan de batalla</h2>
-                <p>Prioriza riesgos, anticipa la defensa rival y evita gastar tus mejores respuestas antes de ver el tablero.</p>
+                <p>Prioriza riesgos, anticipa la defensa rival y abre cualquier unidad para revisar su ficha antes de decidir.</p>
             </div>
             <nav class="war-room-nav" aria-label="Plan de batalla">
-                <a href="#war-risks" class="war-room-nav-card war-room-nav-risk">
-                    <span>Riesgos</span>
-                    <strong>@urgentThreats</strong>
-                    <small>@criticalThreats críticos</small>
-                </a>
-                <a href="#war-defense" class="war-room-nav-card">
-                    <span>Defensa rival</span>
-                    <strong>@plan.DefensePredictions.Count</strong>
-                    <small>@historicalDefenses con histórico</small>
-                </a>
-                <a href="#war-attack" class="war-room-nav-card">
-                    <span>Guardar ataque</span>
-                    <strong>@plan.AttackReserves.Count</strong>
-                    <small>reservas prioritarias</small>
-                </a>
-                <a href="#war-counters" class="war-room-nav-card war-room-nav-counter">
-                    <span>Counters</span>
-                    <strong>@plan.CounterSuggestions.Count</strong>
-                    <small>@observedCounters observados</small>
-                </a>
+                <a href="#war-risks" class="war-room-nav-card war-room-nav-risk"><span>Riesgos</span><strong>@urgentThreats</strong><small>@criticalThreats críticos</small></a>
+                <a href="#war-defense" class="war-room-nav-card"><span>Defensa rival</span><strong>@plan.DefensePredictions.Count</strong><small>@historicalDefenses con histórico</small></a>
+                <a href="#war-attack" class="war-room-nav-card"><span>Guardar ataque</span><strong>@plan.AttackReserves.Count</strong><small>reservas prioritarias</small></a>
+                <a href="#war-counters" class="war-room-nav-card war-room-nav-counter"><span>Counters</span><strong>@plan.CounterSuggestions.Count</strong><small>@observedCounters observados</small></a>
             </nav>
         </section>
 
         <section id="war-risks" class="war-room-zone">
             <div class="war-zone-heading">
-                <div>
-                    <span class="section-kicker">1 · Riesgos</span>
-                    <h2>Qué puede complicar la ronda</h2>
-                    <p>Empieza por las amenazas de mayor prioridad y por las limitaciones del análisis.</p>
-                </div>
+                <div><span class="section-kicker">1 · Riesgos</span><h2>Qué puede complicar la ronda</h2><p>Empieza por las amenazas de mayor prioridad y abre su ficha para contrastar progreso y habilidades.</p></div>
                 <span class="war-zone-index">01</span>
             </div>
 
@@ -220,6 +185,7 @@ else
                                     }
                                 </div>
                                 <p>@threat.Reason</p>
+                                <button type="button" class="gac-detail-trigger" @onclick="() => OpenThreatDetailAsync(threat, scouting.Opponent.OpponentAllyCode)">Ver ficha rival →</button>
                             </div>
                         </article>
                     }
@@ -229,11 +195,7 @@ else
 
         <section id="war-defense" class="war-room-zone">
             <div class="war-zone-heading">
-                <div>
-                    <span class="section-kicker">2 · Defensa rival</span>
-                    <h2>Qué esperamos encontrar</h2>
-                    <p>Distingue patrones históricos de estimaciones basadas únicamente en la fuerza del roster.</p>
-                </div>
+                <div><span class="section-kicker">2 · Defensa rival</span><h2>Qué esperamos encontrar</h2><p>Distingue patrones históricos de estimaciones basadas únicamente en la fuerza del roster.</p></div>
                 <span class="war-zone-index">02</span>
             </div>
 
@@ -278,20 +240,13 @@ else
 
         <section id="war-attack" class="war-room-zone">
             <div class="war-zone-heading">
-                <div>
-                    <span class="section-kicker">3 · Guardar para ataque</span>
-                    <h2>No gastes estas piezas demasiado pronto</h2>
-                    <p>Mantén flexibilidad para responder a las amenazas más duras del rival.</p>
-                </div>
+                <div><span class="section-kicker">3 · Guardar para ataque</span><h2>No gastes estas piezas demasiado pronto</h2><p>Mantén flexibilidad para responder a las amenazas más duras del rival.</p></div>
                 <span class="war-zone-index">03</span>
             </div>
 
             <section class="dashboard-section war-room-panel reserves-section">
                 <div class="section-heading">
-                    <div>
-                        <span class="section-kicker">Reserva táctica</span>
-                        <h2>Reservas de ataque</h2>
-                    </div>
+                    <div><span class="section-kicker">Reserva táctica</span><h2>Reservas de ataque</h2></div>
                     <span class="count-badge">@plan.AttackReserves.Count</span>
                 </div>
 
@@ -313,6 +268,7 @@ else
                                     </div>
                                     <span>@FriendlyRole(reserve.Role) · @reserve.Unit.GalacticPower.ToString("N0") GP · @UnitProgress(reserve.Unit)</span>
                                     <p>@reserve.Reason</p>
+                                    <button type="button" class="gac-detail-trigger" @onclick="() => OpenReserveDetailAsync(reserve)">Ver ficha de ataque →</button>
                                 </div>
                             </article>
                         }
@@ -323,11 +279,7 @@ else
 
         <section id="war-counters" class="war-room-zone war-room-zone-last">
             <div class="war-zone-heading">
-                <div>
-                    <span class="section-kicker">4 · Counters</span>
-                    <h2>Respuestas para abrir el tablero</h2>
-                    <p>Da prioridad a equipos observados y usa las anclas heurísticas solo como punto de partida.</p>
-                </div>
+                <div><span class="section-kicker">4 · Counters</span><h2>Respuestas para abrir el tablero</h2><p>Abre tanto el objetivo como cada pieza del counter para revisar el enfrentamiento con datos de roster.</p></div>
                 <span class="war-zone-index">04</span>
             </div>
 
@@ -347,10 +299,16 @@ else
                         @foreach (GacApiClient.CounterSuggestionViewModel counter in plan.CounterSuggestions.Take(10))
                         {
                             bool observed = counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null;
+                            IReadOnlyCollection<GacApiClient.BattleUnitViewModel> counterTeam = counter.RecommendedTeam is { Count: > 0 }
+                                ? counter.RecommendedTeam
+                                : counter.CandidateAnchors;
+
                             <article class="counter-card @(observed ? "counter-card-observed" : string.Empty)">
                                 <div class="counter-target">
                                     <span>Contra</span>
-                                    <strong>@counter.Threat.Name</strong>
+                                    <strong>
+                                        <button type="button" class="counter-unit-link" @onclick="() => OpenCounterTargetDetailAsync(counter, scouting.Opponent.OpponentAllyCode)">@counter.Threat.Name</button>
+                                    </strong>
                                     <div class="counter-badges">
                                         <span class="confidence-badge confidence-@counter.Confidence.ToLowerInvariant()">@FriendlyConfidence(counter.Confidence)</span>
                                         <span class="source-badge">@FriendlySource(counter.Source)</span>
@@ -358,16 +316,15 @@ else
                                 </div>
                                 <div class="counter-arrow" aria-hidden="true">→</div>
                                 <div class="counter-team">
-                                    @if (counter.RecommendedTeam is { Count: > 0 })
-                                    {
-                                        <span class="counter-team-label">Equipo observado disponible en tu roster</span>
-                                        <strong>@string.Join(" · ", counter.RecommendedTeam.Select(unit => unit.Name))</strong>
-                                    }
-                                    else
-                                    {
-                                        <span class="counter-team-label">Anclas sugeridas</span>
-                                        <strong>@string.Join(" · ", counter.CandidateAnchors.Select(unit => unit.Name))</strong>
-                                    }
+                                    <span class="counter-team-label">@(observed ? "Equipo observado disponible en tu roster" : "Anclas sugeridas")</span>
+                                    <div class="counter-team-units">
+                                        @foreach (GacApiClient.BattleUnitViewModel unit in counterTeam)
+                                        {
+                                            <button type="button"
+                                                    class="counter-unit-pill @(!observed ? "counter-unit-pill-heuristic" : string.Empty)"
+                                                    @onclick="() => OpenCounterUnitDetailAsync(unit, counter)">@unit.Name</button>
+                                        }
+                                    </div>
                                     <p>@counter.Rationale</p>
                                     @if (counter.RequiresDatacronVerification)
                                     {
@@ -405,12 +362,31 @@ else
     }
 }
 
+<UnitDetailDrawer Unit="_selectedRosterUnit"
+                  Summary="_selectedUnitSummary"
+                  Eyebrow="_detailEyebrow"
+                  ContextTitle="_detailContextTitle"
+                  Context="_detailContext"
+                  TacticalNotes="_detailNotes"
+                  RosterAllyCode="_detailRosterAllyCode"
+                  GacAllyCode="AllyCode"
+                  IsLoading="_detailLoading"
+                  OnClose="CloseUnitDetails" />
+
 @code {
     [Parameter]
     public long AllyCode { get; set; }
 
     private PlayerApiClient.PlayerViewModel? _player;
     private GacApiClient.CurrentGacResult? _result;
+    private GacApiClient.BattleUnitViewModel? _selectedUnitSummary;
+    private PlayerApiClient.RosterUnitViewModel? _selectedRosterUnit;
+    private IReadOnlyCollection<string> _detailNotes = [];
+    private string _detailEyebrow = "Ficha GAC";
+    private string? _detailContextTitle;
+    private string? _detailContext;
+    private long? _detailRosterAllyCode;
+    private bool _detailLoading;
     private bool _loading = true;
     private string? _error;
 
@@ -418,6 +394,7 @@ else
     {
         _loading = true;
         _error = null;
+        CloseUnitDetails();
         try
         {
             _player = await PlayerClient.GetAsync(AllyCode);
@@ -439,6 +416,130 @@ else
         }
     }
 
+    private Task OpenThreatDetailAsync(GacApiClient.BattleThreatViewModel threat, long opponentAllyCode) =>
+        OpenUnitDetailAsync(
+            threat.Unit,
+            opponentAllyCode,
+            "Amenaza rival",
+            $"{FriendlyCategory(threat.Category)} · prioridad {FriendlyPriority(threat.Priority)}",
+            threat.Reason,
+            [$"Score de amenaza: {threat.Score}.", BuildAbilityNote(threat.Unit)]);
+
+    private Task OpenReserveDetailAsync(GacApiClient.AttackReserveViewModel reserve) =>
+        OpenUnitDetailAsync(
+            reserve.Unit,
+            AllyCode,
+            "Reserva de ataque",
+            FriendlyRole(reserve.Role),
+            reserve.Reason,
+            [$"Prioridad {FriendlyPriority(reserve.Priority)}.", BuildAbilityNote(reserve.Unit)]);
+
+    private Task OpenCounterTargetDetailAsync(GacApiClient.CounterSuggestionViewModel counter, long opponentAllyCode) =>
+        OpenUnitDetailAsync(
+            counter.Threat,
+            opponentAllyCode,
+            "Objetivo del counter",
+            $"Counter recomendado · {FriendlyConfidence(counter.Confidence)}",
+            counter.Rationale,
+            BuildCounterNotes(counter));
+
+    private Task OpenCounterUnitDetailAsync(GacApiClient.BattleUnitViewModel unit, GacApiClient.CounterSuggestionViewModel counter) =>
+        OpenUnitDetailAsync(
+            unit,
+            AllyCode,
+            "Pieza del counter",
+            $"Contra {counter.Threat.Name}",
+            counter.Rationale,
+            BuildCounterNotes(counter));
+
+    private async Task OpenUnitDetailAsync(
+        GacApiClient.BattleUnitViewModel unit,
+        long rosterAllyCode,
+        string eyebrow,
+        string contextTitle,
+        string context,
+        IReadOnlyCollection<string> notes)
+    {
+        _selectedUnitSummary = unit;
+        _selectedRosterUnit = null;
+        _detailEyebrow = eyebrow;
+        _detailContextTitle = contextTitle;
+        _detailContext = context;
+        _detailNotes = notes;
+        _detailRosterAllyCode = rosterAllyCode;
+        _detailLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            PlayerApiClient.RosterPageViewModel? roster = await PlayerClient.GetRosterAsync(
+                rosterAllyCode,
+                page: 1,
+                pageSize: 10,
+                search: unit.DefinitionId);
+            _selectedRosterUnit = roster?.Items.FirstOrDefault(candidate =>
+                string.Equals(candidate.DefinitionId, unit.DefinitionId, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (HttpRequestException)
+        {
+            _detailNotes = [.. notes, "No se ha podido cargar la ficha enriquecida del roster; se muestra el resumen disponible en el plan."];
+        }
+        finally
+        {
+            _detailLoading = false;
+        }
+    }
+
+    private void CloseUnitDetails()
+    {
+        _selectedUnitSummary = null;
+        _selectedRosterUnit = null;
+        _detailNotes = [];
+        _detailContextTitle = null;
+        _detailContext = null;
+        _detailRosterAllyCode = null;
+        _detailLoading = false;
+    }
+
+    private static IReadOnlyCollection<string> BuildCounterNotes(GacApiClient.CounterSuggestionViewModel counter)
+    {
+        var notes = new List<string>
+        {
+            $"Evidencia: {FriendlySource(counter.Source)} · confianza {FriendlyConfidence(counter.Confidence).ToLowerInvariant()}."
+        };
+
+        var metrics = new List<string>();
+        if (counter.WinRate is not null)
+        {
+            metrics.Add($"{Percent(counter.WinRate.Value)} victorias");
+        }
+        if (counter.OneShotRate is not null)
+        {
+            metrics.Add($"{Percent(counter.OneShotRate.Value)} one-shot");
+        }
+        if (counter.Uses is not null)
+        {
+            metrics.Add($"{counter.Uses} muestras");
+        }
+        if (counter.AverageBanners is not null)
+        {
+            metrics.Add($"{counter.AverageBanners.Value:0.#} banners medios");
+        }
+        if (metrics.Count > 0)
+        {
+            notes.Add(string.Join(" · ", metrics) + ".");
+        }
+        if (counter.RequiresDatacronVerification)
+        {
+            notes.Add("Requiere verificar datacron y mods antes de ejecutar el ataque.");
+        }
+
+        return notes;
+    }
+
+    private static string BuildAbilityNote(GacApiClient.BattleUnitViewModel unit) =>
+        $"Habilidades: {unit.ZetaCount} zetas · {unit.OmicronCount} omicrons.";
+
     private static string Percent(decimal value)
     {
         decimal normalized = value <= 1 ? value * 100 : value;
@@ -453,12 +554,7 @@ else
         }
 
         decimal value = Math.Max(0, minutes.Value);
-        if (value < 60)
-        {
-            return $"{value:0} min";
-        }
-
-        return $"{value / 60:0.#} h";
+        return value < 60 ? $"{value:0} min" : $"{value / 60:0.#} h";
     }
 
     private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
