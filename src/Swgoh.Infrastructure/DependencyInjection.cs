@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using RepositoryMongoDb.DependencyInjection;
 
 using Swgoh.Application.Abstractions;
+using Swgoh.Application.Gac;
 using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
@@ -59,6 +60,23 @@ public static class DependencyInjection
             squad => squad.Id,
             collection => collection.CreateIfMissing());
 
+        IndexKeysDefinition<GacHistoryRoundDocument> gacHistoryIndexKeys = Builders<GacHistoryRoundDocument>.IndexKeys
+            .Ascending(round => round.AllyCode)
+            .Ascending(round => round.Format)
+            .Descending(round => round.StartedAtUtc);
+
+        services.AddMongoRepository<GacHistoryRoundDocument, string>(
+            GacHistoryMongoRepository.CollectionName,
+            round => round.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    gacHistoryIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacHistoryMongoRepository.AllyCodeFormatStartedIndexName
+                    }));
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -90,6 +108,7 @@ public static class DependencyInjection
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
+        services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         return services;
     }
 }
