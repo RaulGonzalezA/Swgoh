@@ -17,9 +17,13 @@ internal sealed class CurrentGacScoutingService(
     ICurrentGacOpponentSource opponentSource,
     IOpponentScoutingService scoutingService,
     IPlayerProfileService playerProfileService,
-    IPlayerRosterService playerRosterService) : ICurrentGacScoutingService
+    IPlayerRosterService playerRosterService,
+    IGacHistorySyncService historySyncService,
+    IGacCounterStatisticsService counterStatisticsService) : ICurrentGacScoutingService
 {
     private const int MaxRounds = 200;
+    private const int CounterSourceRoundLimit = 2_000;
+    private const int CounterResultLimit = 500;
     private const int CharacterScoutLimit = 100;
     private const int ShipScoutLimit = 50;
     private const int TopCharacterLimit = 20;
@@ -51,13 +55,19 @@ internal sealed class CurrentGacScoutingService(
         }
 
         CurrentGacOpponent opponent = lookup.Opponent;
-        PlayerProfile refreshedOpponent = await playerProfileService
-            .RefreshFromGameAsync(opponent.OpponentAllyCode, cancellationToken)
-            .ConfigureAwait(false);
-        PlayerProfile refreshedPlayer = await playerProfileService
-            .RefreshFromGameAsync(allyCode, cancellationToken)
+        int historyRoundLimit = Math.Clamp(maxRounds, 1, MaxRounds);
+        GacHistorySyncResult historySync = await historySyncService
+            .SyncAsync(opponent.OpponentAllyCode, opponent.Format, historyRoundLimit, cancellationToken)
             .ConfigureAwait(false);
 
+        Task<PlayerProfile> refreshedOpponentTask = playerProfileService
+            .RefreshFromGameAsync(opponent.OpponentAllyCode, cancellationToken);
+        Task<PlayerProfile> refreshedPlayerTask = playerProfileService
+            .RefreshFromGameAsync(allyCode, cancellationToken);
+        await Task.WhenAll(refreshedOpponentTask, refreshedPlayerTask).ConfigureAwait(false);
+
+        PlayerProfile refreshedOpponent = await refreshedOpponentTask.ConfigureAwait(false);
+        PlayerProfile refreshedPlayer = await refreshedPlayerTask.ConfigureAwait(false);
         PlayerRosterAnalysis opponentAnalysis = PlayerRosterMetrics.Calculate(refreshedOpponent);
         PlayerRosterAnalysis playerAnalysis = PlayerRosterMetrics.Calculate(refreshedPlayer);
 
@@ -65,7 +75,13 @@ internal sealed class CurrentGacScoutingService(
             opponent.OpponentAllyCode,
             opponent.Format,
             opponent.League,
-            Math.Clamp(maxRounds, 1, MaxRounds),
+            historyRoundLimit,
+            cancellationToken);
+        Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = counterStatisticsService.GetAsync(
+            new GacCounterStatisticsQuery(
+                opponent.Format,
+                MaxRounds: CounterSourceRoundLimit,
+                Limit: CounterResultLimit),
             cancellationToken);
 
         Task<PlayerRosterPage?> opponentCharactersTask = LoadRosterAsync(
@@ -108,6 +124,7 @@ internal sealed class CurrentGacScoutingService(
 
         await Task.WhenAll(
             historicalScoutingTask,
+            counterStatisticsTask,
             opponentCharactersTask,
             opponentShipsTask,
             opponentOmicronsTask,
@@ -116,6 +133,7 @@ internal sealed class CurrentGacScoutingService(
             playerOmicronsTask).ConfigureAwait(false);
 
         OpponentScoutingReport? historicalScouting = await historicalScoutingTask.ConfigureAwait(false);
+        IReadOnlyCollection<GacCounterStatistics> counterStatistics = await counterStatisticsTask.ConfigureAwait(false);
         PlayerRosterPage? opponentCharacters = await opponentCharactersTask.ConfigureAwait(false);
         PlayerRosterPage? opponentShips = await opponentShipsTask.ConfigureAwait(false);
         PlayerRosterPage? opponentOmicrons = await opponentOmicronsTask.ConfigureAwait(false);
@@ -138,8 +156,19 @@ internal sealed class CurrentGacScoutingService(
             playerOmicrons?.Items ?? [],
             rosterScouting,
             historicalScouting);
+        battlePlan = GacCounterSuggestionEnricher.Enrich(
+            battlePlan,
+            opponent.Format,
+            counterStatistics,
+            playerCharacters?.Items ?? [],
+            playerShips?.Items ?? []);
 
-        return new CurrentGacScoutingResult(lookup, historicalScouting, rosterScouting, battlePlan);
+        return new CurrentGacScoutingResult(
+            lookup,
+            historicalScouting,
+            rosterScouting,
+            battlePlan,
+            historySync);
     }
 
     private Task<PlayerRosterPage?> LoadRosterAsync(
