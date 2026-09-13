@@ -1,0 +1,219 @@
+@page "/player/{AllyCode:long}"
+@rendermode InteractiveServer
+@inject PlayerApiClient PlayerClient
+
+<PageTitle>@(_player is null ? "Roster" : $"{_player.Name} · Roster") · SWGOH Planner</PageTitle>
+
+<div class="page-heading-row">
+    <div>
+        <a class="back-link" href="/">← Dashboard</a>
+        <span class="eyebrow">Roster explorer</span>
+        <h1>@(_player?.Name ?? "Roster del jugador")</h1>
+        @if (_player is not null)
+        {
+            <p class="page-lead">@_player.GalacticPower.ToString("N0") GP · @_player.RosterCount unidades · #@FormatAllyCode(_player.AllyCode)</p>
+        }
+    </div>
+    @if (_analysis is not null)
+    {
+        <div class="heading-stat">
+            <span>R7+</span>
+            <strong>@_analysis.Relic7Plus</strong>
+            <small>@_analysis.Omicrons omicrons</small>
+        </div>
+    }
+</div>
+
+@if (_loadingProfile)
+{
+    <div class="loading-panel"><span class="spinner"></span> Cargando roster…</div>
+}
+else if (_error is not null)
+{
+    <div class="status-card status-error" role="alert">
+        <span class="status-icon">!</span>
+        <div><strong>No se ha podido cargar el roster</strong><p>@_error</p></div>
+    </div>
+}
+else if (_player is null)
+{
+    <div class="status-card"><span class="status-icon">?</span><div><strong>Jugador no encontrado</strong><p>Vuelve al dashboard y comprueba el Ally Code.</p></div></div>
+}
+else
+{
+    <section class="roster-toolbar">
+        <form class="roster-filters" @onsubmit="LoadFirstPageAsync" @onsubmit:preventDefault>
+            <div class="filter-search">
+                <label class="sr-only" for="unitSearch">Buscar unidad</label>
+                <input id="unitSearch" placeholder="Buscar por nombre…" @bind="_search" />
+            </div>
+            <div class="filter-select">
+                <label for="unitType">Tipo</label>
+                <select id="unitType" @bind="_type">
+                    <option value="All">Todo</option>
+                    <option value="Character">Personajes</option>
+                    <option value="Ship">Naves</option>
+                </select>
+            </div>
+            <button class="secondary-button" type="submit" disabled="@_loadingRoster">Filtrar</button>
+        </form>
+
+        @if (_roster is not null)
+        {
+            <span class="result-count">@_roster.Total.ToString("N0") resultados</span>
+        }
+    </section>
+
+    @if (_loadingRoster)
+    {
+        <div class="loading-panel"><span class="spinner"></span> Actualizando resultados…</div>
+    }
+    else if (_roster is null || _roster.Items.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">⌕</span>
+            <h2>Sin resultados</h2>
+            <p>Prueba con otro nombre o cambia el filtro de tipo.</p>
+        </div>
+    }
+    else
+    {
+        <div class="roster-grid">
+            @foreach (PlayerApiClient.RosterUnitViewModel unit in _roster.Items)
+            {
+                <article class="unit-card" @key="unit.Id">
+                    <div class="unit-avatar @(unit.IsShip ? "ship-avatar" : string.Empty)">@Initial(unit.Name)</div>
+                    <div class="unit-main">
+                        <div class="unit-title-row">
+                            <h2>@unit.Name</h2>
+                            @if (unit.RelicTier > 0)
+                            {
+                                <span class="relic-badge">R@unit.RelicTier</span>
+                            }
+                            else
+                            {
+                                <span class="gear-badge">G@unit.GearTier</span>
+                            }
+                        </div>
+                        <div class="unit-stars" aria-label="@unit.Rarity estrellas">@RarityLabel(unit.Rarity)</div>
+                        <div class="unit-meta">
+                            <span>@unit.GalacticPower.ToString("N0") GP</span>
+                            @if (unit.ZetaCount > 0)
+                            {
+                                <span class="ability-chip">Z @unit.ZetaCount</span>
+                            }
+                            @if (unit.OmicronCount > 0)
+                            {
+                                <span class="ability-chip ability-chip-omi">O @unit.OmicronCount</span>
+                            }
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+
+        <nav class="pagination" aria-label="Paginación del roster">
+            <button class="ghost-button" @onclick="PreviousPageAsync" disabled="@(_roster.Page <= 1 || _loadingRoster)">← Anterior</button>
+            <span>Página <strong>@_roster.Page</strong> de <strong>@_roster.TotalPages</strong></span>
+            <button class="ghost-button" @onclick="NextPageAsync" disabled="@(_roster.Page >= _roster.TotalPages || _loadingRoster)">Siguiente →</button>
+        </nav>
+    }
+}
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private PlayerApiClient.PlayerViewModel? _player;
+    private PlayerApiClient.PlayerRosterAnalysisViewModel? _analysis;
+    private PlayerApiClient.RosterPageViewModel? _roster;
+    private string _search = string.Empty;
+    private string _type = "All";
+    private string? _error;
+    private bool _loadingProfile = true;
+    private bool _loadingRoster;
+    private int _page = 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loadingProfile = true;
+        _error = null;
+        try
+        {
+            _player = await PlayerClient.GetAsync(AllyCode);
+            if (_player is null)
+            {
+                return;
+            }
+
+            _analysis = await PlayerClient.GetAnalysisAsync(AllyCode);
+            await LoadRosterAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _error = "La API no está disponible en este momento.";
+        }
+        finally
+        {
+            _loadingProfile = false;
+        }
+    }
+
+    private async Task LoadFirstPageAsync()
+    {
+        _page = 1;
+        await LoadRosterAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (_page <= 1)
+        {
+            return;
+        }
+
+        _page--;
+        await LoadRosterAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (_roster is null || _page >= _roster.TotalPages)
+        {
+            return;
+        }
+
+        _page++;
+        await LoadRosterAsync();
+    }
+
+    private async Task LoadRosterAsync()
+    {
+        _loadingRoster = true;
+        _error = null;
+        try
+        {
+            _roster = await PlayerClient.GetRosterAsync(AllyCode, _page, 24, _search, _type);
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido consultar el roster.";
+        }
+        finally
+        {
+            _loadingRoster = false;
+        }
+    }
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
+        ? "?"
+        : char.ToUpperInvariant(name.Trim()[0]).ToString();
+
+    private static string RarityLabel(int rarity) => new('★', Math.Clamp(rarity, 0, 7));
+
+    private static string FormatAllyCode(long allyCode)
+    {
+        string value = allyCode.ToString("000000000");
+        return $"{value[..3]}-{value[3..6]}-{value[6..]}";
+    }
+}
