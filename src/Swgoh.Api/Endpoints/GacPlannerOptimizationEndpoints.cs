@@ -129,7 +129,12 @@ internal static class GacPlannerOptimizationEndpoints
         decimal? DefenseAverageSpeed,
         decimal? TeamModSpeedBonus,
         decimal? DefenseModSpeedBonus,
-        string DatacronStatus)
+        string DatacronStatus,
+        decimal BaseStrategicCost,
+        decimal OpportunityCost,
+        int StrategicAlternatives,
+        int FutureDefensesAtRisk,
+        string StrategicRationale)
     {
         public static OptimizationRecommendationResponse From(GacAttackOptimizationRecommendation recommendation) => new(
             recommendation.DefenseId,
@@ -151,6 +156,11 @@ internal static class GacPlannerOptimizationEndpoints
             recommendation.DefenseAverageSpeed,
             recommendation.TeamModSpeedBonus,
             recommendation.DefenseModSpeedBonus,
-            recommendation.DatacronStatus);
+            recommendation.DatacronStatus,
+            recommendation.BaseStrategicCost,
+            recommendation.OpportunityCost,
+            recommendation.StrategicAlternatives,
+            recommendation.FutureDefensesAtRisk,
+            recommendation.StrategicRationale);
     }
 }
