@@ -589,8 +589,11 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         return int.TryParse(JsonString(value), out result);
     }
 
-    private static bool TryReadLongProperty(JsonElement element, string name, out long result) =>
-        TryGetProperty(element, name, out JsonElement value) && TryReadLong(value, out result);
+    private static bool TryReadLongProperty(JsonElement element, string name, out long result)
+    {
+        result = default;
+        return TryGetProperty(element, name, out JsonElement value) && TryReadLong(value, out result);
+    }
 
     private static bool TryReadLong(JsonElement value, out long result)
     {
