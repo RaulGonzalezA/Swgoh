@@ -2,7 +2,7 @@ namespace Swgoh.Application.Gac;
 
 internal sealed class LearningGacPlannerService(
     GacPlannerService inner,
-    IGacPersonalOutcomeRepository personalOutcomeRepository) : IGacPlannerService
+    IGacPersonalLearningService personalLearningService) : IGacPlannerService
 {
     public Task<GacPlannerLookup> GetCurrentAsync(
         long allyCode,
@@ -19,8 +19,8 @@ internal sealed class LearningGacPlannerService(
             .ConfigureAwait(false);
         if (lookup.State is not null)
         {
-            await personalOutcomeRepository
-                .UpsertAsync(GacPersonalOutcomeFactory.FromState(lookup.State), cancellationToken)
+            await personalLearningService
+                .SyncPlannerStateAsync(lookup.State, cancellationToken)
                 .ConfigureAwait(false);
         }
 
