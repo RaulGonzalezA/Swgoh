@@ -1,0 +1,268 @@
+name: GAC Response Probe
+run-name: GAC Response Probe · ally ${{ inputs.ally_code || '476825771' }}
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/gac-response-probe.yml
+  workflow_dispatch:
+    inputs:
+      ally_code:
+        description: SWGOH ally code to diagnose
+        required: true
+        default: '476825771'
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  probe:
+    name: Capture live leaderboard payloads
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start Comlink
+        run: |
+          set -euo pipefail
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-gac-response-probe \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+
+          for attempt in {1..60}; do
+            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs comlink || true
+          exit 1
+
+      - name: Capture type 4 and type 6 responses
+        env:
+          COMLINK_URL: http://127.0.0.1:3000
+        run: |
+          set -euo pipefail
+          mkdir -p gac-response-probe
+
+          python3 - <<'PY'
+          import concurrent.futures
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.error
+          import urllib.request
+
+          base_url = os.environ["COMLINK_URL"].rstrip("/")
+          ally_code = os.environ["SWGOH_TEST_ALLY_CODE"]
+          output = pathlib.Path("gac-response-probe")
+
+          def post(path, payload):
+              request = urllib.request.Request(
+                  f"{base_url}/{path}",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      raw = response.read().decode("utf-8")
+                      try:
+                          parsed = json.loads(raw) if raw else None
+                      except json.JSONDecodeError:
+                          parsed = None
+                      return response.status, raw, parsed
+              except urllib.error.HTTPError as error:
+                  raw = error.read().decode("utf-8")
+                  try:
+                      parsed = json.loads(raw) if raw else None
+                  except json.JSONDecodeError:
+                      parsed = None
+                  return error.code, raw, parsed
+
+          def save(name, value):
+              (output / name).write_text(
+                  json.dumps(value, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          player_status, _, player = post(
+              "playerArena",
+              {
+                  "payload": {"allyCode": ally_code, "playerDetailsOnly": True},
+                  "enums": False,
+              },
+          )
+          events_status, _, events = post("getEvents", {"payload": {}, "enums": False})
+          if player_status != 200 or events_status != 200 or not isinstance(player, dict) or not isinstance(events, dict):
+              raise SystemExit("Unable to load live player/event context.")
+
+          rating = player.get("playerRating") or {}
+          rank_status = rating.get("playerRankStatus") or {}
+          league_id = rank_status.get("leagueId") or "KYBER"
+          division_id = rank_status.get("divisionId") or 10
+          league_token = str(league_id).lower()
+
+          now_ms = int(time.time() * 1000)
+          active = None
+          for event in events.get("gameEvent") or []:
+              if not isinstance(event, dict) or str(event.get("type")) != "10":
+                  continue
+              for instance in event.get("instance") or []:
+                  if not isinstance(instance, dict):
+                      continue
+                  try:
+                      start_ms = int(instance.get("startTime") or 0)
+                      end_ms = int(instance.get("endTime") or 0)
+                  except (TypeError, ValueError):
+                      continue
+                  if start_ms <= now_ms <= end_ms:
+                      active = {
+                          "eventId": event.get("id"),
+                          "instanceId": instance.get("id"),
+                          "startTime": start_ms,
+                          "endTime": end_ms,
+                      }
+                      break
+              if active:
+                  break
+
+          if not active or not active["eventId"] or active["instanceId"] is None:
+              raise SystemExit("No active GAC instance found.")
+
+          event_instance_id = f"{active['eventId']}:{active['instanceId']}"
+
+          def type4(index):
+              group_id = f"{event_instance_id}:{league_token}:{index}"
+              status, raw, parsed = post(
+                  "getLeaderboard",
+                  {
+                      "payload": {
+                          "leaderboardType": 4,
+                          "eventInstanceId": event_instance_id,
+                          "groupId": group_id,
+                      },
+                      "enums": False,
+                  },
+              )
+              return index, group_id, status, raw, parsed
+
+          first_200 = None
+          first_400 = None
+          with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+              for start in range(0, 20001, 256):
+                  end = min(start + 255, 20000)
+                  futures = [executor.submit(type4, index) for index in range(start, end + 1)]
+                  batch = [future.result() for future in concurrent.futures.as_completed(futures)]
+                  batch.sort(key=lambda item: item[0])
+                  for item in batch:
+                      if item[2] == 200 and first_200 is None:
+                          first_200 = item
+                      if item[2] == 400 and first_400 is None:
+                          first_400 = item
+                  if first_200 is not None and first_400 is not None:
+                      break
+
+          type6_status, type6_raw, type6_parsed = post(
+              "getLeaderboard",
+              {
+                  "payload": {
+                      "leaderboardType": 6,
+                      "league": 100,
+                      "division": int(division_id),
+                  },
+                  "enums": False,
+              },
+          )
+
+          def describe(parsed):
+              if isinstance(parsed, dict):
+                  return {
+                      "rootKeys": list(parsed.keys()),
+                      "playerIsArray": isinstance(parsed.get("player"), list),
+                      "playerCount": len(parsed.get("player") or []) if isinstance(parsed.get("player"), list) else None,
+                      "parsed": parsed,
+                  }
+              return {"rootKeys": None, "parsed": parsed}
+
+          result = {
+              "player": {
+                  "allyCode": player.get("allyCode"),
+                  "playerId": player.get("playerId") or player.get("id"),
+                  "name": player.get("name"),
+                  "leagueId": league_id,
+                  "divisionId": division_id,
+              },
+              "activeEventInstanceId": event_instance_id,
+              "type4First200": None if first_200 is None else {
+                  "index": first_200[0],
+                  "groupId": first_200[1],
+                  "status": first_200[2],
+                  "raw": first_200[3],
+                  **describe(first_200[4]),
+              },
+              "type4First400": None if first_400 is None else {
+                  "index": first_400[0],
+                  "groupId": first_400[1],
+                  "status": first_400[2],
+                  "raw": first_400[3],
+                  **describe(first_400[4]),
+              },
+              "type6KyberDivision": {
+                  "status": type6_status,
+                  "raw": type6_raw,
+                  **describe(type6_parsed),
+              },
+          }
+          save("response-shape.json", result)
+
+          compact = {
+              "player": result["player"],
+              "activeEventInstanceId": result["activeEventInstanceId"],
+              "type4First200": None if result["type4First200"] is None else {
+                  "index": result["type4First200"]["index"],
+                  "groupId": result["type4First200"]["groupId"],
+                  "status": result["type4First200"]["status"],
+                  "rootKeys": result["type4First200"]["rootKeys"],
+                  "playerIsArray": result["type4First200"]["playerIsArray"],
+                  "playerCount": result["type4First200"]["playerCount"],
+              },
+              "type4First400": None if result["type4First400"] is None else {
+                  "index": result["type4First400"]["index"],
+                  "groupId": result["type4First400"]["groupId"],
+                  "status": result["type4First400"]["status"],
+                  "rootKeys": result["type4First400"]["rootKeys"],
+              },
+              "type6KyberDivision": {
+                  "status": result["type6KyberDivision"]["status"],
+                  "rootKeys": result["type6KyberDivision"]["rootKeys"],
+                  "playerIsArray": result["type6KyberDivision"]["playerIsArray"],
+                  "playerCount": result["type6KyberDivision"]["playerCount"],
+              },
+          }
+          save("summary.json", compact)
+          print(json.dumps(compact, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload response probe artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gac-response-probe-${{ github.run_number }}
+          path: gac-response-probe/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
