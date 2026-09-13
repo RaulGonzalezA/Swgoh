@@ -11,13 +11,15 @@ using Swgoh.Infrastructure.Persistence.Documents;
 
 namespace Swgoh.Infrastructure.Persistence;
 
-internal sealed class SquadMongoRepository(IMongoDbRepository<SquadDefinitionDocument, Guid> repository) : ISquadRepository
+internal sealed class SquadMongoRepository(IMongoDbRepository<SquadDefinitionDocument, string> repository) : ISquadRepository
 {
     internal const string CollectionName = "squads";
 
     public async Task<SquadDefinition?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        SquadDefinitionDocument? document = await repository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        SquadDefinitionDocument? document = await repository
+            .FindByIdAsync(ToDocumentId(id), cancellationToken)
+            .ConfigureAwait(false);
         return document is null ? null : ToDomain(document);
     }
 
@@ -75,13 +77,15 @@ internal sealed class SquadMongoRepository(IMongoDbRepository<SquadDefinitionDoc
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        DeleteResult result = await repository.DeleteByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        DeleteResult result = await repository
+            .DeleteByIdAsync(ToDocumentId(id), cancellationToken)
+            .ConfigureAwait(false);
         return result.DeletedCount > 0;
     }
 
     private static SquadDefinitionDocument ToDocument(SquadDefinition squad) => new()
     {
-        Id = squad.Id,
+        Id = ToDocumentId(squad.Id),
         Name = squad.Name,
         Format = (int)squad.Format,
         Use = (int)squad.Use,
@@ -114,7 +118,7 @@ internal sealed class SquadMongoRepository(IMongoDbRepository<SquadDefinitionDoc
         ];
 
         return SquadDefinition.Restore(
-            document.Id,
+            Guid.ParseExact(document.Id, "D"),
             document.Name,
             format,
             (SquadUse)document.Use,
@@ -123,4 +127,6 @@ internal sealed class SquadMongoRepository(IMongoDbRepository<SquadDefinitionDoc
             document.CreatedAtUtc,
             document.UpdatedAtUtc);
     }
+
+    private static string ToDocumentId(Guid id) => id.ToString("D");
 }
