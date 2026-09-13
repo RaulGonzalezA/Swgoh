@@ -119,6 +119,23 @@ public static class DependencyInjection
                         Name = GacRoundPlanMongoRepository.PlayerUpdatedIndexName
                     }));
 
+        IndexKeysDefinition<GacPersonalRoundOutcomeDocument> personalOutcomeIndexKeys =
+            Builders<GacPersonalRoundOutcomeDocument>.IndexKeys
+                .Ascending(outcome => outcome.AllyCode)
+                .Ascending(outcome => outcome.Format)
+                .Descending(outcome => outcome.UpdatedAtUtc);
+        services.AddMongoRepository<GacPersonalRoundOutcomeDocument, string>(
+            GacPersonalOutcomeMongoRepository.CollectionName,
+            outcome => outcome.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    personalOutcomeIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacPersonalOutcomeMongoRepository.AllyFormatUpdatedIndexName
+                    }));
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -173,6 +190,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
+        services.AddSingleton<IGacPersonalOutcomeRepository, GacPersonalOutcomeMongoRepository>();
         services.AddSingleton<SwgohComlinkGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkCurrentRoundOpponentSource>();
         return services;
