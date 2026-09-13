@@ -13,6 +13,7 @@ internal sealed class GacHistoryMongoRepository(IMongoDbRepository<GacHistoryRou
 {
     internal const string CollectionName = "gacHistory";
     internal const string AllyCodeFormatStartedIndexName = "ix_gac_history_ally_format_started";
+    internal const string FormatStartedIndexName = "ix_gac_history_format_started";
 
     public async Task UpsertManyAsync(
         IReadOnlyCollection<GacHistoricalRound> rounds,
@@ -38,16 +39,38 @@ internal sealed class GacHistoryMongoRepository(IMongoDbRepository<GacHistoryRou
             filter &= builder.Eq(document => document.Format, (int)requestedFormat);
         }
 
+        IReadOnlyCollection<GacHistoryRoundDocument> documents = await FindRecentAsync(
+            filter,
+            maxRounds,
+            cancellationToken).ConfigureAwait(false);
+        return [.. documents.Select(ToDomain)];
+    }
+
+    public async Task<IReadOnlyCollection<GacHistoricalRound>> GetRecentAsync(
+        GacFormat format,
+        int maxRounds,
+        CancellationToken cancellationToken = default)
+    {
+        FilterDefinition<GacHistoryRoundDocument> filter = Builders<GacHistoryRoundDocument>.Filter
+            .Eq(document => document.Format, (int)format);
+        IReadOnlyCollection<GacHistoryRoundDocument> documents = await FindRecentAsync(
+            filter,
+            maxRounds,
+            cancellationToken).ConfigureAwait(false);
+        return [.. documents.Select(ToDomain)];
+    }
+
+    private Task<IReadOnlyCollection<GacHistoryRoundDocument>> FindRecentAsync(
+        FilterDefinition<GacHistoryRoundDocument> filter,
+        int maxRounds,
+        CancellationToken cancellationToken)
+    {
         SortDefinition<GacHistoryRoundDocument> sort = Builders<GacHistoryRoundDocument>.Sort
             .Descending(document => document.StartedAtUtc)
             .Descending(document => document.Season)
             .Descending(document => document.EventNumber)
             .Descending(document => document.RoundNumber);
-
-        IReadOnlyCollection<GacHistoryRoundDocument> documents = await repository
-            .FindPageAsync(filter, skip: 0, maxRounds, sort, cancellationToken)
-            .ConfigureAwait(false);
-        return [.. documents.Select(ToDomain)];
+        return repository.FindPageAsync(filter, skip: 0, maxRounds, sort, cancellationToken);
     }
 
     private static GacHistoryRoundDocument ToDocument(GacHistoricalRound round) => new()
