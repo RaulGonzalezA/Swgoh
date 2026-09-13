@@ -5,7 +5,7 @@
             <div class="unit-detail-topbar">
                 <div>
                     <span class="eyebrow">@Eyebrow</span>
-                    <small>@(Unit?.IsShip ?? Summary?.IsShip ?? false ? "Nave" : "Personaje")</small>
+                    <small>@((Unit?.IsShip ?? Summary?.IsShip ?? false) ? "Nave" : "Personaje")</small>
                 </div>
                 <button type="button" class="unit-detail-close" aria-label="Cerrar detalle" @onclick="HandleCloseAsync">×</button>
             </div>
