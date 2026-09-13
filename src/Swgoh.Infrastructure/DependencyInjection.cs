@@ -11,6 +11,7 @@ using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
 using Swgoh.Infrastructure.Comlink;
+using Swgoh.Infrastructure.Gac;
 using Swgoh.Infrastructure.GameData;
 using Swgoh.Infrastructure.Persistence;
 using Swgoh.Infrastructure.Persistence.Documents;
@@ -64,6 +65,9 @@ public static class DependencyInjection
             .Ascending(round => round.AllyCode)
             .Ascending(round => round.Format)
             .Descending(round => round.StartedAtUtc);
+        IndexKeysDefinition<GacHistoryRoundDocument> gacFormatStartedIndexKeys = Builders<GacHistoryRoundDocument>.IndexKeys
+            .Ascending(round => round.Format)
+            .Descending(round => round.StartedAtUtc);
 
         services.AddMongoRepository<GacHistoryRoundDocument, string>(
             GacHistoryMongoRepository.CollectionName,
@@ -75,6 +79,12 @@ public static class DependencyInjection
                     new CreateIndexOptions
                     {
                         Name = GacHistoryMongoRepository.AllyCodeFormatStartedIndexName
+                    })
+                .HasIndex(
+                    gacFormatStartedIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacHistoryMongoRepository.FormatStartedIndexName
                     }));
 
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
@@ -108,6 +118,21 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
         });
+
+        string? gacHistoryProviderBaseUrl = configuration["Swgoh:GacHistory:ProviderBaseUrl"];
+        if (!string.IsNullOrWhiteSpace(gacHistoryProviderBaseUrl))
+        {
+            string? gacHistoryProviderApiKey = configuration["Swgoh:GacHistory:ApiKey"];
+            services.AddHttpClient(NormalizedHttpGacHistoryProvider.HttpClientName, client =>
+            {
+                client.BaseAddress = new Uri(gacHistoryProviderBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+            services.AddSingleton<IGacHistoryProvider>(serviceProvider =>
+                new NormalizedHttpGacHistoryProvider(
+                    serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                    gacHistoryProviderApiKey));
+        }
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
