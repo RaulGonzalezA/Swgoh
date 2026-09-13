@@ -37,6 +37,19 @@ Never introduce a dependency from an inner layer to an outer layer.
 - Keep package versions in `Directory.Packages.props`.
 - Do not leak MongoDB, HTTP or provider DTOs into Domain/Application.
 
+## Blazor UI rules
+
+- Treat `src/Swgoh.Blazor/wwwroot/design-system.css` as the authoritative source for shared colors, typography, spacing, radii, elevation, controls and state visuals.
+- Use the shared components under `src/Swgoh.Blazor/Components/Ui` for page headers, cards, metrics, status pills, empty states, loading states and alerts instead of recreating those patterns in individual pages.
+- Use `RichUnitPortrait` for character/ship recognition surfaces in GAC and Conquest when portraits are available.
+- Feature CSS may own domain-specific layout, but it must consume design-system tokens and must not introduce another generic visual language.
+- Do not create sequential generic stylesheets such as `ux-v10.css`, `ux-v11.css`, etc. Extend `design-system.css` for shared patterns or create a clearly named feature stylesheet for truly feature-specific layout.
+- Do not hardcode new generic colors, shadows or radii when a `--ds-*` token represents the intent.
+- Desktop and mobile should keep the same information semantics; responsive CSS changes layout and density, not meaning.
+- Preserve explicit loading, empty, not-found and error states.
+- Unit/datacron UI must not imply datacron applicability when it has not been verified; use an explicit verification state instead.
+- See `docs/ui-design-system.md` for component and token guidance.
+
 ## Testing
 
 - Domain tests cover invariants.
