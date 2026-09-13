@@ -12,7 +12,7 @@ public sealed class CurrentGacScoutingServiceTests
     [Theory]
     [InlineData(GacFormat.ThreeVsThree)]
     [InlineData(GacFormat.FiveVsFive)]
-    public async Task GetAsync_ScoutsOnlyDetectedActiveFormatAndRefreshesOpponentRoster(GacFormat activeFormat)
+    public async Task GetAsync_ScoutsBothRostersAndBuildsBattlePlan(GacFormat activeFormat)
     {
         const long playerAllyCode = 123456789;
         const long opponentAllyCode = 987654321;
@@ -30,8 +30,8 @@ public sealed class CurrentGacScoutingServiceTests
             "SeasonStatus",
             "DirectBracketMetadata"));
         var scouting = new RecordingScoutingService();
-        var profiles = new RecordingPlayerProfileService(opponentAllyCode);
-        var roster = new RecordingPlayerRosterService(opponentAllyCode);
+        var profiles = new RecordingPlayerProfileService(playerAllyCode, opponentAllyCode);
+        var roster = new RecordingPlayerRosterService(playerAllyCode, opponentAllyCode);
         var service = new CurrentGacScoutingService(source, scouting, profiles, roster);
 
         CurrentGacScoutingResult result = await service.GetAsync(
@@ -45,9 +45,10 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Equal(opponentAllyCode, scouting.LastAllyCode);
         Assert.Equal(activeFormat, scouting.LastFormat);
         Assert.Equal(GacLeague.Kyber, scouting.LastTargetLeague);
-        Assert.Equal(1, profiles.RefreshCallCount);
-        Assert.Equal(opponentAllyCode, profiles.LastRefreshAllyCode);
-        Assert.Equal(3, roster.CallCount);
+        Assert.Equal(2, profiles.RefreshCallCount);
+        Assert.Contains(playerAllyCode, profiles.RefreshedAllyCodes);
+        Assert.Contains(opponentAllyCode, profiles.RefreshedAllyCodes);
+        Assert.Equal(6, roster.CallCount);
 
         CurrentOpponentRosterScouting rosterScouting = Assert.IsType<CurrentOpponentRosterScouting>(result.RosterScouting);
         Assert.Equal(opponentAllyCode, rosterScouting.Analysis.AllyCode);
@@ -57,21 +58,38 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Equal(2, rosterScouting.TopCharacters.Count);
         Assert.Single(rosterScouting.TopShips);
         Assert.Single(rosterScouting.OmicronCharacters);
+
+        CurrentGacBattlePlan battlePlan = Assert.IsType<CurrentGacBattlePlan>(result.BattlePlan);
+        Assert.Equal(11_000_000, battlePlan.Comparison.PlayerGalacticPower);
+        Assert.Equal(12_000_000, battlePlan.Comparison.OpponentGalacticPower);
+        Assert.Equal(-1_000_000, battlePlan.Comparison.GalacticPowerDelta);
+        Assert.Equal(1, battlePlan.Comparison.PlayerGalacticLegends);
+        Assert.Equal(1, battlePlan.Comparison.OpponentGalacticLegends);
+        Assert.Contains(battlePlan.Threats, threat => threat.Unit.DefinitionId == "GL_TEST");
+        Assert.Contains(battlePlan.AttackReserves, reserve => reserve.Unit.DefinitionId == "GL_SELF");
+        GacBattleCounterSuggestion counter = Assert.Single(
+            battlePlan.CounterSuggestions.Where(item => item.Threat.DefinitionId == "GL_TEST"));
+        Assert.Equal("RosterStrengthHeuristic", counter.Source);
+        Assert.Contains(counter.CandidateAnchors, candidate => candidate.DefinitionId == "GL_SELF");
+        Assert.True(counter.RequiresDatacronVerification);
+        Assert.Contains(battlePlan.Warnings, warning => warning.Contains("No historical GAC rounds", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task GetAsync_WhenOpponentIsUnavailable_DoesNotRefreshOrRunScouting()
     {
+        const long playerAllyCode = 123456789;
+        const long opponentAllyCode = 987654321;
         var source = new FakeOpponentSource(CurrentGacOpponentLookup.Unavailable(
             CurrentGacOpponentStatus.NoActiveEvent,
             "No active event."));
         var scouting = new RecordingScoutingService();
-        var profiles = new RecordingPlayerProfileService(987654321);
-        var roster = new RecordingPlayerRosterService(987654321);
+        var profiles = new RecordingPlayerProfileService(playerAllyCode, opponentAllyCode);
+        var roster = new RecordingPlayerRosterService(playerAllyCode, opponentAllyCode);
         var service = new CurrentGacScoutingService(source, scouting, profiles, roster);
 
         CurrentGacScoutingResult result = await service.GetAsync(
-            123456789,
+            playerAllyCode,
             GacFormat.ThreeVsThree,
             30,
             TestContext.Current.CancellationToken);
@@ -81,6 +99,7 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Equal(0, profiles.RefreshCallCount);
         Assert.Equal(0, roster.CallCount);
         Assert.Null(result.RosterScouting);
+        Assert.Null(result.BattlePlan);
     }
 
     private sealed class FakeOpponentSource : ICurrentGacOpponentSource
@@ -125,10 +144,12 @@ public sealed class CurrentGacScoutingServiceTests
         }
     }
 
-    private sealed class RecordingPlayerProfileService(long opponentAllyCode) : IPlayerProfileService
+    private sealed class RecordingPlayerProfileService(long playerAllyCode, long opponentAllyCode) : IPlayerProfileService
     {
-        public int RefreshCallCount { get; private set; }
-        public long LastRefreshAllyCode { get; private set; }
+        private readonly List<long> refreshedAllyCodes = [];
+
+        public int RefreshCallCount => refreshedAllyCodes.Count;
+        public IReadOnlyCollection<long> RefreshedAllyCodes => refreshedAllyCodes;
 
         public Task<PlayerProfile?> GetAsync(long allyCode, CancellationToken cancellationToken = default) =>
             Task.FromResult<PlayerProfile?>(null);
@@ -143,8 +164,26 @@ public sealed class CurrentGacScoutingServiceTests
             long allyCode,
             CancellationToken cancellationToken = default)
         {
-            RefreshCallCount++;
-            LastRefreshAllyCode = allyCode;
+            refreshedAllyCodes.Add(allyCode);
+            if (allyCode == playerAllyCode)
+            {
+                return Task.FromResult(PlayerProfile.Import(
+                    playerAllyCode,
+                    "player-id",
+                    "Player",
+                    null,
+                    null,
+                    85,
+                    11_000_000,
+                    DateTimeOffset.Parse("2026-09-13T14:00:00Z"),
+                    [
+                        new RosterUnit("gl-self", "GL_SELF", 85, 7, 13, 9, 6, 55_000, false, 6, 1),
+                        new RosterUnit("omi-self", "OMI_SELF", 85, 7, 13, 8, 6, 45_000, false, 4, 1),
+                        new RosterUnit("ship-self", "SHIP_SELF", 85, 7, 1, 0, 0, 75_000, true)
+                    ]));
+            }
+
+            Assert.Equal(opponentAllyCode, allyCode);
             return Task.FromResult(PlayerProfile.Import(
                 opponentAllyCode,
                 "opponent-player-id",
@@ -161,7 +200,7 @@ public sealed class CurrentGacScoutingServiceTests
         }
     }
 
-    private sealed class RecordingPlayerRosterService(long opponentAllyCode) : IPlayerRosterService
+    private sealed class RecordingPlayerRosterService(long playerAllyCode, long opponentAllyCode) : IPlayerRosterService
     {
         public int CallCount { get; private set; }
 
@@ -171,17 +210,11 @@ public sealed class CurrentGacScoutingServiceTests
             CancellationToken cancellationToken = default)
         {
             CallCount++;
-            Assert.Equal(opponentAllyCode, allyCode);
+            Assert.True(allyCode == playerAllyCode || allyCode == opponentAllyCode);
 
-            PlayerRosterUnit[] items = query.Type == PlayerRosterUnitType.Ship
-                ? [Unit("ship", "SHIP_TEST", "Capital Ship", 70_000, isShip: true)]
-                : query.HasOmicron is true
-                    ? [Unit("gl", "GL_TEST", "Legend", 50_000, tags: ["galactic_legend"], omicrons: 1)]
-                    :
-                    [
-                        Unit("gl", "GL_TEST", "Legend", 50_000, tags: ["galactic_legend"], omicrons: 1),
-                        Unit("char", "CHAR_TEST", "Character", 40_000)
-                    ];
+            PlayerRosterUnit[] items = allyCode == playerAllyCode
+                ? PlayerItems(query)
+                : OpponentItems(query);
 
             return Task.FromResult<PlayerRosterPage?>(new PlayerRosterPage(
                 allyCode,
@@ -193,12 +226,33 @@ public sealed class CurrentGacScoutingServiceTests
                 items));
         }
 
+        private static PlayerRosterUnit[] PlayerItems(PlayerRosterQuery query) => query.Type == PlayerRosterUnitType.Ship
+            ? [Unit("ship-self", "SHIP_SELF", "Player Capital Ship", 75_000, isShip: true)]
+            : query.HasOmicron is true
+                ? [Unit("omi-self", "OMI_SELF", "Player Omicron", 45_000, relic: 8, omicrons: 1)]
+                :
+                [
+                    Unit("gl-self", "GL_SELF", "Player Legend", 55_000, relic: 9, tags: ["galactic_legend"], omicrons: 1),
+                    Unit("omi-self", "OMI_SELF", "Player Omicron", 45_000, relic: 8, omicrons: 1)
+                ];
+
+        private static PlayerRosterUnit[] OpponentItems(PlayerRosterQuery query) => query.Type == PlayerRosterUnitType.Ship
+            ? [Unit("ship", "SHIP_TEST", "Opponent Capital Ship", 70_000, isShip: true)]
+            : query.HasOmicron is true
+                ? [Unit("gl", "GL_TEST", "Opponent Legend", 50_000, relic: 9, tags: ["galactic_legend"], omicrons: 1)]
+                :
+                [
+                    Unit("gl", "GL_TEST", "Opponent Legend", 50_000, relic: 9, tags: ["galactic_legend"], omicrons: 1),
+                    Unit("char", "CHAR_TEST", "Opponent Character", 40_000, relic: 8)
+                ];
+
         private static PlayerRosterUnit Unit(
             string id,
             string definitionId,
             string name,
             long gp,
             bool isShip = false,
+            int relic = 9,
             IReadOnlyCollection<string>? tags = null,
             int omicrons = 0) => new(
                 id,
@@ -211,7 +265,7 @@ public sealed class CurrentGacScoutingServiceTests
                 85,
                 7,
                 isShip ? 1 : 13,
-                isShip ? 0 : 9,
+                isShip ? 0 : relic,
                 isShip ? 0 : 6,
                 gp,
                 isShip,
