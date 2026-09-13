@@ -123,7 +123,13 @@ internal static class GacPlannerOptimizationEndpoints
         decimal? WinRate,
         decimal? OneShotRate,
         decimal? AverageBanners,
-        int? Uses)
+        int? Uses,
+        decimal TacticalAdjustment,
+        decimal? TeamAverageSpeed,
+        decimal? DefenseAverageSpeed,
+        decimal? TeamModSpeedBonus,
+        decimal? DefenseModSpeedBonus,
+        string DatacronStatus)
     {
         public static OptimizationRecommendationResponse From(GacAttackOptimizationRecommendation recommendation) => new(
             recommendation.DefenseId,
@@ -139,6 +145,12 @@ internal static class GacPlannerOptimizationEndpoints
             recommendation.WinRate,
             recommendation.OneShotRate,
             recommendation.AverageBanners,
-            recommendation.Uses);
+            recommendation.Uses,
+            recommendation.TacticalAdjustment,
+            recommendation.TeamAverageSpeed,
+            recommendation.DefenseAverageSpeed,
+            recommendation.TeamModSpeedBonus,
+            recommendation.DefenseModSpeedBonus,
+            recommendation.DatacronStatus);
     }
 }
