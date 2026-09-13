@@ -173,7 +173,7 @@ public sealed record ConquestFeat(
     }
 }
 
-public sealed class ConquestPlan
+public sealed partial class ConquestPlan
 {
     public const int DefaultStaminaCostPerBattle = 10;
     public const int DefaultReserveFloorPercent = 40;
