@@ -28,6 +28,9 @@ public sealed class PlayerHistoryServiceTests
         public long AllyCode { get; private set; }
         public int Limit { get; private set; }
 
+        public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
         public Task UpsertAsync(PlayerSnapshot snapshot, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 

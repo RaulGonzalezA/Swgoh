@@ -37,6 +37,7 @@ internal sealed class PlayerProfileService(
         PlayerProfile? existing = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
         if (IsFreshImportedProfile(existing))
         {
+            await EnsureSnapshotExistsAsync(existing!, cancellationToken).ConfigureAwait(false);
             return existing!;
         }
 
@@ -45,6 +46,7 @@ internal sealed class PlayerProfileService(
         existing = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
         if (IsFreshImportedProfile(existing))
         {
+            await EnsureSnapshotExistsAsync(existing!, cancellationToken).ConfigureAwait(false);
             return existing!;
         }
 
@@ -79,6 +81,15 @@ internal sealed class PlayerProfileService(
         await repository.UpsertAsync(player, cancellationToken).ConfigureAwait(false);
         await snapshotRepository.UpsertAsync(PlayerRosterMetrics.CreateSnapshot(player), cancellationToken).ConfigureAwait(false);
         return player;
+    }
+
+    private async Task EnsureSnapshotExistsAsync(PlayerProfile player, CancellationToken cancellationToken)
+    {
+        PlayerSnapshot snapshot = PlayerRosterMetrics.CreateSnapshot(player);
+        if (!await snapshotRepository.ExistsAsync(snapshot.Id, cancellationToken).ConfigureAwait(false))
+        {
+            await snapshotRepository.UpsertAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private bool IsFreshImportedProfile(PlayerProfile? player) =>

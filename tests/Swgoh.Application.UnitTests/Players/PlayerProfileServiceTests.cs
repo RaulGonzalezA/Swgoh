@@ -30,6 +30,7 @@ public sealed class PlayerProfileServiceTests
         Assert.Equal(2, result.Roster.Count);
         Assert.Same(result, repository.SavedPlayer);
         Assert.Equal(1, client.CallCount);
+        Assert.Equal(1, snapshots.UpsertCallCount);
 
         PlayerSnapshot snapshot = Assert.IsType<PlayerSnapshot>(snapshots.SavedSnapshot);
         Assert.Equal(70_000, snapshot.GalacticPower);
@@ -43,19 +44,30 @@ public sealed class PlayerProfileServiceTests
     }
 
     [Fact]
-    public async Task RefreshFromGameAsync_WhenImportedProfileIsFresh_ReturnsStoredProfileWithoutProviderCall()
+    public async Task RefreshFromGameAsync_WhenImportedProfileAndSnapshotAreFresh_ReturnsStoredProfileWithoutProviderCall()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
-        PlayerProfile stored = PlayerProfile.Import(
-            476_825_771,
-            "player-id",
-            "Aberronko",
-            "guild-id",
-            "Guild",
-            85,
-            70_000,
-            FixedNow - TimeSpan.FromMinutes(4),
-            []);
+        PlayerProfile stored = CreateStoredProfile(FixedNow - TimeSpan.FromMinutes(4));
+        var repository = new FakePlayerRepository { Player = stored };
+        var snapshots = new FakePlayerSnapshotRepository();
+        snapshots.Seed(PlayerRosterMetrics.CreateSnapshot(stored));
+        var client = new FakePlayerClient();
+        var service = CreateService(repository, snapshots, client);
+
+        PlayerProfile result = await service.RefreshFromGameAsync(476_825_771, cancellationToken);
+
+        Assert.Same(stored, result);
+        Assert.Equal(0, client.CallCount);
+        Assert.Equal(1, snapshots.ExistsCallCount);
+        Assert.Equal(0, snapshots.UpsertCallCount);
+        Assert.Null(repository.SavedPlayer);
+    }
+
+    [Fact]
+    public async Task RefreshFromGameAsync_WhenFreshImportedProfileHasNoSnapshot_RepairsSnapshotWithoutProviderCall()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        PlayerProfile stored = CreateStoredProfile(FixedNow - TimeSpan.FromMinutes(4));
         var repository = new FakePlayerRepository { Player = stored };
         var snapshots = new FakePlayerSnapshotRepository();
         var client = new FakePlayerClient();
@@ -65,8 +77,37 @@ public sealed class PlayerProfileServiceTests
 
         Assert.Same(stored, result);
         Assert.Equal(0, client.CallCount);
-        Assert.Equal(0, snapshots.SaveCount);
+        Assert.Equal(1, snapshots.ExistsCallCount);
+        Assert.Equal(1, snapshots.UpsertCallCount);
+        Assert.Equal(PlayerRosterMetrics.CreateSnapshot(stored).Id, snapshots.SavedSnapshot?.Id);
         Assert.Null(repository.SavedPlayer);
+    }
+
+    [Fact]
+    public async Task RefreshFromGameAsync_WhenSnapshotWriteFails_NextRefreshRepairsWithoutCallingProviderAgain()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        var repository = new FakePlayerRepository();
+        var snapshots = new FakePlayerSnapshotRepository { FailuresRemaining = 1 };
+        var client = new FakePlayerClient(CreateImportedPlayer());
+        var service = CreateService(repository, snapshots, client);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RefreshFromGameAsync(476_825_771, cancellationToken));
+
+        PlayerProfile persisted = Assert.IsType<PlayerProfile>(repository.Player);
+        Assert.Equal(FixedNow, persisted.UpdatedAtUtc);
+        Assert.Equal(1, client.CallCount);
+        Assert.Equal(1, snapshots.UpsertCallCount);
+        Assert.Null(snapshots.SavedSnapshot);
+
+        PlayerProfile repaired = await service.RefreshFromGameAsync(476_825_771, cancellationToken);
+
+        Assert.Same(persisted, repaired);
+        Assert.Equal(1, client.CallCount);
+        Assert.Equal(1, snapshots.ExistsCallCount);
+        Assert.Equal(2, snapshots.UpsertCallCount);
+        Assert.Equal(PlayerRosterMetrics.CreateSnapshot(persisted).Id, snapshots.SavedSnapshot?.Id);
     }
 
     [Fact]
@@ -88,7 +129,7 @@ public sealed class PlayerProfileServiceTests
         Assert.Equal("player-id", result.PlayerId);
         Assert.Equal("Aberronko", result.Name);
         Assert.Equal(1, client.CallCount);
-        Assert.Equal(1, snapshots.SaveCount);
+        Assert.Equal(1, snapshots.UpsertCallCount);
     }
 
     [Fact]
@@ -122,7 +163,8 @@ public sealed class PlayerProfileServiceTests
         PlayerProfile[] results = await Task.WhenAll(firstRefresh, secondRefresh);
 
         Assert.Equal(1, client.CallCount);
-        Assert.Equal(1, snapshots.SaveCount);
+        Assert.Equal(1, snapshots.UpsertCallCount);
+        Assert.Equal(1, snapshots.ExistsCallCount);
         Assert.Same(results[0], results[1]);
     }
 
@@ -155,6 +197,21 @@ public sealed class PlayerProfileServiceTests
         FakePlayerClient client,
         PlayerRefreshLock? refreshLock = null) =>
         new(repository, snapshots, client, new FakeClock(FixedNow), refreshLock ?? new PlayerRefreshLock());
+
+    private static PlayerProfile CreateStoredProfile(DateTimeOffset updatedAtUtc) =>
+        PlayerProfile.Import(
+            476_825_771,
+            "player-id",
+            "Aberronko",
+            "guild-id",
+            "Guild",
+            85,
+            70_000,
+            updatedAtUtc,
+            [
+                new RosterUnit("char-1", "CHARACTER", 85, 7, 13, 9, 6, 40_000, false, 2, 1),
+                new RosterUnit("ship-1", "SHIP", 85, 7, 1, 0, 0, 30_000, true)
+            ]);
 
     private static ImportedPlayer CreateImportedPlayer() =>
         new(
@@ -228,15 +285,48 @@ public sealed class PlayerProfileServiceTests
 
     private sealed class FakePlayerSnapshotRepository : IPlayerSnapshotRepository
     {
-        private int saveCount;
+        private readonly object sync = new();
+        private readonly HashSet<string> ids = new(StringComparer.Ordinal);
+        private int existsCallCount;
+        private int upsertCallCount;
 
         public PlayerSnapshot? SavedSnapshot { get; private set; }
-        public int SaveCount => Volatile.Read(ref saveCount);
+        public int ExistsCallCount => Volatile.Read(ref existsCallCount);
+        public int UpsertCallCount => Volatile.Read(ref upsertCallCount);
+        public int FailuresRemaining { get; set; }
+
+        public void Seed(PlayerSnapshot snapshot)
+        {
+            lock (sync)
+            {
+                ids.Add(snapshot.Id);
+            }
+        }
+
+        public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref existsCallCount);
+            lock (sync)
+            {
+                return Task.FromResult(ids.Contains(id));
+            }
+        }
 
         public Task UpsertAsync(PlayerSnapshot snapshot, CancellationToken cancellationToken = default)
         {
-            SavedSnapshot = snapshot;
-            Interlocked.Increment(ref saveCount);
+            Interlocked.Increment(ref upsertCallCount);
+            lock (sync)
+            {
+                if (FailuresRemaining > 0)
+                {
+                    FailuresRemaining--;
+                    return Task.FromException(new InvalidOperationException("Simulated snapshot persistence failure."));
+                }
+
+                SavedSnapshot = snapshot;
+                ids.Add(snapshot.Id);
+            }
+
             return Task.CompletedTask;
         }
 

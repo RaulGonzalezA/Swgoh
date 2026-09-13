@@ -14,6 +14,24 @@ namespace Swgoh.Infrastructure.IntegrationTests.Persistence;
 public sealed class PlayerSnapshotMongoRepositoryTests(MongoDbContainerFixture fixture)
 {
     [Fact]
+    public async Task ExistsAsync_ReturnsWhetherSnapshotExists()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        PlayerSnapshotMongoRepository repository = CreateRepository();
+        PlayerSnapshot snapshot = CreateSnapshot(
+            "476825771:1",
+            476_825_771,
+            new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero),
+            10);
+
+        Assert.False(await repository.ExistsAsync(snapshot.Id, cancellationToken));
+
+        await repository.UpsertAsync(snapshot, cancellationToken);
+
+        Assert.True(await repository.ExistsAsync(snapshot.Id, cancellationToken));
+    }
+
+    [Fact]
     public async Task GetRecentAsync_FiltersByPlayerOrdersDescendingAndAppliesLimit()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
