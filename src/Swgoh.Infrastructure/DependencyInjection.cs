@@ -114,7 +114,8 @@ public static class DependencyInjection
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
-        services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkGacOpponentSource>();
+        services.AddSingleton<SwgohComlinkGacOpponentSource>();
+        services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkCurrentRoundOpponentSource>();
         return services;
     }
 }
