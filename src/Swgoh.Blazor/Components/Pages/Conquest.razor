@@ -439,6 +439,143 @@ else
         }
     </section>
 
+    <section class="conquest-panel conquest-daily-panel">
+        <div class="conquest-panel-heading">
+            <div>
+                <span class="section-kicker">Plan del día</span>
+                <h2>Ordena los próximos combates, no solo el siguiente</h2>
+                <p>Simula progreso y stamina combate a combate, cambia de equipo cuando conviene y recomienda el preset de discos adecuado para cada paso.</p>
+            </div>
+            <div class="conquest-daily-controls">
+                <label>
+                    <span>Combates a planificar</span>
+                    <input type="number" min="1" max="20" @bind="DailyPlanBattles" />
+                </label>
+                <button class="primary-button" @onclick="BuildDailyPlanAsync" disabled="@(PlanningDay || Feats.Count == 0)">
+                    @(PlanningDay ? "Planificando…" : "Generar plan diario")
+                </button>
+            </div>
+        </div>
+        <p class="conquest-daily-note">Es una proyección: generar el plan guarda tu configuración actual, pero no aplica automáticamente los resultados ni descuenta stamina real.</p>
+
+        @if (DailyPlan is not null)
+        {
+            <div class="conquest-daily-summary">
+                <div><span>Combates</span><strong>@DailyPlan.PlannedBattles / @DailyPlan.RequestedBattles</strong><small>secuencia propuesta</small></div>
+                <div><span>Hazañas cerradas</span><strong>@DailyPlan.ProjectedCompletedFeats</strong><small>completadas en la simulación</small></div>
+                <div><span>Pendientes después</span><strong>@DailyPlan.ProjectedRemainingFeats</strong><small>del conjunto inicial</small></div>
+                <div><span>Fin del plan</span><strong>@DailyPlan.PlannedBattles</strong><small>@DailyStopReason(DailyPlan.StopReason)</small></div>
+            </div>
+
+            @if (DailyPlan.Steps.Count == 0)
+            {
+                <div class="conquest-empty"><strong>No hay combates planificables.</strong><p>@DailyStopReason(DailyPlan.StopReason)</p></div>
+            }
+            else
+            {
+                <div class="conquest-daily-timeline">
+                    @foreach (ConquestDailyPlanApiClient.DailyPlanStepViewModel step in DailyPlan.Steps)
+                    {
+                        <article class="conquest-daily-step">
+                            <div class="conquest-daily-step-index"><span>Combate</span><strong>@step.BattleNumber</strong></div>
+                            <div class="conquest-daily-step-content">
+                                <div class="conquest-daily-step-heading">
+                                    <div><h3>@step.FeatProgress.Count hazaña(s) avanzan</h3><p>@step.Rationale</p></div>
+                                    <div class="conquest-daily-step-badges">
+                                        @if (step.ChangesTeamFromPrevious)
+                                        {
+                                            <span class="rotate">↻ Cambiar equipo</span>
+                                        }
+                                        @if (step.ChangesLoadoutFromPrevious)
+                                        {
+                                            <span class="rotate">◈ Cambiar preset</span>
+                                        }
+                                        @if (step.ReserveRiskUnits > 0)
+                                        {
+                                            <span>⚠ @step.ReserveRiskUnits bajo reserva</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="rich-squad conquest-daily-team" aria-label="Equipo del combate @step.BattleNumber">
+                                    @{ bool dailyLeader = true; }
+                                    @foreach (ConquestDailyPlanApiClient.UnitViewModel unit in step.Team)
+                                    {
+                                        PlayerApiClient.RosterUnitViewModel? rosterUnit = FindRosterUnit(unit.DefinitionId);
+                                        <div class="conquest-stamina-portrait">
+                                            <RichUnitPortrait Name="@unit.Name"
+                                                              ThumbnailName="@unit.ThumbnailName"
+                                                              RelicTier="@unit.RelicTier"
+                                                              Speed="@(unit.Speed ?? rosterUnit?.Stats?.Speed)"
+                                                              EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                              SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                              ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                              IsLeader="@dailyLeader" />
+                                            <span class="conquest-stamina-badge @StaminaCss(unit.CurrentStamina)">@unit.CurrentStamina% → @unit.ExpectedPostBattleStamina%</span>
+                                        </div>
+                                        dailyLeader = false;
+                                    }
+                                </div>
+
+                                @if (step.DiskLoadout is not null)
+                                {
+                                    <div class="conquest-daily-loadout">
+                                        <div><span>Preset de discos</span><strong>@step.DiskLoadout.LoadoutName</strong><small>@step.DiskLoadout.CapacityUsed / @step.DiskLoadout.CapacityLimit cap · bonus @step.DiskLoadout.PlannerBonus.ToString("0.#")</small></div>
+                                        <div class="conquest-daily-disk-chips">
+                                            @foreach (ConquestDailyPlanApiClient.DataDiskViewModel disk in step.DiskLoadout.Disks)
+                                            {
+                                                <span>@disk.Name</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="conquest-daily-feats">
+                                    @foreach (ConquestDailyPlanApiClient.FeatProgressViewModel feat in step.FeatProgress)
+                                    {
+                                        <div class="conquest-daily-feat @(feat.CompletedByBattle ? "complete" : string.Empty)">
+                                            <strong>@feat.FeatName</strong>
+                                            <span>@feat.BeforeProgress → @feat.AfterProgress / @feat.Target @(feat.CompletedByBattle ? "· completada" : string.Empty)</span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="conquest-daily-meta">
+                                    <span>score <strong>@step.Score.ToString("0.#")</strong></span>
+                                    <span>valor hazañas <strong>@step.FeatEfficiency.ToString("0.##")</strong></span>
+                                    <span>stamina <strong>@step.AverageStaminaBefore.ToString("0")% → @step.AverageStaminaAfter.ToString("0")%</strong></span>
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+
+            @if (DailyPlan.RecoveryPriority.Count > 0)
+            {
+                <div class="conquest-daily-recovery">
+                    <h3>Déjalos recuperar después del plan</h3>
+                    <div class="conquest-daily-recovery-list">
+                        @foreach (ConquestDailyPlanApiClient.RecoveryUnitViewModel recovery in DailyPlan.RecoveryPriority)
+                        {
+                            PlayerApiClient.RosterUnitViewModel? rosterUnit = FindRosterUnit(recovery.DefinitionId);
+                            <article class="conquest-daily-recovery-card">
+                                <RichUnitPortrait Name="@recovery.Name"
+                                                  ThumbnailName="@recovery.ThumbnailName"
+                                                  RelicTier="@(rosterUnit?.RelicTier ?? 0)"
+                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                  Compact="true" />
+                                <div class="conquest-daily-recovery-copy"><strong>@recovery.Name</strong><span>@recovery.FinalStamina% · reserva @recovery.ReserveFloorPercent%</span></div>
+                            </article>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </section>
+
     <section class="conquest-panel conquest-optimizer">
         <div class="conquest-panel-heading">
             <div>
