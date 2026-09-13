@@ -2,6 +2,8 @@
 @implements IDisposable
 @using Swgoh.Blazor.State
 @inject PlayerSessionState Session
+@inject PlayerContextService PlayerContext
+@inject NavigationManager Navigation
 
 <div class="command-shell">
     <aside class="command-sidebar" aria-label="Navegación principal">
@@ -91,12 +93,71 @@
 </div>
 
 @code {
+    private bool contextRestored;
+
     protected override void OnInitialized()
     {
         Session.Changed += OnSessionChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || contextRestored)
+        {
+            return;
+        }
+
+        contextRestored = true;
+        await RestoreContextForCurrentLocationAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        long? routeAllyCode = TryGetRouteAllyCode(args.Location);
+        if (routeAllyCode is not long allyCode || Session.AllyCode == allyCode)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            await PlayerContext.ActivateAsync(allyCode);
+            StateHasChanged();
+        });
+    }
+
+    private async Task RestoreContextForCurrentLocationAsync()
+    {
+        long? routeAllyCode = TryGetRouteAllyCode(Navigation.Uri);
+        if (routeAllyCode is long allyCode)
+        {
+            if (await PlayerContext.ActivateAsync(allyCode))
+            {
+                return;
+            }
+        }
+
+        await PlayerContext.RestoreAsync();
+    }
+
+    private static long? TryGetRouteAllyCode(string location)
+    {
+        string[] segments = new Uri(location).AbsolutePath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 2 ||
+            (segments[0] is not "player" and not "gac" and not "conquest"))
+        {
+            return null;
+        }
+
+        return long.TryParse(segments[1], out long allyCode) && allyCode is >= 100_000_000 and <= 999_999_999
+            ? allyCode
+            : null;
+    }
 
     private static string PlayerInitials(string? name)
     {
@@ -118,5 +179,6 @@
     public void Dispose()
     {
         Session.Changed -= OnSessionChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
     }
 }
