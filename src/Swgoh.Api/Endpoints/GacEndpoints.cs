@@ -19,6 +19,8 @@ internal static class GacEndpoints
             .WithSummary("Get GAC defense requirements for a league and format");
         group.MapGet("/defense-requirements/transition", GetLeagueTransition)
             .WithSummary("Compare GAC defense requirements between two leagues");
+        group.MapGet("/players/{allyCode:long}/current-opponent/scouting", GetCurrentOpponentScoutingAsync)
+            .WithSummary("Detect the current GAC opponent and analyze only the active GAC format");
         group.MapPost("/opponents/{allyCode:long}/history", ImportHistoryAsync)
             .WithSummary("Import normalized historical GAC rounds for an opponent");
         group.MapGet("/opponents/{allyCode:long}/history", GetHistoryAsync)
@@ -55,6 +57,43 @@ internal static class GacEndpoints
                 ParseLeague(toLeague),
                 ParseFormat(format));
             return Results.Ok(GacLeagueTransitionResponse.From(transition));
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> GetCurrentOpponentScoutingAsync(
+        long allyCode,
+        string? format,
+        int? maxRounds,
+        ICurrentGacScoutingService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            GacFormat? formatOverride = string.IsNullOrWhiteSpace(format) ? null : ParseFormat(format);
+            CurrentGacScoutingResult result = await service.GetAsync(
+                allyCode,
+                formatOverride,
+                maxRounds ?? 30,
+                cancellationToken);
+
+            if (result.Lookup.Status == CurrentGacOpponentStatus.Found && result.Lookup.Opponent is not null)
+            {
+                return Results.Ok(CurrentGacScoutingResponse.From(result));
+            }
+
+            CurrentGacLookupResponse unavailable = CurrentGacLookupResponse.From(result.Lookup);
+            return result.Lookup.Status switch
+            {
+                CurrentGacOpponentStatus.NoActiveEvent or CurrentGacOpponentStatus.PlayerNotJoined =>
+                    Results.NotFound(unavailable),
+                CurrentGacOpponentStatus.OpponentUnavailable or CurrentGacOpponentStatus.FormatUnavailable =>
+                    Results.Conflict(unavailable),
+                _ => Results.Problem(statusCode: StatusCodes.Status502BadGateway)
+            };
         }
         catch (ArgumentException exception)
         {
@@ -257,6 +296,55 @@ internal static class GacEndpoints
             round.Source,
             round.Defenses,
             round.OffenseBattles);
+    }
+
+    internal sealed record CurrentGacScoutingResponse(
+        CurrentGacOpponentResponse Opponent,
+        OpponentScoutingResponse? Scouting)
+    {
+        public static CurrentGacScoutingResponse From(CurrentGacScoutingResult result)
+        {
+            CurrentGacOpponent opponent = result.Lookup.Opponent
+                ?? throw new InvalidOperationException("A found lookup must contain an opponent.");
+            return new CurrentGacScoutingResponse(
+                CurrentGacOpponentResponse.From(opponent),
+                result.Scouting is null ? null : OpponentScoutingResponse.From(result.Scouting));
+        }
+    }
+
+    internal sealed record CurrentGacOpponentResponse(
+        long PlayerAllyCode,
+        long OpponentAllyCode,
+        string OpponentName,
+        string? OpponentPlayerId,
+        string League,
+        string Format,
+        string EventId,
+        string EventInstanceId,
+        string BracketId,
+        int? RoundNumber,
+        string FormatSource,
+        string OpponentResolutionMethod)
+    {
+        public static CurrentGacOpponentResponse From(CurrentGacOpponent opponent) => new(
+            opponent.PlayerAllyCode,
+            opponent.OpponentAllyCode,
+            opponent.OpponentName,
+            opponent.OpponentPlayerId,
+            opponent.League.ToString(),
+            FormatName(opponent.Format),
+            opponent.EventId,
+            opponent.EventInstanceId,
+            opponent.BracketId,
+            opponent.RoundNumber,
+            opponent.FormatSource,
+            opponent.OpponentResolutionMethod);
+    }
+
+    internal sealed record CurrentGacLookupResponse(string Status, string? Message)
+    {
+        public static CurrentGacLookupResponse From(CurrentGacOpponentLookup lookup) =>
+            new(lookup.Status.ToString(), lookup.Message);
     }
 
     internal sealed record OpponentScoutingResponse(

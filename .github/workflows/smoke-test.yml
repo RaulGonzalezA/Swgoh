@@ -150,6 +150,7 @@ jobs:
           api_root="http://127.0.0.1:5080"
           base_url="${api_root}/api/v1/players/${SWGOH_TEST_ALLY_CODE}"
           gac_opponent_url="${api_root}/api/v1/gac/opponents/${SWGOH_TEST_ALLY_CODE}"
+          current_gac_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting"
 
           curl --fail-with-body --silent --show-error "${api_root}/openapi/v1.json" --output smoke-results/openapi-v1.json
           curl --fail-with-body --silent --show-error "${api_root}/scalar" --output smoke-results/scalar.html
@@ -159,6 +160,7 @@ jobs:
           jq -e '.paths | has("/api/v1/squads/{id}")' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/gac/defense-requirements")' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/gac/defense-requirements/transition")' smoke-results/openapi-v1.json > /dev/null
+          jq -e '.paths | has("/api/v1/gac/players/{allyCode}/current-opponent/scouting")' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/gac/opponents/{allyCode}/history")' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/gac/opponents/{allyCode}/scouting")' smoke-results/openapi-v1.json > /dev/null
 
@@ -168,6 +170,27 @@ jobs:
           curl --fail-with-body --silent --show-error \
             "${api_root}/api/v1/gac/defense-requirements/transition?fromLeague=Aurodium&toLeague=Kyber&format=3v3" \
             --output smoke-results/gac-transition.json
+
+          current_gac_status=$(curl --silent --show-error \
+            "${current_gac_url}?maxRounds=10" \
+            --output smoke-results/current-gac.json \
+            --write-out '%{http_code}')
+          case "${current_gac_status}" in
+            200)
+              jq -e '.opponent.playerAllyCode > 0 and .opponent.opponentAllyCode > 0 and (.opponent.format == "3v3" or .opponent.format == "5v5")' smoke-results/current-gac.json > /dev/null
+              if jq -e '.scouting != null' smoke-results/current-gac.json > /dev/null; then
+                jq -e '.scouting.format == .opponent.format' smoke-results/current-gac.json > /dev/null
+              fi
+              ;;
+            404|409)
+              jq -e '.status | type == "string" and length > 0' smoke-results/current-gac.json > /dev/null
+              ;;
+            *)
+              echo "Unexpected current GAC scouting status: ${current_gac_status}"
+              cat smoke-results/current-gac.json
+              exit 1
+              ;;
+          esac
 
           curl --fail-with-body --silent --show-error --request POST "${base_url}/refresh" --output smoke-results/refresh.json
 
@@ -320,6 +343,11 @@ jobs:
           jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
           jq '{id, name, format, use, tags, leader: .variants[0].leader.name, members: [.variants[0].members[].name]}' smoke-results/squad.json
           jq '{roundsAnalyzed, latestObservedLeague, targetLeague, requiredSquadDefenses, requiredFleetDefenses, additionalUnobservedSquadSlots, additionalUnobservedFleetSlots, fullClearRate, averageFirstAttackDelayMinutes, defense: .defensePatterns[0] | {leader: .leader.name, squadDefinitionName, variantName, placementRate, averageHolds, holdRate, confidence}, counter: .counterPatterns[0] | {defenderLeader: .defenderLeader.name, attackerLeader: .attackerLeader.name, uses, wins, winRate, oneShots, oneShotRate, averageBanners}}' smoke-results/gac-scouting.json
+          if [[ "${current_gac_status}" = "200" ]]; then
+            jq '{opponent: .opponent | {opponentAllyCode, opponentName, league, format, roundNumber, formatSource, opponentResolutionMethod}, scoutingFormat: .scouting.format}' smoke-results/current-gac.json
+          else
+            jq '{status, message}' smoke-results/current-gac.json
+          fi
 
       - name: Upload live smoke responses
         if: always()

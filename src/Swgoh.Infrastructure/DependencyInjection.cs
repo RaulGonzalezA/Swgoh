@@ -103,12 +103,18 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
         });
+        services.AddHttpClient(SwgohComlinkGacOpponentSource.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
+            client.Timeout = TimeSpan.FromSeconds(120);
+        });
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
+        services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkGacOpponentSource>();
         return services;
     }
 }
