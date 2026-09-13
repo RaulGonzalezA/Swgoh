@@ -12,8 +12,9 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
     internal const string HttpClientName = "SwgohComlinkGac";
 
     private const int BracketSize = 8;
-    private const int EstimatedBracketRadius = 96;
-    private const int FallbackBracketLimit = 2048;
+    private const int InitialBoundaryProbe = 1024;
+    private const int MaxBoundaryProbe = 131072;
+    private const int BracketBatchSize = 16;
     private static readonly TimeSpan PositiveCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan NegativeCacheDuration = TimeSpan.FromMinutes(1);
 
@@ -24,7 +25,7 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         GacFormat? formatOverride,
         CancellationToken cancellationToken = default)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
+        if (!IsValidAllyCode(allyCode))
         {
             throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
         }
@@ -49,16 +50,8 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         GacFormat? formatOverride,
         CancellationToken cancellationToken)
     {
-        using JsonDocument arena = await PostAsync(
-            "playerArena",
-            new
-            {
-                payload = new { allyCode = allyCode.ToString(), playerDetailsOnly = true },
-                enums = false
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        string? playerId = ReadString(arena.RootElement, "playerId");
+        using JsonDocument arena = await GetPlayerArenaByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        string? playerId = ReadString(arena.RootElement, "playerId") ?? ReadString(arena.RootElement, "id");
         GacLeague? league = ReadLeague(arena.RootElement);
         SeasonContext? season = ReadCurrentSeason(arena.RootElement);
 
@@ -82,6 +75,13 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
                 "The player's current GAC league could not be determined.");
         }
 
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            return CurrentGacOpponentLookup.Unavailable(
+                CurrentGacOpponentStatus.PlayerNotJoined,
+                "Comlink did not expose the player's internal id required to locate the active GAC bracket.");
+        }
+
         (GacFormat? format, string source) = ResolveFormat(formatOverride, season, activeEvent);
         if (format is null)
         {
@@ -95,7 +95,6 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             playerId,
             league.Value,
             activeEvent.EventInstanceId,
-            season?.Rank,
             cancellationToken).ConfigureAwait(false);
         if (match is null)
         {
@@ -104,7 +103,12 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
                 "The player was not found in the active GAC brackets for the detected league.");
         }
 
-        Participant? opponent = ResolveOpponent(match.Value.Players, match.Value.PlayerIndex, playerId, allyCode, out string resolutionMethod);
+        Participant? opponent = ResolveOpponent(
+            match.Value.Players,
+            match.Value.PlayerIndex,
+            playerId,
+            allyCode,
+            out string resolutionMethod);
         if (opponent is null)
         {
             return CurrentGacOpponentLookup.Unavailable(
@@ -112,11 +116,19 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
                 "The bracket was found, but the current opponent could not be resolved from the public bracket data.");
         }
 
+        ParticipantProfile? opponentProfile = await ResolveProfileAsync(opponent, cancellationToken).ConfigureAwait(false);
+        if (opponentProfile is null)
+        {
+            return CurrentGacOpponentLookup.Unavailable(
+                CurrentGacOpponentStatus.OpponentUnavailable,
+                "The opponent was resolved in the bracket, but Comlink did not expose a valid ally code for that player.");
+        }
+
         var currentOpponent = new CurrentGacOpponent(
             allyCode,
-            opponent.AllyCode,
-            opponent.Name,
-            opponent.PlayerId,
+            opponentProfile.AllyCode,
+            opponentProfile.Name,
+            opponentProfile.PlayerId,
             league.Value,
             format.Value,
             activeEvent.EventId,
@@ -128,70 +140,179 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         return CurrentGacOpponentLookup.Found(currentOpponent);
     }
 
-    private async Task<BracketMatch?> FindBracketAsync(
-        long allyCode,
-        string? playerId,
-        GacLeague league,
-        string eventInstanceId,
-        int? rank,
+    private Task<JsonDocument> GetPlayerArenaByAllyCodeAsync(long allyCode, CancellationToken cancellationToken) =>
+        PostAsync(
+            "playerArena",
+            new
+            {
+                payload = new { allyCode = allyCode.ToString(), playerDetailsOnly = true },
+                enums = false
+            },
+            cancellationToken);
+
+    private async Task<ParticipantProfile?> ResolveProfileAsync(
+        Participant participant,
         CancellationToken cancellationToken)
     {
-        var checkedIndexes = new HashSet<int>();
-        if (rank is > 0)
+        if (participant.AllyCode is long allyCode && IsValidAllyCode(allyCode))
         {
-            int estimated = Math.Max(0, (rank.Value - 1) / BracketSize);
-            int start = Math.Max(0, estimated - EstimatedBracketRadius);
-            int end = estimated + EstimatedBracketRadius;
-            for (int index = start; index <= end; index++)
-            {
-                checkedIndexes.Add(index);
-                BracketMatch? match = await TryBracketAsync(
-                    index,
-                    allyCode,
-                    playerId,
-                    league,
-                    eventInstanceId,
-                    cancellationToken).ConfigureAwait(false);
-                if (match is not null)
-                {
-                    return match;
-                }
-            }
+            return new ParticipantProfile(allyCode, participant.Name, participant.PlayerId);
         }
 
-        for (int index = 0; index < FallbackBracketLimit; index++)
+        if (string.IsNullOrWhiteSpace(participant.PlayerId))
         {
-            if (!checkedIndexes.Add(index))
-            {
-                continue;
-            }
+            return null;
+        }
 
-            BracketMatch? match = await TryBracketAsync(
-                index,
-                allyCode,
-                playerId,
-                league,
-                eventInstanceId,
-                cancellationToken).ConfigureAwait(false);
-            if (match is not null)
+        using JsonDocument profile = await PostAsync(
+            "playerArena",
+            new
             {
-                return match;
+                payload = new { playerId = participant.PlayerId, playerDetailsOnly = true },
+                enums = false
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (!TryReadLongProperty(profile.RootElement, "allyCode", out long resolvedAllyCode) ||
+            !IsValidAllyCode(resolvedAllyCode))
+        {
+            return null;
+        }
+
+        string name = ReadString(profile.RootElement, "name") ?? participant.Name;
+        string? playerId = ReadString(profile.RootElement, "playerId") ??
+            ReadString(profile.RootElement, "id") ??
+            participant.PlayerId;
+        return new ParticipantProfile(resolvedAllyCode, name, playerId);
+    }
+
+    private async Task<BracketMatch?> FindBracketAsync(
+        long allyCode,
+        string playerId,
+        GacLeague league,
+        string eventInstanceId,
+        CancellationToken cancellationToken)
+    {
+        LeagueBracketRange? range = await ResolveBracketRangeAsync(
+            league,
+            eventInstanceId,
+            cancellationToken).ConfigureAwait(false);
+        if (range is null)
+        {
+            return null;
+        }
+
+        for (int start = 0; start <= range.LastBracketIndex; start += BracketBatchSize)
+        {
+            int count = Math.Min(BracketBatchSize, range.LastBracketIndex - start + 1);
+            Task<BracketData?>[] requests = Enumerable.Range(start, count)
+                .Select(index => ReadBracketAsync(
+                    index,
+                    range.LeagueToken,
+                    eventInstanceId,
+                    cancellationToken))
+                .ToArray();
+            BracketData?[] brackets = await Task.WhenAll(requests).ConfigureAwait(false);
+
+            foreach (BracketData? bracket in brackets)
+            {
+                if (bracket is null)
+                {
+                    continue;
+                }
+
+                int playerIndex = Array.FindIndex(bracket.Players, player =>
+                    string.Equals(player.PlayerId, playerId, StringComparison.Ordinal) ||
+                    player.AllyCode == allyCode);
+                if (playerIndex >= 0)
+                {
+                    return new BracketMatch(bracket.BracketId, bracket.Players, playerIndex);
+                }
             }
         }
 
         return null;
     }
 
-    private async Task<BracketMatch?> TryBracketAsync(
-        int bracketIndex,
-        long allyCode,
-        string? playerId,
+    private async Task<LeagueBracketRange?> ResolveBracketRangeAsync(
         GacLeague league,
         string eventInstanceId,
         CancellationToken cancellationToken)
     {
-        string leagueName = league.ToString().ToUpperInvariant();
-        string bracketId = $"{eventInstanceId}:{leagueName}:{bracketIndex}";
+        string lowerLeague = league.ToString().ToLowerInvariant();
+        int last = await FindLastBracketIndexAsync(lowerLeague, eventInstanceId, cancellationToken).ConfigureAwait(false);
+        if (last >= 0)
+        {
+            return new LeagueBracketRange(lowerLeague, last);
+        }
+
+        string upperLeague = league.ToString().ToUpperInvariant();
+        last = await FindLastBracketIndexAsync(upperLeague, eventInstanceId, cancellationToken).ConfigureAwait(false);
+        return last >= 0 ? new LeagueBracketRange(upperLeague, last) : null;
+    }
+
+    private async Task<int> FindLastBracketIndexAsync(
+        string leagueToken,
+        string eventInstanceId,
+        CancellationToken cancellationToken)
+    {
+        if (!await BracketHasPlayersAsync(0, leagueToken, eventInstanceId, cancellationToken).ConfigureAwait(false))
+        {
+            return -1;
+        }
+
+        int low = 0;
+        int high = InitialBoundaryProbe;
+        while (high < MaxBoundaryProbe &&
+               await BracketHasPlayersAsync(high, leagueToken, eventInstanceId, cancellationToken).ConfigureAwait(false))
+        {
+            low = high;
+            high = Math.Min(high * 2, MaxBoundaryProbe);
+        }
+
+        if (high == MaxBoundaryProbe &&
+            await BracketHasPlayersAsync(high, leagueToken, eventInstanceId, cancellationToken).ConfigureAwait(false))
+        {
+            return MaxBoundaryProbe;
+        }
+
+        while (low < high - 1)
+        {
+            int middle = low + ((high - low) / 2);
+            if (await BracketHasPlayersAsync(middle, leagueToken, eventInstanceId, cancellationToken).ConfigureAwait(false))
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+
+    private async Task<bool> BracketHasPlayersAsync(
+        int bracketIndex,
+        string leagueToken,
+        string eventInstanceId,
+        CancellationToken cancellationToken)
+    {
+        BracketData? bracket = await ReadBracketAsync(
+            bracketIndex,
+            leagueToken,
+            eventInstanceId,
+            cancellationToken).ConfigureAwait(false);
+        return bracket is not null && bracket.Players.Length > 0;
+    }
+
+    private async Task<BracketData?> ReadBracketAsync(
+        int bracketIndex,
+        string leagueToken,
+        string eventInstanceId,
+        CancellationToken cancellationToken)
+    {
+        string bracketId = $"{eventInstanceId}:{leagueToken}:{bracketIndex}";
         using JsonDocument response = await PostAsync(
             "getLeaderboard",
             new
@@ -213,27 +334,31 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             return null;
         }
 
-        Participant[] players = [.. playersElement.EnumerateArray().Select(ReadParticipant).Where(value => value is not null).Select(value => value!)];
-        int playerIndex = Array.FindIndex(players, player =>
-            player.AllyCode == allyCode ||
-            (!string.IsNullOrWhiteSpace(playerId) && string.Equals(player.PlayerId, playerId, StringComparison.Ordinal)));
-        return playerIndex < 0 ? null : new BracketMatch(bracketId, players, playerIndex);
+        Participant[] players =
+        [
+            .. playersElement.EnumerateArray()
+                .Select(ReadParticipant)
+                .Where(value => value is not null)
+                .Select(value => value!)
+        ];
+        return players.Length == 0 ? null : new BracketData(bracketId, players);
     }
 
     private static Participant? ResolveOpponent(
         IReadOnlyList<Participant> players,
         int playerIndex,
-        string? playerId,
+        string playerId,
         long allyCode,
         out string resolutionMethod)
     {
         Participant current = players[playerIndex];
-        string? opponentPlayerId = FindOpponentIdentifier(current.Element, "playerId");
+        string? opponentPlayerId = FindOpponentIdentifier(current.Element);
         long? opponentAllyCode = FindOpponentAllyCode(current.Element);
         Participant? direct = players.FirstOrDefault(player =>
-            player.AllyCode != allyCode &&
+            !IsSelf(player, playerId, allyCode) &&
             ((opponentAllyCode.HasValue && player.AllyCode == opponentAllyCode.Value) ||
-             (!string.IsNullOrWhiteSpace(opponentPlayerId) && string.Equals(player.PlayerId, opponentPlayerId, StringComparison.Ordinal))));
+             (!string.IsNullOrWhiteSpace(opponentPlayerId) &&
+              string.Equals(player.PlayerId, opponentPlayerId, StringComparison.Ordinal))));
         if (direct is not null)
         {
             resolutionMethod = "DirectBracketMetadata";
@@ -254,12 +379,16 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         return null;
     }
 
-    private static string? FindOpponentIdentifier(JsonElement element, string suffix)
+    private static bool IsSelf(Participant participant, string playerId, long allyCode) =>
+        string.Equals(participant.PlayerId, playerId, StringComparison.Ordinal) || participant.AllyCode == allyCode;
+
+    private static string? FindOpponentIdentifier(JsonElement element)
     {
         foreach ((string name, JsonElement value) in EnumerateProperties(element))
         {
             if (!name.Contains("opponent", StringComparison.OrdinalIgnoreCase) ||
-                !name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                (!name.EndsWith("playerId", StringComparison.OrdinalIgnoreCase) &&
+                 !name.EndsWith("opponentId", StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
@@ -369,8 +498,7 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             .Select(status => new SeasonContext(
                 ReadString(status, "seasonId"),
                 ReadString(status, "eventInstanceId"),
-                ReadLeague(status),
-                ReadInt(status, "rank")))
+                ReadLeague(status)))
             .OrderByDescending(status => status.EventInstanceId, StringComparer.Ordinal)
             .FirstOrDefault();
     }
@@ -497,14 +625,21 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
 
     private static Participant? ReadParticipant(JsonElement element)
     {
-        if (!TryReadLongProperty(element, "allyCode", out long allyCode))
+        string? playerId = ReadString(element, "id") ?? ReadString(element, "playerId");
+        long? allyCode = TryReadLongProperty(element, "allyCode", out long parsedAllyCode)
+            ? parsedAllyCode
+            : null;
+        if (string.IsNullOrWhiteSpace(playerId) && allyCode is null)
         {
             return null;
         }
 
         string? name = ReadString(element, "name") ?? ReadString(element, "playerName");
-        string? playerId = ReadString(element, "playerId");
-        return new Participant(allyCode, name ?? allyCode.ToString(), playerId, element.Clone());
+        return new Participant(
+            allyCode,
+            name ?? playerId ?? allyCode?.ToString() ?? "Unknown",
+            playerId,
+            element.Clone());
     }
 
     private static int? ReadRoundNumber(JsonElement element)
@@ -605,13 +740,14 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         return long.TryParse(JsonString(value), out result);
     }
 
+    private static bool IsValidAllyCode(long allyCode) => allyCode is >= 100_000_000 and <= 999_999_999;
+
     private sealed record CacheEntry(CurrentGacOpponentLookup Lookup, DateTimeOffset ExpiresAtUtc);
 
     private sealed record SeasonContext(
         string? SeasonId,
         string? EventInstanceId,
-        GacLeague? League,
-        int? Rank);
+        GacLeague? League);
 
     private sealed record EventContext(
         string EventId,
@@ -619,10 +755,23 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         JsonElement Element);
 
     private sealed record Participant(
-        long AllyCode,
+        long? AllyCode,
         string Name,
         string? PlayerId,
         JsonElement Element);
+
+    private sealed record ParticipantProfile(
+        long AllyCode,
+        string Name,
+        string? PlayerId);
+
+    private sealed record BracketData(
+        string BracketId,
+        Participant[] Players);
+
+    private sealed record LeagueBracketRange(
+        string LeagueToken,
+        int LastBracketIndex);
 
     private readonly record struct BracketMatch(
         string BracketId,
