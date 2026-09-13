@@ -36,16 +36,16 @@ public sealed class SwgohGameDataCatalogClientTests
         GameUnitDefinition character = first.Units["CHARACTER"];
         Assert.False(character.IsShip);
         Assert.Equal("UNIT_CHARACTER_NAME", character.NameKey);
-        Assert.Equal("Clone Captain", character.Name);
+        Assert.Equal("Capitán clon", character.Name);
         Assert.Equal("tex.charui_character", character.ThumbnailName);
-        Assert.Contains("Galactic Republic", character.Factions);
-        Assert.DoesNotContain("Internal Test", character.Factions);
+        Assert.Contains("República Galáctica", character.Factions);
+        Assert.DoesNotContain("Prueba interna", character.Factions);
         Assert.Contains("affiliation_republic", character.Tags);
         Assert.Contains("affiliation_internal_test", character.Tags);
         Assert.Contains("role_support", character.Tags);
 
         Assert.True(first.Units["SHIP"].IsShip);
-        Assert.Equal("Republic Fighter", first.Units["SHIP"].Name);
+        Assert.Equal("Caza de la República", first.Units["SHIP"].Name);
         Assert.Equal(6, handler.RequestCount);
     }
 
@@ -70,17 +70,17 @@ public sealed class SwgohGameDataCatalogClientTests
             string path = request.RequestUri?.AbsolutePath
                 ?? throw new InvalidOperationException("Game Data request URI is required.");
 
-            if (string.Equals(path, "/Loc_ENG_US.txt.json.br", StringComparison.Ordinal))
+            if (string.Equals(path, "/Loc_SPA_XM.txt.json.br", StringComparison.Ordinal))
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = CreateBrotliContent("""
                         {
-                          "UNIT_CHARACTER_NAME":"Clone Captain",
-                          "UNIT_SHIP_NAME":"Republic Fighter",
-                          "CATEGORY_GALACTICREPUBLIC_DESC":"Galactic Republic",
-                          "CATEGORY_SUPPORT_DESC":"Support",
-                          "CATEGORY_INTERNAL_TEST_DESC":"Internal Test"
+                          "UNIT_CHARACTER_NAME":"Capitán clon",
+                          "UNIT_SHIP_NAME":"Caza de la República",
+                          "CATEGORY_GALACTICREPUBLIC_DESC":"República Galáctica",
+                          "CATEGORY_SUPPORT_DESC":"Apoyo",
+                          "CATEGORY_INTERNAL_TEST_DESC":"Prueba interna"
                         }
                         """)
                 });
