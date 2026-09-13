@@ -66,9 +66,29 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         int StaminaCostPerBattle,
         int ReserveFloorPercent,
         IReadOnlyCollection<UnitStaminaViewModel> Stamina,
+        int DiskCapacityLimit,
+        IReadOnlyCollection<DataDiskViewModel> DataDisks,
+        IReadOnlyCollection<DiskLoadoutViewModel> DiskLoadouts,
         DateTimeOffset UpdatedAtUtc);
 
     public sealed record UnitStaminaViewModel(string DefinitionId, int CurrentPercent);
+
+    public sealed record DataDiskViewModel(
+        Guid Id,
+        string Name,
+        int CapacityCost,
+        decimal PlannerBonus,
+        string TargetType,
+        string? Faction,
+        IReadOnlyCollection<string> UnitDefinitionIds,
+        int MinimumMatchingUnits,
+        IReadOnlyCollection<Guid> SupportedFeatIds,
+        string? Notes);
+
+    public sealed record DiskLoadoutViewModel(
+        Guid Id,
+        string Name,
+        IReadOnlyCollection<Guid> DiskIds);
 
     public sealed record FeatViewModel(
         Guid Id,
@@ -93,6 +113,7 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         int CandidateCharacters,
         int StaminaCostPerBattle,
         int ReserveFloorPercent,
+        int DiskCapacityLimit,
         IReadOnlyCollection<TeamViewModel> Recommendations,
         IReadOnlyCollection<Guid> UncoveredFeatIds);
 
@@ -106,9 +127,19 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         decimal ExpectedPostBattleAverageStamina,
         decimal StaminaOpportunityCost,
         int ReserveRiskUnits,
+        DiskRecommendationViewModel? DiskLoadout,
         IReadOnlyCollection<UnitViewModel> Team,
         IReadOnlyCollection<ContributionViewModel> AdvancesFeats,
         string Rationale);
+
+    public sealed record DiskRecommendationViewModel(
+        Guid LoadoutId,
+        string LoadoutName,
+        int CapacityUsed,
+        int CapacityLimit,
+        decimal PlannerBonus,
+        IReadOnlyCollection<DataDiskViewModel> Disks,
+        IReadOnlyCollection<Guid> MatchedFeatIds);
 
     public sealed record UnitViewModel(
         string DefinitionId,
@@ -137,9 +168,29 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         IReadOnlyCollection<SaveFeatRequest> Feats,
         int StaminaCostPerBattle,
         int ReserveFloorPercent,
-        IReadOnlyCollection<SaveUnitStaminaRequest> Stamina);
+        IReadOnlyCollection<SaveUnitStaminaRequest> Stamina,
+        int DiskCapacityLimit,
+        IReadOnlyCollection<SaveDataDiskRequest> DataDisks,
+        IReadOnlyCollection<SaveDiskLoadoutRequest> DiskLoadouts);
 
     public sealed record SaveUnitStaminaRequest(string DefinitionId, int CurrentPercent);
+
+    public sealed record SaveDataDiskRequest(
+        Guid? Id,
+        string Name,
+        int CapacityCost,
+        decimal PlannerBonus,
+        string TargetType,
+        string? Faction,
+        IReadOnlyCollection<string> UnitDefinitionIds,
+        int MinimumMatchingUnits,
+        IReadOnlyCollection<Guid> SupportedFeatIds,
+        string? Notes);
+
+    public sealed record SaveDiskLoadoutRequest(
+        Guid? Id,
+        string Name,
+        IReadOnlyCollection<Guid> DiskIds);
 
     public sealed record SaveFeatRequest(
         Guid? Id,
