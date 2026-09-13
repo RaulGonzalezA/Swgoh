@@ -129,7 +129,6 @@ jobs:
           ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
           Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
           Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
-          Swgoh__GameData__Locale: ENG_US
         run: |
           mkdir -p smoke-results
           dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build --no-restore > smoke-results/api.log 2>&1 &
