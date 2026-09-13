@@ -27,6 +27,34 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         return await ReadPlannerResultAsync(response, cancellationToken);
     }
 
+    public async Task<OptimizationResult> OptimizeCurrentAsync(
+        long allyCode,
+        string mode,
+        bool apply,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.PostAsJsonAsync(
+            $"/api/v1/gac/players/{allyCode}/planner/current/optimize",
+            new OptimizeRequest(mode, apply),
+            cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            OptimizationEnvelopeViewModel? envelope =
+                await response.Content.ReadFromJsonAsync<OptimizationEnvelopeViewModel>(cancellationToken);
+            return new OptimizationResult(envelope, null);
+        }
+
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
+        {
+            PlannerUnavailableViewModel? unavailable =
+                await response.Content.ReadFromJsonAsync<PlannerUnavailableViewModel>(cancellationToken);
+            return new OptimizationResult(null, unavailable?.Message ?? "No hay una ronda de Gran Arena disponible.");
+        }
+
+        response.EnsureSuccessStatusCode();
+        return new OptimizationResult(null, "No se ha podido optimizar la ronda.");
+    }
+
     public async Task<TeamPresetViewModel> CreatePresetAsync(
         long allyCode,
         SavePresetRequest request,
@@ -99,7 +127,41 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
 
     public sealed record PlannerResult(PlannerViewModel? Planner, string? Message);
 
+    public sealed record OptimizationResult(OptimizationEnvelopeViewModel? Envelope, string? Message);
+
     public sealed record PlannerUnavailableViewModel(string Status, string? Message);
+
+    public sealed record OptimizationEnvelopeViewModel(
+        PlannerViewModel Planner,
+        OptimizationViewModel Optimization);
+
+    public sealed record OptimizationViewModel(
+        string Mode,
+        bool Applied,
+        int TargetDefenses,
+        int RecommendedAttacks,
+        int HistoricalMatches,
+        decimal AverageScore,
+        decimal? KnownAverageBanners,
+        IReadOnlyCollection<Guid> UncoveredDefenseIds,
+        IReadOnlyCollection<OptimizationRecommendationViewModel> Recommendations,
+        bool SearchLimitReached);
+
+    public sealed record OptimizationRecommendationViewModel(
+        Guid DefenseId,
+        string DefenseName,
+        string Zone,
+        Guid TeamPresetId,
+        string TeamName,
+        decimal Score,
+        decimal StrategicCost,
+        string Evidence,
+        string Confidence,
+        string Rationale,
+        decimal? WinRate,
+        decimal? OneShotRate,
+        decimal? AverageBanners,
+        int? Uses);
 
     public sealed record PlannerViewModel(
         PlannerOpponentViewModel Opponent,
@@ -226,4 +288,6 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         int Attempt,
         string Status,
         string? Notes);
+
+    public sealed record OptimizeRequest(string Mode, bool Apply);
 }
