@@ -119,6 +119,34 @@ public static class DependencyInjection
                         Name = GacRoundPlanMongoRepository.PlayerUpdatedIndexName
                     }));
 
+        IndexKeysDefinition<GacPersonalBattleDocument> personalBattleIndexKeys =
+            Builders<GacPersonalBattleDocument>.IndexKeys
+                .Ascending(battle => battle.PlayerAllyCode)
+                .Ascending(battle => battle.Format)
+                .Descending(battle => battle.RecordedAtUtc);
+        IndexKeysDefinition<GacPersonalBattleDocument> personalBattleRoundIndexKeys =
+            Builders<GacPersonalBattleDocument>.IndexKeys
+                .Ascending(battle => battle.PlayerAllyCode)
+                .Ascending(battle => battle.EventInstanceId)
+                .Ascending(battle => battle.RoundNumber);
+        services.AddMongoRepository<GacPersonalBattleDocument, string>(
+            GacPersonalBattleMongoRepository.CollectionName,
+            battle => battle.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    personalBattleIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacPersonalBattleMongoRepository.PlayerFormatRecordedIndexName
+                    })
+                .HasIndex(
+                    personalBattleRoundIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacPersonalBattleMongoRepository.PlayerRoundIndexName
+                    }));
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -173,6 +201,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
+        services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
         services.AddSingleton<SwgohComlinkGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkCurrentRoundOpponentSource>();
         return services;

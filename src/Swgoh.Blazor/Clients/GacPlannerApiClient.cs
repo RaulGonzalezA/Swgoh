@@ -172,7 +172,15 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         decimal OpportunityCost,
         int StrategicAlternatives,
         int FutureDefensesAtRisk,
-        string StrategicRationale);
+        string StrategicRationale,
+        decimal PersonalAdjustment,
+        int PersonalSamples,
+        int PersonalWins,
+        decimal? PersonalWinRate,
+        decimal? PersonalOneShotRate,
+        decimal? PersonalAverageBanners,
+        string PersonalScope,
+        string PersonalRationale);
 
     public sealed record PlannerViewModel(
         PlannerOpponentViewModel Opponent,

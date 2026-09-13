@@ -134,7 +134,15 @@ internal static class GacPlannerOptimizationEndpoints
         decimal OpportunityCost,
         int StrategicAlternatives,
         int FutureDefensesAtRisk,
-        string StrategicRationale)
+        string StrategicRationale,
+        decimal PersonalAdjustment,
+        int PersonalSamples,
+        int PersonalWins,
+        decimal? PersonalWinRate,
+        decimal? PersonalOneShotRate,
+        decimal? PersonalAverageBanners,
+        string PersonalScope,
+        string PersonalRationale)
     {
         public static OptimizationRecommendationResponse From(GacAttackOptimizationRecommendation recommendation) => new(
             recommendation.DefenseId,
@@ -161,6 +169,14 @@ internal static class GacPlannerOptimizationEndpoints
             recommendation.OpportunityCost,
             recommendation.StrategicAlternatives,
             recommendation.FutureDefensesAtRisk,
-            recommendation.StrategicRationale);
+            recommendation.StrategicRationale,
+            recommendation.PersonalAdjustment,
+            recommendation.PersonalSamples,
+            recommendation.PersonalWins,
+            recommendation.PersonalWinRate,
+            recommendation.PersonalOneShotRate,
+            recommendation.PersonalAverageBanners,
+            recommendation.PersonalScope,
+            recommendation.PersonalRationale);
     }
 }
