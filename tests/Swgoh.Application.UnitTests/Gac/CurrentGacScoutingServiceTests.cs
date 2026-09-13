@@ -32,7 +32,15 @@ public sealed class CurrentGacScoutingServiceTests
         var scouting = new RecordingScoutingService();
         var profiles = new RecordingPlayerProfileService(playerAllyCode, opponentAllyCode);
         var roster = new RecordingPlayerRosterService(playerAllyCode, opponentAllyCode);
-        var service = new CurrentGacScoutingService(source, scouting, profiles, roster);
+        var historySync = new RecordingHistorySyncService();
+        var counters = new EmptyCounterStatisticsService();
+        var service = new CurrentGacScoutingService(
+            source,
+            scouting,
+            profiles,
+            roster,
+            historySync,
+            counters);
 
         CurrentGacScoutingResult result = await service.GetAsync(
             playerAllyCode,
@@ -45,6 +53,10 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Equal(opponentAllyCode, scouting.LastAllyCode);
         Assert.Equal(activeFormat, scouting.LastFormat);
         Assert.Equal(GacLeague.Kyber, scouting.LastTargetLeague);
+        Assert.Equal(1, historySync.CallCount);
+        Assert.Equal(opponentAllyCode, historySync.LastAllyCode);
+        Assert.Equal(activeFormat, historySync.LastFormat);
+        Assert.IsType<GacHistorySyncResult>(result.HistorySync);
         Assert.Equal(2, profiles.RefreshCallCount);
         Assert.Contains(playerAllyCode, profiles.RefreshedAllyCodes);
         Assert.Contains(opponentAllyCode, profiles.RefreshedAllyCodes);
@@ -87,7 +99,15 @@ public sealed class CurrentGacScoutingServiceTests
         var scouting = new RecordingScoutingService();
         var profiles = new RecordingPlayerProfileService(playerAllyCode, opponentAllyCode);
         var roster = new RecordingPlayerRosterService(playerAllyCode, opponentAllyCode);
-        var service = new CurrentGacScoutingService(source, scouting, profiles, roster);
+        var historySync = new RecordingHistorySyncService();
+        var counters = new EmptyCounterStatisticsService();
+        var service = new CurrentGacScoutingService(
+            source,
+            scouting,
+            profiles,
+            roster,
+            historySync,
+            counters);
 
         CurrentGacScoutingResult result = await service.GetAsync(
             playerAllyCode,
@@ -97,10 +117,12 @@ public sealed class CurrentGacScoutingServiceTests
 
         Assert.Equal(CurrentGacOpponentStatus.NoActiveEvent, result.Lookup.Status);
         Assert.Equal(0, scouting.CallCount);
+        Assert.Equal(0, historySync.CallCount);
         Assert.Equal(0, profiles.RefreshCallCount);
         Assert.Equal(0, roster.CallCount);
         Assert.Null(result.RosterScouting);
         Assert.Null(result.BattlePlan);
+        Assert.Null(result.HistorySync);
     }
 
     private sealed class FakeOpponentSource : ICurrentGacOpponentSource
@@ -143,6 +165,33 @@ public sealed class CurrentGacScoutingServiceTests
             LastTargetLeague = targetLeague;
             return Task.FromResult<OpponentScoutingReport?>(null);
         }
+    }
+
+    private sealed class RecordingHistorySyncService : IGacHistorySyncService
+    {
+        public int CallCount { get; private set; }
+        public long LastAllyCode { get; private set; }
+        public GacFormat LastFormat { get; private set; }
+
+        public Task<GacHistorySyncResult> SyncAsync(
+            long allyCode,
+            GacFormat format,
+            int maxRounds,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            LastAllyCode = allyCode;
+            LastFormat = format;
+            return Task.FromResult(new GacHistorySyncResult(0, 0, 0, 0, [], []));
+        }
+    }
+
+    private sealed class EmptyCounterStatisticsService : IGacCounterStatisticsService
+    {
+        public Task<IReadOnlyCollection<GacCounterStatistics>> GetAsync(
+            GacCounterStatisticsQuery query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyCollection<GacCounterStatistics>>([]);
     }
 
     private sealed class RecordingPlayerProfileService(long playerAllyCode, long opponentAllyCode) : IPlayerProfileService
