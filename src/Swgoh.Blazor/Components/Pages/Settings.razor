@@ -8,48 +8,50 @@
 <PageTitle>Ajustes · SWGOH Assistant</PageTitle>
 
 <section class="command-page">
-    <header class="command-page-heading">
-        <div>
-            <span class="section-kicker">Ajustes</span>
-            <h1>Preferencias del asistente</h1>
-            <p>Gestiona el jugador principal y el contexto que se restaura automáticamente al volver a la aplicación.</p>
-        </div>
-    </header>
+    <UiPageHeader Kicker="Ajustes"
+                  Title="Preferencias del asistente"
+                  Description="Gestiona el jugador principal y el contexto que se restaura automáticamente al volver a la aplicación." />
 
     <div class="command-secondary-grid settings-grid">
-        <article class="command-panel">
-            <div class="command-panel-heading compact">
-                <div><span class="section-kicker">Jugador principal</span><h2>@(Session.PlayerName ?? "Sin jugador")</h2></div>
-            </div>
-            @if (Session.AllyCode is long allyCode)
-            {
-                <div class="command-data-list">
-                    <div><span>Ally Code</span><strong>#@FormatAllyCode(allyCode)</strong></div>
-                    <div><span>Persistencia</span><strong>Activa en este navegador</strong></div>
-                </div>
-                <p class="settings-copy">Este jugador se restaura al abrir la web y alimenta la navegación de Roster, GAC, Planner y Conquista.</p>
-                <div class="settings-actions">
-                    <a class="secondary-button" href="/">Cambiar jugador</a>
-                    <button class="ghost-button" type="button" @onclick="ForgetPlayerAsync">Olvidar jugador</button>
-                </div>
-            }
-            else
-            {
-                <div class="command-panel-empty">No hay un jugador principal configurado.</div>
-                <a class="command-secondary-link" href="/">Seleccionar jugador →</a>
-            }
-        </article>
+        <UiCard Kicker="Jugador principal" Title="@(Session.PlayerName ?? "Sin jugador")" Variant="accent">
+            <HeaderActions>
+                <UiStatusPill Label="@(Session.AllyCode is long ? "Persistente" : "Sin configurar")"
+                              Tone="@(Session.AllyCode is long ? "success" : "neutral")"
+                              ShowDot="true" />
+            </HeaderActions>
+            <ChildContent>
+                @if (Session.AllyCode is long allyCode)
+                {
+                    <div class="command-data-list">
+                        <div><span>Ally Code</span><strong>#@FormatAllyCode(allyCode)</strong></div>
+                        <div><span>Persistencia</span><strong>Activa en este navegador</strong></div>
+                    </div>
+                    <p class="settings-copy">Este jugador se restaura al abrir la web y alimenta la navegación de Roster, GAC, Planner y Conquista.</p>
+                    <div class="settings-actions">
+                        <a class="secondary-button" href="/">Cambiar jugador</a>
+                        <button class="ghost-button" type="button" @onclick="ForgetPlayerAsync">Olvidar jugador</button>
+                    </div>
+                }
+                else
+                {
+                    <UiEmptyState Icon="P"
+                                  Title="No hay jugador principal"
+                                  Description="Selecciona uno para que el dashboard y la navegación recuperen su contexto automáticamente.">
+                        <Actions>
+                            <a class="primary-button" href="/">Seleccionar jugador</a>
+                        </Actions>
+                    </UiEmptyState>
+                }
+            </ChildContent>
+        </UiCard>
 
-        <article class="command-panel">
-            <div class="command-panel-heading compact">
-                <div><span class="section-kicker">Almacenamiento</span><h2>Qué guardamos localmente</h2></div>
-            </div>
+        <UiCard Kicker="Almacenamiento" Title="Qué guardamos localmente">
             <div class="settings-info-list">
                 <div><strong>Jugador activo</strong><span>Solo el Ally Code principal.</span></div>
                 <div><strong>Datos del juego</strong><span>Siguen viniendo de la API y MongoDB.</span></div>
                 <div><strong>Planes GAC / Conquista</strong><span>No se duplican en localStorage.</span></div>
             </div>
-        </article>
+        </UiCard>
     </div>
 </section>
 
