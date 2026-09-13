@@ -1,0 +1,458 @@
+@page "/gac/{AllyCode:long}/planner"
+@rendermode InteractiveServer
+
+<PageTitle>Planificador GAC · SWGOH Planner</PageTitle>
+
+<div class="page-heading-row planner-page-heading">
+    <div>
+        <a class="back-link" href="@($"/gac/{AllyCode}")">← War Room</a>
+        <span class="eyebrow">GAC Attack Planner</span>
+        <h1>Diseña la ronda antes de atacar</h1>
+        @if (Planner is not null)
+        {
+            <p class="page-lead">
+                vs @Planner.Opponent.OpponentName · @Planner.Opponent.Format · @Planner.Opponent.League
+                @if (Planner.Opponent.RoundNumber is int round)
+                {
+                    <span> · Ronda @round</span>
+                }
+            </p>
+        }
+    </div>
+    @if (Planner is not null)
+    {
+        <div class="heading-stat planner-heading-stat">
+            <span>Cobertura</span>
+            <strong>@PlannedCoverage/@VisibleDefenses.Count</strong>
+            <small>@Planner.Plan.Conflicts.Count conflictos</small>
+        </div>
+    }
+</div>
+
+<nav class="player-subnav" aria-label="Secciones del jugador">
+    <a href="@($"/player/{AllyCode}")">Roster</a>
+    <a href="@($"/gac/{AllyCode}")">War Room</a>
+    <a class="active" href="@($"/gac/{AllyCode}/planner")">Planificador</a>
+</nav>
+
+@if (Loading)
+{
+    <div class="loading-panel gac-loading">
+        <span class="spinner"></span>
+        <div><strong>Preparando el tablero</strong><small>Rosters, equipos guardados y ronda actual</small></div>
+    </div>
+}
+else if (Error is not null)
+{
+    <div class="status-card status-error" role="alert">
+        <span class="status-icon">!</span>
+        <div><strong>No se ha podido abrir el planificador</strong><p>@Error</p></div>
+    </div>
+}
+else if (Planner is null)
+{
+    <div class="empty-state empty-state-wide">
+        <span class="empty-icon">P</span>
+        <h2>No hay una ronda activa que planificar</h2>
+        <p>@(UnavailableMessage ?? "Cuando se detecte un rival activo podrás preparar aquí toda la secuencia de ataques.")</p>
+        <a class="secondary-button button-link" href="@($"/gac/{AllyCode}")">Volver a War Room</a>
+    </div>
+}
+else
+{
+    <section class="planner-summary-grid" aria-label="Resumen del plan">
+        <div><span>Mi defensa</span><strong>@OwnDefenses.Count</strong><small>equipos colocados</small></div>
+        <div><span>Rival visible</span><strong>@VisibleDefenses.Count</strong><small>defensas registradas</small></div>
+        <div><span>Ataques</span><strong>@ActiveAttacks</strong><small>@CompletedWins victorias</small></div>
+        <div class="@(HasBlockingConflicts ? "planner-summary-alert" : string.Empty)">
+            <span>Conflictos</span><strong>@Planner.Plan.Conflicts.Count</strong><small>@(HasBlockingConflicts ? "requieren revisión" : "plan consistente")</small>
+        </div>
+    </section>
+
+    @if (Planner.Plan.Conflicts.Count > 0)
+    {
+        <section class="planner-conflict-strip" aria-label="Conflictos del plan">
+            <div class="planner-conflict-heading">
+                <span class="warning-symbol">!</span>
+                <div>
+                    <strong>Revisa el plan antes de atacar</strong>
+                    <small>Detectamos unidades reutilizadas o ataques que ya no son necesarios.</small>
+                </div>
+            </div>
+            <div class="planner-conflict-list">
+                @foreach (GacPlannerApiClient.ConflictViewModel conflict in Planner.Plan.Conflicts)
+                {
+                    <div class="planner-conflict-item planner-conflict-@conflict.Severity.ToLowerInvariant()">
+                        <span>@ConflictLabel(conflict.Severity)</span>
+                        <p>@conflict.Message</p>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="planner-workspace">
+        <aside class="planner-library">
+            <div class="planner-section-heading">
+                <div><span class="section-kicker">Biblioteca</span><h2>Mis equipos</h2></div>
+                <button class="ghost-button" type="button" @onclick="TogglePresetBuilder">@(ShowPresetBuilder ? "Cerrar" : "+ Equipo")</button>
+            </div>
+
+            @if (ShowPresetBuilder)
+            {
+                <div class="planner-builder-card">
+                    <div class="planner-builder-title"><strong>Guardar equipo</strong><span>@Planner.Opponent.Format</span></div>
+                    <label>
+                        Nombre
+                        <input placeholder="Ej. Leia ataque" @bind="PresetName" />
+                    </label>
+                    <div class="planner-form-row">
+                        <label>
+                            Uso
+                            <select @bind="PresetUse">
+                                <option value="Offense">Ataque</option>
+                                <option value="Defense">Defensa</option>
+                                <option value="Flexible">Flexible</option>
+                            </select>
+                        </label>
+                        <label>
+                            Tipo
+                            <select value="@PresetType" @onchange="PresetTypeChanged">
+                                <option value="Character">Personajes</option>
+                                <option value="Fleet">Flota</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label>
+                        Líder
+                        <select @bind="PresetLeaderId">
+                            <option value="">Selecciona unidad…</option>
+                            @foreach (PlayerApiClient.RosterUnitViewModel unit in PresetUnitOptions)
+                            {
+                                <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="planner-member-grid">
+                        @for (int memberIndex = 0; memberIndex < PresetMemberSlotCount; memberIndex++)
+                        {
+                            int index = memberIndex;
+                            <label>
+                                @(memberIndex == 0 ? "Miembros" : " ")
+                                <select value="@PresetMemberIds[index]" @onchange="eventArgs => SetPresetMember(index, eventArgs.Value?.ToString())">
+                                    <option value="">@(PresetMembersRequired ? "Selecciona unidad…" : "Opcional…")</option>
+                                    @foreach (PlayerApiClient.RosterUnitViewModel unit in PresetUnitOptions)
+                                    {
+                                        <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                    </div>
+                    <button class="primary-button planner-full-button" type="button" @onclick="CreatePresetAsync" disabled="@(Saving || !CanCreatePreset)">Guardar equipo</button>
+                </div>
+            }
+
+            <div class="planner-preset-filters">
+                <button class="@AllPresetFilterClass" type="button" @onclick="ShowAllPresets">Todos</button>
+                <button class="@DefensePresetFilterClass" type="button" @onclick="ShowDefensePresets">Defensa</button>
+                <button class="@OffensePresetFilterClass" type="button" @onclick="ShowOffensePresets">Ataque</button>
+            </div>
+
+            @if (FilteredPresets.Count == 0)
+            {
+                <div class="planner-mini-empty">Guarda tus equipos habituales para reutilizarlos en cada ronda.</div>
+            }
+            else
+            {
+                <div class="planner-preset-list">
+                    @foreach (GacPlannerApiClient.TeamPresetViewModel preset in FilteredPresets)
+                    {
+                        <article class="planner-preset-card">
+                            <div class="planner-preset-top">
+                                <div>
+                                    <span class="planner-use-pill planner-use-@preset.Use.ToLowerInvariant()">@FriendlyUse(preset.Use)</span>
+                                    <strong>@preset.Name</strong>
+                                </div>
+                                <button class="planner-icon-button" type="button" title="Eliminar equipo" @onclick="() => DeletePresetAsync(preset.Id)">×</button>
+                            </div>
+                            <div class="planner-mini-squad">
+                                @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in preset.Squad.AllUnits)
+                                {
+                                    <div title="@unit.Name">
+                                        @if (GetPortraitUrl(unit.ThumbnailName) is string imageUrl)
+                                        {
+                                            <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'" />
+                                        }
+                                        <span>@Initial(unit.Name)</span>
+                                    </div>
+                                }
+                            </div>
+                            <small>@preset.Squad.Leader.Name · @(preset.Squad.IsFleet ? "Flota" : preset.Format)</small>
+                        </article>
+                    }
+                </div>
+            }
+        </aside>
+
+        <main class="planner-board">
+            <section class="planner-board-section planner-own-defense-section">
+                <div class="planner-section-heading">
+                    <div><span class="section-kicker">Tu lado</span><h2>Mi defensa</h2></div>
+                    <span class="count-badge">@OwnDefenses.Count</span>
+                </div>
+                <p class="planner-section-copy">Registra tus defensas para bloquear automáticamente esas unidades en el plan de ataque.</p>
+
+                <div class="planner-inline-editor">
+                    <label>
+                        Zona
+                        <select @bind="OwnDefenseZone">
+                            @foreach (string zone in ZoneOptions)
+                            {
+                                <option value="@zone">@zone</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="planner-inline-editor-wide">
+                        Equipo
+                        <select @bind="OwnDefensePresetId">
+                            <option value="">Selecciona equipo…</option>
+                            @foreach (GacPlannerApiClient.TeamPresetViewModel preset in DefensePresetOptions)
+                            {
+                                <option value="@preset.Id.ToString()">@preset.Name · @FriendlyUse(preset.Use)</option>
+                            }
+                        </select>
+                    </label>
+                    <button class="secondary-button" type="button" @onclick="AddOwnDefenseAsync" disabled="@(Saving || string.IsNullOrWhiteSpace(OwnDefensePresetId))">Añadir</button>
+                </div>
+
+                @if (OwnDefenses.Count == 0)
+                {
+                    <div class="planner-board-empty">Todavía no has indicado tu defensa. Puedes planificar ataques, pero no podremos detectar solapes con lo colocado atrás.</div>
+                }
+                else
+                {
+                    <div class="planner-defense-list planner-own-defense-list">
+                        @foreach (OwnDefenseDraft assignment in OwnDefenses)
+                        {
+                            GacPlannerApiClient.TeamPresetViewModel? preset = FindPreset(assignment.TeamPresetId);
+                            if (preset is not null)
+                            {
+                                <article class="planner-defense-card planner-own-defense-card">
+                                    <div class="planner-zone-pill">@assignment.Zone</div>
+                                    <div class="planner-defense-main">
+                                        <strong>@preset.Name</strong>
+                                        <span>@SquadNames(preset.Squad)</span>
+                                    </div>
+                                    <button class="planner-icon-button" type="button" title="Quitar de defensa" @onclick="() => RemoveOwnDefenseAsync(assignment.Id)">×</button>
+                                </article>
+                            }
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="planner-board-section planner-enemy-section">
+                <div class="planner-section-heading">
+                    <div><span class="section-kicker">Tablero rival</span><h2>Defensas visibles</h2></div>
+                    <button class="ghost-button" type="button" @onclick="ToggleEnemyBuilder">@(ShowEnemyBuilder ? "Cerrar" : "+ Defensa visible")</button>
+                </div>
+                <p class="planner-section-copy">Añade únicamente equipos que ya puedas ver en el juego. Los counters se cruzan con el histórico que ya calcula la War Room.</p>
+
+                @if (ShowEnemyBuilder)
+                {
+                    <div class="planner-builder-card planner-enemy-builder">
+                        <div class="planner-form-row">
+                            <label>
+                                Zona
+                                <select @bind="EnemyZone">
+                                    @foreach (string zone in ZoneOptions)
+                                    {
+                                        <option value="@zone">@zone</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                Tipo
+                                <select value="@EnemyType" @onchange="EnemyTypeChanged">
+                                    <option value="Character">Personajes</option>
+                                    <option value="Fleet">Flota</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label>
+                            Etiqueta opcional
+                            <input placeholder="Ej. Muro sur" @bind="EnemyLabel" />
+                        </label>
+                        <label>
+                            Líder
+                            <select @bind="EnemyLeaderId">
+                                <option value="">Selecciona unidad rival…</option>
+                                @foreach (PlayerApiClient.RosterUnitViewModel unit in EnemyUnitOptions)
+                                {
+                                    <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
+                                }
+                            </select>
+                        </label>
+                        <div class="planner-member-grid">
+                            @for (int memberIndex = 0; memberIndex < EnemyMemberSlotCount; memberIndex++)
+                            {
+                                int index = memberIndex;
+                                <label>
+                                    @(memberIndex == 0 ? "Miembros" : " ")
+                                    <select value="@EnemyMemberIds[index]" @onchange="eventArgs => SetEnemyMember(index, eventArgs.Value?.ToString())">
+                                        <option value="">@(EnemyMembersRequired ? "Selecciona unidad…" : "Opcional…")</option>
+                                        @foreach (PlayerApiClient.RosterUnitViewModel unit in EnemyUnitOptions)
+                                        {
+                                            <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </div>
+                        <button class="primary-button planner-full-button" type="button" @onclick="AddVisibleDefenseAsync" disabled="@(Saving || !CanAddVisibleDefense)">Añadir al tablero</button>
+                    </div>
+                }
+
+                @if (VisibleDefenses.Count == 0)
+                {
+                    <div class="planner-board-empty planner-board-empty-large">
+                        <strong>El tablero está vacío</strong>
+                        <span>Cuando veas una defensa rival, añádela aquí para empezar a encadenar ataques.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="planner-enemy-board">
+                        @foreach (VisibleDefenseDraft defense in VisibleDefenses.OrderBy(item => item.Zone))
+                        {
+                            GacPlannerApiClient.VisibleDefenseViewModel? details = FindVisibleDefense(defense.Id);
+                            GacPlannerApiClient.CounterHintViewModel? hint = FindCounterHint(defense.Id);
+                            IReadOnlyCollection<AttackDraft> defenseAttacks = AttacksFor(defense.Id);
+
+                            <article class="planner-enemy-card @(details?.Defeated == true ? "planner-enemy-defeated" : string.Empty)">
+                                <div class="planner-enemy-card-top">
+                                    <div>
+                                        <span class="planner-zone-pill">@defense.Zone</span>
+                                        <h3>@EnemyLeaderName(defense, details)</h3>
+                                        @if (!string.IsNullOrWhiteSpace(defense.Label))
+                                        {
+                                            <small>@defense.Label</small>
+                                        }
+                                    </div>
+                                    <button class="planner-icon-button" type="button" title="Quitar defensa visible" @onclick="() => RemoveVisibleDefenseAsync(defense.Id)">×</button>
+                                </div>
+
+                                @if (details is not null)
+                                {
+                                    <div class="planner-large-squad">
+                                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in details.Squad.AllUnits)
+                                        {
+                                            <div class="planner-unit-token" title="@unit.Name">
+                                                <div>
+                                                    @if (GetPortraitUrl(unit.ThumbnailName) is string imageUrl)
+                                                    {
+                                                        <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'" />
+                                                    }
+                                                    <span>@Initial(unit.Name)</span>
+                                                </div>
+                                                <small>@unit.Name</small>
+                                                @if (unit.RelicTier is > 0)
+                                                {
+                                                    <em>R@unit.RelicTier</em>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                @if (hint is not null)
+                                {
+                                    <div class="planner-counter-hint">
+                                        <div class="planner-counter-hint-heading">
+                                            <span>Counter sugerido</span>
+                                            <strong>@FriendlyConfidence(hint.Confidence)</strong>
+                                        </div>
+                                        <p>@hint.Rationale</p>
+                                        @if (hint.RecommendedTeam.Count > 0)
+                                        {
+                                            <div class="planner-hint-team">@string.Join(" · ", hint.RecommendedTeam.Select(unit => unit.Name))</div>
+                                        }
+                                        <div class="planner-hint-stats">
+                                            @if (hint.WinRate is decimal winRate)
+                                            {
+                                                <span><strong>@Percent(winRate)</strong> win</span>
+                                            }
+                                            @if (hint.OneShotRate is decimal oneShotRate)
+                                            {
+                                                <span><strong>@Percent(oneShotRate)</strong> one-shot</span>
+                                            }
+                                            @if (hint.Uses is int uses)
+                                            {
+                                                <span><strong>@uses</strong> muestras</span>
+                                            }
+                                        </div>
+                                        @if (hint.RequiresDatacronVerification)
+                                        {
+                                            <small class="datacron-note">Verifica datacron y mods antes de confirmar.</small>
+                                        }
+                                        @if (hint.MatchingTeamPresetId is Guid matchingPresetId)
+                                        {
+                                            <button class="secondary-button planner-hint-action" type="button" @onclick="() => PlanAttackAsync(defense.Id, matchingPresetId)">Usar mi equipo coincidente</button>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="planner-attack-designer">
+                                    <div class="planner-attack-designer-title">
+                                        <strong>Diseñar ataque</strong>
+                                        <span>Intento @NextAttempt(defense.Id)</span>
+                                    </div>
+                                    <div class="planner-attack-row">
+                                        <select value="@SelectedAttackPreset(defense.Id)" @onchange="eventArgs => SetAttackPreset(defense.Id, eventArgs.Value?.ToString())">
+                                            <option value="">Selecciona tu equipo…</option>
+                                            @foreach (GacPlannerApiClient.TeamPresetViewModel preset in AttackPresetOptions(defense.IsFleet))
+                                            {
+                                                <option value="@preset.Id.ToString()">@preset.Name · @FriendlyUse(preset.Use)</option>
+                                            }
+                                        </select>
+                                        <button class="secondary-button" type="button" @onclick="() => PlanSelectedAttackAsync(defense.Id)" disabled="@(Saving || string.IsNullOrWhiteSpace(SelectedAttackPreset(defense.Id)))">Planificar</button>
+                                    </div>
+                                </div>
+
+                                @if (defenseAttacks.Count > 0)
+                                {
+                                    <div class="planner-attempt-list">
+                                        @foreach (AttackDraft attack in defenseAttacks.OrderBy(item => item.Attempt))
+                                        {
+                                            GacPlannerApiClient.TeamPresetViewModel? attackTeam = FindPreset(attack.TeamPresetId);
+                                            <div class="planner-attempt planner-attempt-@attack.Status.ToLowerInvariant()">
+                                                <div>
+                                                    <span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span>
+                                                    <strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong>
+                                                </div>
+                                                @if (attack.Status == "Planned")
+                                                {
+                                                    <div class="planner-attempt-actions">
+                                                        <button type="button" title="Victoria" @onclick="() => MarkAttackWonAsync(attack.Id)">✓</button>
+                                                        <button type="button" title="Fallo" @onclick="() => MarkAttackFailedAsync(attack.Id)">×</button>
+                                                        <button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        </main>
+    </section>
+
+    @if (Saving)
+    {
+        <div class="planner-saving-toast"><span class="spinner"></span> Guardando plan…</div>
+    }
+}
