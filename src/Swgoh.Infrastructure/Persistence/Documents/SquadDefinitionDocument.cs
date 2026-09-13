@@ -2,7 +2,7 @@ namespace Swgoh.Infrastructure.Persistence.Documents;
 
 internal sealed class SquadDefinitionDocument
 {
-    public Guid Id { get; set; }
+    public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Format { get; set; }
     public int Use { get; set; }
