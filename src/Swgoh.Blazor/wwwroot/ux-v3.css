@@ -1,0 +1,405 @@
+.collection-heading-row {
+    margin: 30px 2px 14px;
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.collection-heading-row h2 {
+    margin: 3px 0 0;
+    font-size: 1.25rem;
+}
+
+.collection-heading-row > small {
+    max-width: 360px;
+    color: var(--muted);
+    font-size: .7rem;
+    line-height: 1.45;
+    text-align: right;
+}
+
+.roster-collection-grid {
+    align-items: stretch;
+}
+
+.unit-card-collection {
+    min-height: 0;
+    padding: 0;
+    display: block;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(14, 32, 46, .9), rgba(8, 19, 28, .92));
+}
+
+.unit-card-collection:hover {
+    transform: translateY(-4px);
+    border-color: rgba(85, 215, 255, .28);
+}
+
+.unit-portrait-shell {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    border-bottom: 1px solid var(--line);
+    background:
+        radial-gradient(circle at 50% 32%, rgba(85, 215, 255, .2), transparent 34%),
+        linear-gradient(145deg, #153346, #09151f 72%);
+}
+
+.unit-portrait-shell::after {
+    position: absolute;
+    inset: auto 0 0;
+    height: 42%;
+    content: "";
+    pointer-events: none;
+    background: linear-gradient(to top, rgba(4, 12, 18, .86), transparent);
+}
+
+.unit-portrait-ship {
+    background:
+        radial-gradient(circle at 50% 35%, rgba(157, 140, 255, .24), transparent 35%),
+        linear-gradient(145deg, #29244c, #10131f 72%);
+}
+
+.unit-portrait-fallback {
+    position: absolute;
+    z-index: 0;
+    color: rgba(226, 245, 255, .62);
+    font-size: clamp(2rem, 4vw, 3.6rem);
+    font-weight: 950;
+}
+
+.unit-portrait {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .24s ease, filter .24s ease;
+}
+
+.unit-card-collection:hover .unit-portrait {
+    transform: scale(1.035);
+    filter: brightness(1.06);
+}
+
+.unit-kind-chip,
+.portrait-progress {
+    position: absolute;
+    z-index: 3;
+    border: 1px solid rgba(224, 244, 255, .16);
+    color: #e6f7ff;
+    background: rgba(5, 15, 22, .72);
+    backdrop-filter: blur(8px);
+    font-size: .61rem;
+    font-weight: 850;
+}
+
+.unit-kind-chip {
+    top: 10px;
+    left: 10px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.portrait-progress {
+    right: 10px;
+    bottom: 10px;
+    min-width: 38px;
+    min-height: 30px;
+    padding: 0 8px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    font-size: .72rem;
+}
+
+.portrait-relic {
+    color: #ffd7f1;
+    border-color: rgba(239, 126, 200, .3);
+    background: rgba(75, 23, 61, .78);
+}
+
+.unit-collection-main {
+    min-height: 142px;
+    padding: 14px 15px 15px;
+}
+
+.unit-collection-main .unit-title-row h2 {
+    font-size: 1rem;
+}
+
+.unit-collection-main .unit-stars {
+    margin-top: 5px;
+}
+
+.unit-collection-main .faction-row {
+    margin-top: 10px;
+}
+
+.war-room-command {
+    position: relative;
+    margin-top: 18px;
+    padding: 24px;
+    border: 1px solid rgba(85, 215, 255, .2);
+    border-radius: var(--radius-lg);
+    display: grid;
+    grid-template-columns: minmax(230px, .68fr) minmax(520px, 1.32fr);
+    gap: 24px;
+    align-items: center;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 12% 20%, rgba(85, 215, 255, .1), transparent 28%),
+        linear-gradient(125deg, rgba(13, 34, 48, .95), rgba(12, 23, 37, .96));
+    box-shadow: var(--shadow);
+}
+
+.war-room-command::after {
+    position: absolute;
+    width: 260px;
+    height: 260px;
+    right: -110px;
+    top: -130px;
+    border: 1px solid rgba(157, 140, 255, .12);
+    border-radius: 50%;
+    content: "";
+    pointer-events: none;
+}
+
+.war-room-command-copy {
+    position: relative;
+    z-index: 1;
+}
+
+.war-room-command-copy h2 {
+    margin: 5px 0 8px;
+    font-size: 1.65rem;
+    letter-spacing: -.025em;
+}
+
+.war-room-command-copy p {
+    margin: 0;
+    color: var(--muted);
+    font-size: .82rem;
+    line-height: 1.55;
+}
+
+.war-room-nav {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.war-room-nav-card {
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    background: rgba(5, 16, 24, .48);
+    transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.war-room-nav-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+    background: rgba(15, 34, 48, .78);
+}
+
+.war-room-nav-card > span {
+    color: var(--muted);
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.war-room-nav-card > strong {
+    margin: 5px 0 1px;
+    font-size: 1.45rem;
+}
+
+.war-room-nav-card > small {
+    overflow: hidden;
+    color: #71899a;
+    font-size: .62rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.war-room-nav-risk > strong {
+    color: var(--warning);
+}
+
+.war-room-nav-counter > strong {
+    color: var(--success);
+}
+
+.war-room-zone {
+    scroll-margin-top: 92px;
+    margin-top: 26px;
+    padding-top: 6px;
+}
+
+.war-room-zone-last {
+    margin-bottom: 4px;
+}
+
+.war-zone-heading {
+    margin: 0 2px 12px;
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.war-zone-heading h2 {
+    margin: 4px 0 4px;
+    font-size: 1.55rem;
+    letter-spacing: -.025em;
+}
+
+.war-zone-heading p {
+    max-width: 720px;
+    margin: 0;
+    color: var(--muted);
+    font-size: .78rem;
+    line-height: 1.5;
+}
+
+.war-zone-index {
+    color: rgba(85, 215, 255, .16);
+    font-size: 2.7rem;
+    font-weight: 950;
+    line-height: .9;
+}
+
+.war-room-panel {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(150deg, rgba(10, 24, 35, .84), rgba(7, 17, 26, .78));
+}
+
+.war-room-warning {
+    margin: 0 0 12px;
+}
+
+.war-threat-grid,
+.war-defense-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+}
+
+.war-defense-card {
+    min-height: 102px;
+}
+
+.war-reserve-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.war-room-zone .counter-card {
+    border-left: 3px solid rgba(85, 215, 255, .16);
+}
+
+.war-room-zone .counter-card-observed {
+    border-left-color: rgba(105, 229, 165, .55);
+}
+
+@media (max-width: 1080px) {
+    .war-room-command {
+        grid-template-columns: 1fr;
+    }
+
+    .war-room-nav {
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .roster-collection-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .war-room-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .war-reserve-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .collection-heading-row {
+        align-items: start;
+        flex-direction: column;
+    }
+
+    .collection-heading-row > small {
+        max-width: none;
+        text-align: left;
+    }
+
+    .war-room-command {
+        padding: 18px;
+    }
+
+    .war-threat-grid,
+    .war-defense-grid,
+    .war-reserve-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .war-zone-index {
+        display: none;
+    }
+
+    .war-zone-heading {
+        align-items: start;
+    }
+}
+
+@media (max-width: 520px) {
+    .roster-collection-grid,
+    .war-room-nav {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .unit-collection-main {
+        min-height: 132px;
+        padding: 12px;
+    }
+
+    .unit-kind-chip {
+        top: 8px;
+        left: 8px;
+    }
+
+    .portrait-progress {
+        right: 8px;
+        bottom: 8px;
+    }
+
+    .war-room-nav-card {
+        padding: 11px;
+    }
+}
+
+@media (max-width: 380px) {
+    .roster-collection-grid,
+    .war-room-nav {
+        grid-template-columns: 1fr;
+    }
+}
