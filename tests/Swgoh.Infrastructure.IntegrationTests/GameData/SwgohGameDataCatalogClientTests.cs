@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 
@@ -11,7 +12,7 @@ namespace Swgoh.Infrastructure.IntegrationTests.GameData;
 public sealed class SwgohGameDataCatalogClientTests
 {
     [Fact]
-    public async Task GetAsync_ParsesSpecialSkillTiersAndCachesCatalog()
+    public async Task GetAsync_ParsesUnitMetadataSpecialSkillTiersAndCachesCatalog()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var handler = new GameDataHandler();
@@ -31,9 +32,19 @@ public sealed class SwgohGameDataCatalogClientTests
         Assert.Null(first.Skills["skill-omicron"].ZetaTier);
         Assert.Equal(3, first.Skills["skill-zeta-omicron"].ZetaTier);
         Assert.Equal(4, first.Skills["skill-zeta-omicron"].OmicronTier);
-        Assert.False(first.Units["CHARACTER"].IsShip);
+
+        GameUnitDefinition character = first.Units["CHARACTER"];
+        Assert.False(character.IsShip);
+        Assert.Equal("UNIT_CHARACTER_NAME", character.NameKey);
+        Assert.Equal("Clone Captain", character.Name);
+        Assert.Equal("tex.charui_character", character.ThumbnailName);
+        Assert.Contains("Galactic Republic", character.Factions);
+        Assert.Contains("affiliation_republic", character.Tags);
+        Assert.Contains("role_support", character.Tags);
+
         Assert.True(first.Units["SHIP"].IsShip);
-        Assert.Equal(4, handler.RequestCount);
+        Assert.Equal("Republic Fighter", first.Units["SHIP"].Name);
+        Assert.Equal(6, handler.RequestCount);
     }
 
     private sealed class StubHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
@@ -54,12 +65,49 @@ public sealed class SwgohGameDataCatalogClientTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref requestCount);
-            string json = request.RequestUri?.AbsolutePath switch
+            string path = request.RequestUri?.AbsolutePath
+                ?? throw new InvalidOperationException("Game Data request URI is required.");
+
+            if (string.Equals(path, "/Loc_ENG_US.txt.json.br", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = CreateBrotliContent("""
+                        {
+                          "UNIT_CHARACTER_NAME":"Clone Captain",
+                          "UNIT_SHIP_NAME":"Republic Fighter",
+                          "CATEGORY_GALACTICREPUBLIC_DESC":"Galactic Republic",
+                          "CATEGORY_SUPPORT_DESC":"Support"
+                        }
+                        """)
+                });
+            }
+
+            string json = path switch
             {
                 "/units_gas.json" => """
                     {"data":[
-                      {"baseId":"CHARACTER","combatType":1},
-                      {"baseId":"SHIP","combatType":2}
+                      {
+                        "baseId":"CHARACTER",
+                        "combatType":1,
+                        "nameKey":"UNIT_CHARACTER_NAME",
+                        "thumbnailName":"tex.charui_character",
+                        "categoryId":["affiliation_republic","role_support"]
+                      },
+                      {
+                        "baseId":"SHIP",
+                        "combatType":2,
+                        "nameKey":"UNIT_SHIP_NAME",
+                        "thumbnailName":"tex.charui_ship",
+                        "categoryId":["affiliation_republic","shipclass_fighter"]
+                      }
+                    ]}
+                    """,
+                "/category.json" => """
+                    {"data":[
+                      {"id":"affiliation_republic","descKey":"CATEGORY_GALACTICREPUBLIC_DESC","visible":true},
+                      {"id":"role_support","descKey":"CATEGORY_SUPPORT_DESC","visible":true},
+                      {"id":"shipclass_fighter","descKey":"CATEGORY_FIGHTER_DESC","visible":false}
                     ]}
                     """,
                 "/skill.json" => """
@@ -89,6 +137,18 @@ public sealed class SwgohGameDataCatalogClientTests
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
+        }
+
+        private static HttpContent CreateBrotliContent(string json)
+        {
+            using var output = new MemoryStream();
+            using (var brotli = new BrotliStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(json);
+                brotli.Write(bytes);
+            }
+
+            return new ByteArrayContent(output.ToArray());
         }
     }
 }
