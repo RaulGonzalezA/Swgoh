@@ -63,7 +63,12 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         int TotalFeats,
         int EarnedFeatPoints,
         int AvailableFeatPoints,
+        int StaminaCostPerBattle,
+        int ReserveFloorPercent,
+        IReadOnlyCollection<UnitStaminaViewModel> Stamina,
         DateTimeOffset UpdatedAtUtc);
+
+    public sealed record UnitStaminaViewModel(string DefinitionId, int CurrentPercent);
 
     public sealed record FeatViewModel(
         Guid Id,
@@ -86,6 +91,8 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         string EventId,
         int PendingFeats,
         int CandidateCharacters,
+        int StaminaCostPerBattle,
+        int ReserveFloorPercent,
         IReadOnlyCollection<TeamViewModel> Recommendations,
         IReadOnlyCollection<Guid> UncoveredFeatIds);
 
@@ -95,6 +102,10 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         decimal FeatEfficiency,
         long TeamGalacticPower,
         decimal? AverageSpeed,
+        decimal AverageStamina,
+        decimal ExpectedPostBattleAverageStamina,
+        decimal StaminaOpportunityCost,
+        int ReserveRiskUnits,
         IReadOnlyCollection<UnitViewModel> Team,
         IReadOnlyCollection<ContributionViewModel> AdvancesFeats,
         string Rationale);
@@ -106,7 +117,10 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         int RelicTier,
         long GalacticPower,
         decimal? Speed,
-        IReadOnlyCollection<string> Factions);
+        IReadOnlyCollection<string> Factions,
+        int CurrentStamina,
+        int ExpectedPostBattleStamina,
+        bool BelowReserveAfterBattle);
 
     public sealed record ContributionViewModel(
         Guid FeatId,
@@ -120,7 +134,12 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         string EventId,
         string Name,
         string Difficulty,
-        IReadOnlyCollection<SaveFeatRequest> Feats);
+        IReadOnlyCollection<SaveFeatRequest> Feats,
+        int StaminaCostPerBattle,
+        int ReserveFloorPercent,
+        IReadOnlyCollection<SaveUnitStaminaRequest> Stamina);
+
+    public sealed record SaveUnitStaminaRequest(string DefinitionId, int CurrentPercent);
 
     public sealed record SaveFeatRequest(
         Guid? Id,
