@@ -1,5 +1,6 @@
 @page "/data"
 @rendermode InteractiveServer
+@implements IDisposable
 @using Swgoh.Blazor.State
 @inject PlayerApiClient PlayerClient
 @inject GacPlannerApiClient PlannerClient
@@ -84,15 +85,41 @@
 @code {
     private bool _loading = true;
     private string? _error;
+    private long? _loadedAllyCode;
     private PlayerApiClient.PlayerViewModel? _player;
     private GacPlannerApiClient.PlannerViewModel? _planner;
     private ConquestApiClient.PlanViewModel? _conquest;
 
-    protected override async Task OnParametersSetAsync()
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    protected override Task OnParametersSetAsync() => LoadDataAsync();
+
+    private void OnSessionChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadDataAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadDataAsync()
     {
         if (Session.AllyCode is not long allyCode)
         {
+            _loadedAllyCode = null;
+            _player = null;
+            _planner = null;
+            _conquest = null;
             _loading = false;
+            return;
+        }
+
+        if (_loadedAllyCode == allyCode && _player is not null)
+        {
             return;
         }
 
@@ -108,6 +135,7 @@
             _player = await playerTask;
             _planner = (await plannerTask).Planner;
             _conquest = await conquestTask;
+            _loadedAllyCode = allyCode;
         }
         catch (HttpRequestException)
         {
@@ -139,5 +167,10 @@
             < 2880 => "ayer",
             _ => updatedAt.Value.ToLocalTime().ToString("dd/MM/yyyy")
         };
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
     }
 }
