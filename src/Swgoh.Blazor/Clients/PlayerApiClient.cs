@@ -37,13 +37,26 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         int pageSize = 24,
         string? search = null,
         string type = "All",
+        int? minRarity = null,
+        int? minRelic = null,
+        bool? hasZeta = null,
+        bool? hasOmicron = null,
+        string orderBy = "GalacticPower",
+        string direction = "Descending",
         CancellationToken cancellationToken = default)
     {
-        var query = new StringBuilder($"?page={page}&pageSize={pageSize}&type={Uri.EscapeDataString(type)}");
+        var query = new StringBuilder(
+            $"?page={page}&pageSize={pageSize}&type={Uri.EscapeDataString(type)}&orderBy={Uri.EscapeDataString(orderBy)}&direction={Uri.EscapeDataString(direction)}");
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             query.Append("&search=").Append(Uri.EscapeDataString(search.Trim()));
         }
+
+        AppendOptional(query, "minRarity", minRarity);
+        AppendOptional(query, "minRelic", minRelic);
+        AppendOptional(query, "hasZeta", hasZeta);
+        AppendOptional(query, "hasOmicron", hasOmicron);
 
         using HttpResponseMessage response = await httpClient.GetAsync(
             $"/api/v1/players/{allyCode}/roster{query}",
@@ -55,6 +68,19 @@ public sealed class PlayerApiClient(HttpClient httpClient)
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<RosterPageViewModel>(cancellationToken);
+    }
+
+    private static void AppendOptional(StringBuilder query, string name, object? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        string text = value is bool boolean
+            ? boolean.ToString().ToLowerInvariant()
+            : value.ToString() ?? string.Empty;
+        query.Append('&').Append(name).Append('=').Append(Uri.EscapeDataString(text));
     }
 
     public sealed record PlayerViewModel(
@@ -98,11 +124,13 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         string Id,
         string DefinitionId,
         string Name,
+        string? ThumbnailName,
         IReadOnlyCollection<string> Factions,
         int Level,
         int Rarity,
         int GearTier,
         int RelicTier,
+        int EquippedModCount,
         long GalacticPower,
         bool IsShip,
         int ZetaCount,
