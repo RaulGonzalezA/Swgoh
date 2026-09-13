@@ -18,9 +18,9 @@ internal static class ConquestEndpoints
         group.MapGet("/current", GetCurrentAsync)
             .WithSummary("Get the current Conquest plan and feat progress");
         group.MapPut("/current", SaveCurrentAsync)
-            .WithSummary("Save the current Conquest event and feats");
+            .WithSummary("Save the current Conquest event, feats and stamina state");
         group.MapPost("/current/optimize", OptimizeCurrentAsync)
-            .WithSummary("Recommend teams that advance multiple pending Conquest feats");
+            .WithSummary("Recommend stamina-aware teams that advance multiple pending Conquest feats");
 
         return endpoints;
     }
@@ -54,7 +54,12 @@ internal static class ConquestEndpoints
                 request.EventId,
                 request.Name,
                 ParseDifficulty(request.Difficulty),
-                [.. (request.Feats ?? []).Select(ToInput)]);
+                [.. (request.Feats ?? []).Select(ToInput)],
+                request.StaminaCostPerBattle ?? ConquestPlan.DefaultStaminaCostPerBattle,
+                request.ReserveFloorPercent ?? ConquestPlan.DefaultReserveFloorPercent,
+                [.. (request.Stamina ?? []).Select(value => new SaveConquestUnitStamina(
+                    value.DefinitionId,
+                    value.CurrentPercent))]);
             ConquestPlanDetails plan = await service.SaveAsync(allyCode, input, cancellationToken);
             return Results.Ok(PlanResponse.From(plan));
         }
@@ -125,7 +130,12 @@ internal static class ConquestEndpoints
         string EventId,
         string Name,
         string Difficulty,
-        IReadOnlyCollection<FeatRequest>? Feats);
+        IReadOnlyCollection<FeatRequest>? Feats,
+        int? StaminaCostPerBattle = null,
+        int? ReserveFloorPercent = null,
+        IReadOnlyCollection<UnitStaminaRequest>? Stamina = null);
+
+    internal sealed record UnitStaminaRequest(string DefinitionId, int CurrentPercent);
 
     internal sealed record FeatRequest(
         Guid? Id,
@@ -152,6 +162,9 @@ internal static class ConquestEndpoints
         int TotalFeats,
         int EarnedFeatPoints,
         int AvailableFeatPoints,
+        int StaminaCostPerBattle,
+        int ReserveFloorPercent,
+        IReadOnlyCollection<UnitStaminaResponse> Stamina,
         DateTimeOffset UpdatedAtUtc)
     {
         public static PlanResponse From(ConquestPlanDetails plan) => new(
@@ -165,7 +178,17 @@ internal static class ConquestEndpoints
             plan.TotalFeats,
             plan.EarnedFeatPoints,
             plan.AvailableFeatPoints,
+            plan.StaminaCostPerBattle,
+            plan.ReserveFloorPercent,
+            [.. plan.Stamina.Select(UnitStaminaResponse.From)],
             plan.UpdatedAtUtc);
+    }
+
+    internal sealed record UnitStaminaResponse(string DefinitionId, int CurrentPercent)
+    {
+        public static UnitStaminaResponse From(ConquestUnitStamina value) => new(
+            value.DefinitionId,
+            value.CurrentPercent);
     }
 
     internal sealed record FeatResponse(
@@ -206,6 +229,8 @@ internal static class ConquestEndpoints
         string EventId,
         int PendingFeats,
         int CandidateCharacters,
+        int StaminaCostPerBattle,
+        int ReserveFloorPercent,
         IReadOnlyCollection<TeamResponse> Recommendations,
         IReadOnlyCollection<Guid> UncoveredFeatIds)
     {
@@ -214,6 +239,8 @@ internal static class ConquestEndpoints
             result.EventId,
             result.PendingFeats,
             result.CandidateCharacters,
+            result.StaminaCostPerBattle,
+            result.ReserveFloorPercent,
             [.. result.Recommendations.Select(TeamResponse.From)],
             result.UncoveredFeatIds);
     }
@@ -224,6 +251,10 @@ internal static class ConquestEndpoints
         decimal FeatEfficiency,
         long TeamGalacticPower,
         decimal? AverageSpeed,
+        decimal AverageStamina,
+        decimal ExpectedPostBattleAverageStamina,
+        decimal StaminaOpportunityCost,
+        int ReserveRiskUnits,
         IReadOnlyCollection<UnitResponse> Team,
         IReadOnlyCollection<ContributionResponse> AdvancesFeats,
         string Rationale)
@@ -234,6 +265,10 @@ internal static class ConquestEndpoints
             recommendation.FeatEfficiency,
             recommendation.TeamGalacticPower,
             recommendation.AverageSpeed,
+            recommendation.AverageStamina,
+            recommendation.ExpectedPostBattleAverageStamina,
+            recommendation.StaminaOpportunityCost,
+            recommendation.ReserveRiskUnits,
             [.. recommendation.Team.Select(UnitResponse.From)],
             [.. recommendation.AdvancesFeats.Select(ContributionResponse.From)],
             recommendation.Rationale);
@@ -246,7 +281,10 @@ internal static class ConquestEndpoints
         int RelicTier,
         long GalacticPower,
         decimal? Speed,
-        IReadOnlyCollection<string> Factions)
+        IReadOnlyCollection<string> Factions,
+        int CurrentStamina,
+        int ExpectedPostBattleStamina,
+        bool BelowReserveAfterBattle)
     {
         public static UnitResponse From(ConquestOptimizationUnit unit) => new(
             unit.DefinitionId,
@@ -255,7 +293,10 @@ internal static class ConquestEndpoints
             unit.RelicTier,
             unit.GalacticPower,
             unit.Speed,
-            unit.Factions);
+            unit.Factions,
+            unit.CurrentStamina,
+            unit.ExpectedPostBattleStamina,
+            unit.BelowReserveAfterBattle);
     }
 
     internal sealed record ContributionResponse(
