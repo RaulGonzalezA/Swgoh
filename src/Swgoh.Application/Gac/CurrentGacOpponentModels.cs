@@ -1,3 +1,4 @@
+using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
 
 namespace Swgoh.Application.Gac;
@@ -41,6 +42,14 @@ public sealed record CurrentGacOpponentLookup(
         string message) => new(status, null, message);
 }
 
+public sealed record CurrentOpponentRosterScouting(
+    PlayerRosterAnalysis Analysis,
+    IReadOnlyCollection<PlayerRosterUnit> GalacticLegends,
+    IReadOnlyCollection<PlayerRosterUnit> TopCharacters,
+    IReadOnlyCollection<PlayerRosterUnit> TopShips,
+    IReadOnlyCollection<PlayerRosterUnit> OmicronCharacters);
+
 public sealed record CurrentGacScoutingResult(
     CurrentGacOpponentLookup Lookup,
-    OpponentScoutingReport? Scouting);
+    OpponentScoutingReport? Scouting,
+    CurrentOpponentRosterScouting? RosterScouting);

@@ -1,6 +1,7 @@
 using Asp.Versioning;
 
 using Swgoh.Application.Gac;
+using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
 
 namespace Swgoh.Api.Endpoints;
@@ -300,7 +301,8 @@ internal static class GacEndpoints
 
     internal sealed record CurrentGacScoutingResponse(
         CurrentGacOpponentResponse Opponent,
-        OpponentScoutingResponse? Scouting)
+        OpponentScoutingResponse? Scouting,
+        CurrentOpponentRosterScoutingResponse? RosterScouting)
     {
         public static CurrentGacScoutingResponse From(CurrentGacScoutingResult result)
         {
@@ -308,8 +310,24 @@ internal static class GacEndpoints
                 ?? throw new InvalidOperationException("A found lookup must contain an opponent.");
             return new CurrentGacScoutingResponse(
                 CurrentGacOpponentResponse.From(opponent),
-                result.Scouting is null ? null : OpponentScoutingResponse.From(result.Scouting));
+                result.Scouting is null ? null : OpponentScoutingResponse.From(result.Scouting),
+                result.RosterScouting is null ? null : CurrentOpponentRosterScoutingResponse.From(result.RosterScouting));
         }
+    }
+
+    internal sealed record CurrentOpponentRosterScoutingResponse(
+        PlayerRosterAnalysis Analysis,
+        IReadOnlyCollection<PlayerRosterUnit> GalacticLegends,
+        IReadOnlyCollection<PlayerRosterUnit> TopCharacters,
+        IReadOnlyCollection<PlayerRosterUnit> TopShips,
+        IReadOnlyCollection<PlayerRosterUnit> OmicronCharacters)
+    {
+        public static CurrentOpponentRosterScoutingResponse From(CurrentOpponentRosterScouting scouting) => new(
+            scouting.Analysis,
+            scouting.GalacticLegends,
+            scouting.TopCharacters,
+            scouting.TopShips,
+            scouting.OmicronCharacters);
     }
 
     internal sealed record CurrentGacOpponentResponse(
