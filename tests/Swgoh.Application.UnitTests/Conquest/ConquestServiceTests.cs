@@ -80,7 +80,9 @@ public sealed class ConquestServiceTests
             new FakeCatalog(catalog),
             new FakeClock(now));
 
-        ConquestOptimizationResult? result = await service.OptimizeCurrentAsync(123_456_789);
+        ConquestOptimizationResult? result = await service.OptimizeCurrentAsync(
+            123_456_789,
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         ConquestTeamRecommendation best = Assert.IsType<ConquestTeamRecommendation>(result!.Recommendations.First());
@@ -134,7 +136,9 @@ public sealed class ConquestServiceTests
             new FakeCatalog(catalog),
             new FakeClock(now));
 
-        ConquestOptimizationResult? result = await service.OptimizeCurrentAsync(123_456_789);
+        ConquestOptimizationResult? result = await service.OptimizeCurrentAsync(
+            123_456_789,
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal(0, result!.PendingFeats);
