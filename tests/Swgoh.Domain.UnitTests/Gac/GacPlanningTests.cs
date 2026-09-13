@@ -1,5 +1,7 @@
 using Swgoh.Domain.Gac;
 
+using Xunit;
+
 namespace Swgoh.Domain.UnitTests.Gac;
 
 public sealed class GacPlanningTests
