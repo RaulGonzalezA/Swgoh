@@ -16,7 +16,7 @@ internal sealed class SwgohGameDataCatalogClient : ISwgohGameDataCatalog
     private GameDataCatalog? cachedCatalog;
     private DateTimeOffset cacheExpiresAtUtc;
 
-    public SwgohGameDataCatalogClient(IHttpClientFactory httpClientFactory, string locale = "ENG_US")
+    public SwgohGameDataCatalogClient(IHttpClientFactory httpClientFactory, string locale = "SPA_XM")
     {
         ArgumentNullException.ThrowIfNull(httpClientFactory);
         this.httpClientFactory = httpClientFactory;
