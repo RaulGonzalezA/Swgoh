@@ -106,11 +106,7 @@ public sealed record GacPlannerCounterHint(
     decimal? WinRate,
     decimal? OneShotRate,
     decimal? AverageBanners,
-    int? PlayersObserved,
-    int? PersonalUses = null,
-    decimal? PersonalWinRate = null,
-    decimal PersonalAdjustment = 0m,
-    string? PersonalScope = null);
+    int? PlayersObserved);
 
 public sealed record GacPlannerDatacronDetails(
     string Id,
