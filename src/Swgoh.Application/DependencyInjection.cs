@@ -20,6 +20,8 @@ public static class DependencyInjection
         services.AddScoped<ISquadService, SquadService>();
         services.AddSingleton<IGacRulesService, GacRulesService>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();
+        services.AddScoped<IGacHistorySyncService, GacHistorySyncService>();
+        services.AddScoped<IGacCounterStatisticsService, GacCounterStatisticsService>();
         services.AddScoped<IOpponentScoutingService, OpponentScoutingService>();
         services.AddScoped<ICurrentGacScoutingService, CurrentGacScoutingService>();
         return services;
