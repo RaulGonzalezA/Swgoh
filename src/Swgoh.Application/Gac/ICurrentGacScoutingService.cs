@@ -26,6 +26,7 @@ internal sealed class CurrentGacScoutingService(
     private const int CounterResultLimit = 500;
     private const int CharacterScoutLimit = 100;
     private const int ShipScoutLimit = 50;
+    private const int RosterPageSize = 100;
     private const int TopCharacterLimit = 20;
     private const int TopShipLimit = 12;
     private const int OmicronScoutLimit = 30;
@@ -103,17 +104,13 @@ internal sealed class CurrentGacScoutingService(
             hasOmicron: true,
             cancellationToken);
 
-        Task<PlayerRosterPage?> playerCharactersTask = LoadRosterAsync(
+        Task<IReadOnlyCollection<PlayerRosterUnit>> playerCharactersTask = LoadFullRosterAsync(
             allyCode,
             PlayerRosterUnitType.Character,
-            CharacterScoutLimit,
-            hasOmicron: null,
             cancellationToken);
-        Task<PlayerRosterPage?> playerShipsTask = LoadRosterAsync(
+        Task<IReadOnlyCollection<PlayerRosterUnit>> playerShipsTask = LoadFullRosterAsync(
             allyCode,
             PlayerRosterUnitType.Ship,
-            ShipScoutLimit,
-            hasOmicron: null,
             cancellationToken);
         Task<PlayerRosterPage?> playerOmicronsTask = LoadRosterAsync(
             allyCode,
@@ -137,8 +134,8 @@ internal sealed class CurrentGacScoutingService(
         PlayerRosterPage? opponentCharacters = await opponentCharactersTask.ConfigureAwait(false);
         PlayerRosterPage? opponentShips = await opponentShipsTask.ConfigureAwait(false);
         PlayerRosterPage? opponentOmicrons = await opponentOmicronsTask.ConfigureAwait(false);
-        PlayerRosterPage? playerCharacters = await playerCharactersTask.ConfigureAwait(false);
-        PlayerRosterPage? playerShips = await playerShipsTask.ConfigureAwait(false);
+        IReadOnlyCollection<PlayerRosterUnit> playerCharacters = await playerCharactersTask.ConfigureAwait(false);
+        IReadOnlyCollection<PlayerRosterUnit> playerShips = await playerShipsTask.ConfigureAwait(false);
         PlayerRosterPage? playerOmicrons = await playerOmicronsTask.ConfigureAwait(false);
 
         CurrentOpponentRosterScouting rosterScouting = new(
@@ -151,8 +148,8 @@ internal sealed class CurrentGacScoutingService(
         CurrentGacBattlePlan battlePlan = CurrentGacBattlePlanBuilder.Build(
             opponent,
             playerAnalysis,
-            playerCharacters?.Items ?? [],
-            playerShips?.Items ?? [],
+            playerCharacters,
+            playerShips,
             playerOmicrons?.Items ?? [],
             rosterScouting,
             historicalScouting);
@@ -160,8 +157,8 @@ internal sealed class CurrentGacScoutingService(
             battlePlan,
             opponent.Format,
             counterStatistics,
-            playerCharacters?.Items ?? [],
-            playerShips?.Items ?? []);
+            playerCharacters,
+            playerShips);
 
         return new CurrentGacScoutingResult(
             lookup,
@@ -185,6 +182,48 @@ internal sealed class CurrentGacScoutingService(
             OrderBy: PlayerRosterSortField.GalacticPower,
             Direction: PlayerRosterSortDirection.Descending),
         cancellationToken);
+
+    private async Task<IReadOnlyCollection<PlayerRosterUnit>> LoadFullRosterAsync(
+        long allyCode,
+        PlayerRosterUnitType type,
+        CancellationToken cancellationToken)
+    {
+        PlayerRosterPage? firstPage = await playerRosterService.GetAsync(
+            allyCode,
+            new PlayerRosterQuery(
+                Page: 1,
+                PageSize: RosterPageSize,
+                Type: type,
+                OrderBy: PlayerRosterSortField.GalacticPower,
+                Direction: PlayerRosterSortDirection.Descending),
+            cancellationToken).ConfigureAwait(false);
+        if (firstPage is null)
+        {
+            return [];
+        }
+
+        var units = new List<PlayerRosterUnit>(firstPage.Items);
+        for (int page = 2; page <= firstPage.TotalPages; page++)
+        {
+            PlayerRosterPage? nextPage = await playerRosterService.GetAsync(
+                allyCode,
+                new PlayerRosterQuery(
+                    Page: page,
+                    PageSize: RosterPageSize,
+                    Type: type,
+                    OrderBy: PlayerRosterSortField.GalacticPower,
+                    Direction: PlayerRosterSortDirection.Descending),
+                cancellationToken).ConfigureAwait(false);
+            if (nextPage is null)
+            {
+                break;
+            }
+
+            units.AddRange(nextPage.Items);
+        }
+
+        return units;
+    }
 
     private static bool IsGalacticLegend(PlayerRosterUnit unit) =>
         unit.Tags.Any(tag => tag.Contains("galactic_legend", StringComparison.OrdinalIgnoreCase));
