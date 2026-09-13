@@ -6,6 +6,8 @@ internal sealed record GacPersonalLearningSignal(
     int Wins,
     int Failures,
     decimal? WinRate,
+    decimal? OneShotRate,
+    decimal? AverageBanners,
     string Scope,
     string Summary)
 {
@@ -14,6 +16,8 @@ internal sealed record GacPersonalLearningSignal(
         0,
         0,
         0,
+        null,
+        null,
         null,
         "None",
         "Sin histórico personal suficiente para ajustar este counter.");
