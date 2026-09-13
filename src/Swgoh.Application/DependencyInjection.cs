@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<IPlayerProfileService, PlayerProfileService>();
         services.AddScoped<IPlayerAnalysisService, PlayerAnalysisService>();
         services.AddScoped<IPlayerHistoryService, PlayerHistoryService>();
+        services.AddScoped<IPlayerRosterService, PlayerRosterService>();
         services.AddScoped<IGalacticLegendProgressService, GalacticLegendProgressService>();
         return services;
     }
