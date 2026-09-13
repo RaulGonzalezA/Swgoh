@@ -69,15 +69,99 @@ else
         </div>
     </section>
 
+    <section class="planner-optimizer-panel" aria-labelledby="optimizer-title">
+        <div class="planner-optimizer-heading">
+            <div>
+                <span class="section-kicker">Plan automático</span>
+                <h2 id="optimizer-title">Optimizar ataques</h2>
+                <p>Maximiza cobertura, respeta unidades consumidas y penaliza gastar equipos caros cuando existe una alternativa razonable.</p>
+            </div>
+            <div class="planner-optimizer-actions">
+                <button class="secondary-button" type="button" @onclick="PreviewFillGapsAsync" disabled="@(OptimizerBusy || VisibleDefenses.Count == 0)">Completar huecos</button>
+                <button class="ghost-button" type="button" @onclick="PreviewRebuildAsync" disabled="@(OptimizerBusy || VisibleDefenses.Count == 0)">Reoptimizar pendientes</button>
+            </div>
+        </div>
+
+        @if (OptimizerBusy)
+        {
+            <div class="optimizer-working"><span class="spinner"></span> Calculando combinaciones…</div>
+        }
+        else if (OptimizerError is not null)
+        {
+            <div class="status-card status-error optimizer-error" role="alert"><span class="status-icon">!</span><div><strong>No se pudo optimizar</strong><p>@OptimizerError</p></div></div>
+        }
+        else if (Optimization is not null)
+        {
+            <div class="optimizer-summary">
+                <div><span>Modo</span><strong>@FriendlyOptimizationMode(Optimization.Mode)</strong></div>
+                <div><span>Propuestas</span><strong>@Optimization.RecommendedAttacks/@Optimization.TargetDefenses</strong></div>
+                <div><span>Con histórico</span><strong>@Optimization.HistoricalMatches</strong></div>
+                <div><span>Score medio</span><strong>@Optimization.AverageScore.ToString("0.#")</strong></div>
+                @if (Optimization.KnownAverageBanners is decimal knownBanners)
+                {
+                    <div><span>Banners hist.</span><strong>@knownBanners.ToString("0.#")</strong></div>
+                }
+            </div>
+
+            @if (Optimization.Recommendations.Count == 0)
+            {
+                <div class="planner-board-empty">No hay ataques nuevos que el optimizador pueda proponer con los equipos actualmente disponibles.</div>
+            }
+            else
+            {
+                <div class="optimizer-recommendation-list">
+                    @foreach (GacPlannerApiClient.OptimizationRecommendationViewModel recommendation in Optimization.Recommendations)
+                    {
+                        <article class="optimizer-recommendation-card">
+                            <div class="optimizer-route">
+                                <div><span>@recommendation.Zone</span><strong>@recommendation.DefenseName</strong></div>
+                                <span class="optimizer-arrow">→</span>
+                                <div><span>Tu ataque</span><strong>@recommendation.TeamName</strong></div>
+                            </div>
+                            <div class="optimizer-meta">
+                                <span class="@OptimizerEvidenceClass(recommendation.Evidence)">@recommendation.Evidence</span>
+                                <span>Score <strong>@recommendation.Score.ToString("0.#")</strong></span>
+                                <span>Coste <strong>@recommendation.StrategicCost.ToString("0.#")</strong></span>
+                                @if (recommendation.WinRate is decimal optimizerWinRate)
+                                {
+                                    <span>Win <strong>@Percent(optimizerWinRate)</strong></span>
+                                }
+                                @if (recommendation.OneShotRate is decimal optimizerOneShot)
+                                {
+                                    <span>1-shot <strong>@Percent(optimizerOneShot)</strong></span>
+                                }
+                            </div>
+                            <p>@recommendation.Rationale</p>
+                        </article>
+                    }
+                </div>
+            }
+
+            @if (Optimization.UncoveredDefenseIds.Count > 0)
+            {
+                <div class="optimizer-warning">@Optimization.UncoveredDefenseIds.Count defensas siguen sin un equipo compatible disponible.</div>
+            }
+            @if (Optimization.SearchLimitReached)
+            {
+                <div class="optimizer-warning">Se alcanzó el límite de búsqueda; la propuesta es válida pero puede no ser el óptimo absoluto.</div>
+            }
+            @if (Optimization.Applied)
+            {
+                <div class="optimizer-applied">✓ Propuesta aplicada al plan de la ronda.</div>
+            }
+            else if (Optimization.RecommendedAttacks > 0)
+            {
+                <button class="primary-button optimizer-apply-button" type="button" @onclick="ApplyOptimizationAsync" disabled="@OptimizerBusy">Aplicar propuesta</button>
+            }
+        }
+    </section>
+
     @if (Planner.Plan.Conflicts.Count > 0)
     {
         <section class="planner-conflict-strip" aria-label="Conflictos del plan">
             <div class="planner-conflict-heading">
                 <span class="warning-symbol">!</span>
-                <div>
-                    <strong>Revisa el plan antes de atacar</strong>
-                    <small>Detectamos unidades reutilizadas o ataques que ya no son necesarios.</small>
-                </div>
+                <div><strong>Revisa el plan antes de atacar</strong><small>Detectamos unidades reutilizadas o ataques que ya no son necesarios.</small></div>
             </div>
             <div class="planner-conflict-list">
                 @foreach (GacPlannerApiClient.ConflictViewModel conflict in Planner.Plan.Conflicts)
@@ -102,26 +186,10 @@ else
             {
                 <div class="planner-builder-card">
                     <div class="planner-builder-title"><strong>Guardar equipo</strong><span>@Planner.Opponent.Format</span></div>
-                    <label>
-                        Nombre
-                        <input placeholder="Ej. Leia ataque" @bind="PresetName" />
-                    </label>
+                    <label>Nombre<input placeholder="Ej. Leia ataque" @bind="PresetName" /></label>
                     <div class="planner-form-row">
-                        <label>
-                            Uso
-                            <select @bind="PresetUse">
-                                <option value="Offense">Ataque</option>
-                                <option value="Defense">Defensa</option>
-                                <option value="Flexible">Flexible</option>
-                            </select>
-                        </label>
-                        <label>
-                            Tipo
-                            <select value="@PresetType" @onchange="PresetTypeChanged">
-                                <option value="Character">Personajes</option>
-                                <option value="Fleet">Flota</option>
-                            </select>
-                        </label>
+                        <label>Uso<select @bind="PresetUse"><option value="Offense">Ataque</option><option value="Defense">Defensa</option><option value="Flexible">Flexible</option></select></label>
+                        <label>Tipo<select value="@PresetType" @onchange="PresetTypeChanged"><option value="Character">Personajes</option><option value="Fleet">Flota</option></select></label>
                     </div>
                     <label>
                         Líder
@@ -170,10 +238,7 @@ else
                     {
                         <article class="planner-preset-card">
                             <div class="planner-preset-top">
-                                <div>
-                                    <span class="planner-use-pill planner-use-@preset.Use.ToLowerInvariant()">@FriendlyUse(preset.Use)</span>
-                                    <strong>@preset.Name</strong>
-                                </div>
+                                <div><span class="planner-use-pill planner-use-@preset.Use.ToLowerInvariant()">@FriendlyUse(preset.Use)</span><strong>@preset.Name</strong></div>
                                 <button class="planner-icon-button" type="button" title="Eliminar equipo" @onclick="() => DeletePresetAsync(preset.Id)">×</button>
                             </div>
                             <div class="planner-mini-squad">
@@ -197,22 +262,10 @@ else
 
         <main class="planner-board">
             <section class="planner-board-section planner-own-defense-section">
-                <div class="planner-section-heading">
-                    <div><span class="section-kicker">Tu lado</span><h2>Mi defensa</h2></div>
-                    <span class="count-badge">@OwnDefenses.Count</span>
-                </div>
+                <div class="planner-section-heading"><div><span class="section-kicker">Tu lado</span><h2>Mi defensa</h2></div><span class="count-badge">@OwnDefenses.Count</span></div>
                 <p class="planner-section-copy">Registra tus defensas para bloquear automáticamente esas unidades en el plan de ataque.</p>
-
                 <div class="planner-inline-editor">
-                    <label>
-                        Zona
-                        <select @bind="OwnDefenseZone">
-                            @foreach (string zone in ZoneOptions)
-                            {
-                                <option value="@zone">@zone</option>
-                            }
-                        </select>
-                    </label>
+                    <label>Zona<select @bind="OwnDefenseZone">@foreach (string zone in ZoneOptions) { <option value="@zone">@zone</option> }</select></label>
                     <label class="planner-inline-editor-wide">
                         Equipo
                         <select @bind="OwnDefensePresetId">
@@ -225,10 +278,9 @@ else
                     </label>
                     <button class="secondary-button" type="button" @onclick="AddOwnDefenseAsync" disabled="@(Saving || string.IsNullOrWhiteSpace(OwnDefensePresetId))">Añadir</button>
                 </div>
-
                 @if (OwnDefenses.Count == 0)
                 {
-                    <div class="planner-board-empty">Todavía no has indicado tu defensa. Puedes planificar ataques, pero no podremos detectar solapes con lo colocado atrás.</div>
+                    <div class="planner-board-empty">Todavía no has indicado tu defensa. El optimizador no podrá reservar esas unidades hasta que la registres.</div>
                 }
                 else
                 {
@@ -240,10 +292,7 @@ else
                             {
                                 <article class="planner-defense-card planner-own-defense-card">
                                     <div class="planner-zone-pill">@assignment.Zone</div>
-                                    <div class="planner-defense-main">
-                                        <strong>@preset.Name</strong>
-                                        <span>@SquadNames(preset.Squad)</span>
-                                    </div>
+                                    <div class="planner-defense-main"><strong>@preset.Name</strong><span>@SquadNames(preset.Squad)</span></div>
                                     <button class="planner-icon-button" type="button" title="Quitar de defensa" @onclick="() => RemoveOwnDefenseAsync(assignment.Id)">×</button>
                                 </article>
                             }
@@ -257,33 +306,16 @@ else
                     <div><span class="section-kicker">Tablero rival</span><h2>Defensas visibles</h2></div>
                     <button class="ghost-button" type="button" @onclick="ToggleEnemyBuilder">@(ShowEnemyBuilder ? "Cerrar" : "+ Defensa visible")</button>
                 </div>
-                <p class="planner-section-copy">Añade únicamente equipos que ya puedas ver en el juego. Los counters se cruzan con el histórico que ya calcula la War Room.</p>
+                <p class="planner-section-copy">Añade únicamente equipos que ya puedas ver en el juego. El optimizador cruza esos equipos con tus counters y presets disponibles.</p>
 
                 @if (ShowEnemyBuilder)
                 {
                     <div class="planner-builder-card planner-enemy-builder">
                         <div class="planner-form-row">
-                            <label>
-                                Zona
-                                <select @bind="EnemyZone">
-                                    @foreach (string zone in ZoneOptions)
-                                    {
-                                        <option value="@zone">@zone</option>
-                                    }
-                                </select>
-                            </label>
-                            <label>
-                                Tipo
-                                <select value="@EnemyType" @onchange="EnemyTypeChanged">
-                                    <option value="Character">Personajes</option>
-                                    <option value="Fleet">Flota</option>
-                                </select>
-                            </label>
+                            <label>Zona<select @bind="EnemyZone">@foreach (string zone in ZoneOptions) { <option value="@zone">@zone</option> }</select></label>
+                            <label>Tipo<select value="@EnemyType" @onchange="EnemyTypeChanged"><option value="Character">Personajes</option><option value="Fleet">Flota</option></select></label>
                         </div>
-                        <label>
-                            Etiqueta opcional
-                            <input placeholder="Ej. Muro sur" @bind="EnemyLabel" />
-                        </label>
+                        <label>Etiqueta opcional<input placeholder="Ej. Muro sur" @bind="EnemyLabel" /></label>
                         <label>
                             Líder
                             <select @bind="EnemyLeaderId">
@@ -316,10 +348,7 @@ else
 
                 @if (VisibleDefenses.Count == 0)
                 {
-                    <div class="planner-board-empty planner-board-empty-large">
-                        <strong>El tablero está vacío</strong>
-                        <span>Cuando veas una defensa rival, añádela aquí para empezar a encadenar ataques.</span>
-                    </div>
+                    <div class="planner-board-empty planner-board-empty-large"><strong>El tablero está vacío</strong><span>Cuando veas una defensa rival, añádela aquí para empezar a encadenar ataques.</span></div>
                 }
                 else
                 {
@@ -329,17 +358,9 @@ else
                             GacPlannerApiClient.VisibleDefenseViewModel? details = FindVisibleDefense(defense.Id);
                             GacPlannerApiClient.CounterHintViewModel? hint = FindCounterHint(defense.Id);
                             IReadOnlyCollection<AttackDraft> defenseAttacks = AttacksFor(defense.Id);
-
                             <article class="planner-enemy-card @(details?.Defeated == true ? "planner-enemy-defeated" : string.Empty)">
                                 <div class="planner-enemy-card-top">
-                                    <div>
-                                        <span class="planner-zone-pill">@defense.Zone</span>
-                                        <h3>@EnemyLeaderName(defense, details)</h3>
-                                        @if (!string.IsNullOrWhiteSpace(defense.Label))
-                                        {
-                                            <small>@defense.Label</small>
-                                        }
-                                    </div>
+                                    <div><span class="planner-zone-pill">@defense.Zone</span><h3>@EnemyLeaderName(defense, details)</h3>@if (!string.IsNullOrWhiteSpace(defense.Label)) { <small>@defense.Label</small> }</div>
                                     <button class="planner-icon-button" type="button" title="Quitar defensa visible" @onclick="() => RemoveVisibleDefenseAsync(defense.Id)">×</button>
                                 </div>
 
@@ -348,20 +369,7 @@ else
                                     <div class="planner-large-squad">
                                         @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in details.Squad.AllUnits)
                                         {
-                                            <div class="planner-unit-token" title="@unit.Name">
-                                                <div>
-                                                    @if (GetPortraitUrl(unit.ThumbnailName) is string imageUrl)
-                                                    {
-                                                        <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'" />
-                                                    }
-                                                    <span>@Initial(unit.Name)</span>
-                                                </div>
-                                                <small>@unit.Name</small>
-                                                @if (unit.RelicTier is > 0)
-                                                {
-                                                    <em>R@unit.RelicTier</em>
-                                                }
-                                            </div>
+                                            <div class="planner-unit-token" title="@unit.Name"><div>@if (GetPortraitUrl(unit.ThumbnailName) is string imageUrl) { <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'" /> }<span>@Initial(unit.Name)</span></div><small>@unit.Name</small>@if (unit.RelicTier is > 0) { <em>R@unit.RelicTier</em> }</div>
                                         }
                                     </div>
                                 }
@@ -369,45 +377,21 @@ else
                                 @if (hint is not null)
                                 {
                                     <div class="planner-counter-hint">
-                                        <div class="planner-counter-hint-heading">
-                                            <span>Counter sugerido</span>
-                                            <strong>@FriendlyConfidence(hint.Confidence)</strong>
-                                        </div>
+                                        <div class="planner-counter-hint-heading"><span>Counter sugerido</span><strong>@FriendlyConfidence(hint.Confidence)</strong></div>
                                         <p>@hint.Rationale</p>
-                                        @if (hint.RecommendedTeam.Count > 0)
-                                        {
-                                            <div class="planner-hint-team">@string.Join(" · ", hint.RecommendedTeam.Select(unit => unit.Name))</div>
-                                        }
+                                        @if (hint.RecommendedTeam.Count > 0) { <div class="planner-hint-team">@string.Join(" · ", hint.RecommendedTeam.Select(unit => unit.Name))</div> }
                                         <div class="planner-hint-stats">
-                                            @if (hint.WinRate is decimal winRate)
-                                            {
-                                                <span><strong>@Percent(winRate)</strong> win</span>
-                                            }
-                                            @if (hint.OneShotRate is decimal oneShotRate)
-                                            {
-                                                <span><strong>@Percent(oneShotRate)</strong> one-shot</span>
-                                            }
-                                            @if (hint.Uses is int uses)
-                                            {
-                                                <span><strong>@uses</strong> muestras</span>
-                                            }
+                                            @if (hint.WinRate is decimal winRate) { <span><strong>@Percent(winRate)</strong> win</span> }
+                                            @if (hint.OneShotRate is decimal oneShotRate) { <span><strong>@Percent(oneShotRate)</strong> one-shot</span> }
+                                            @if (hint.Uses is int uses) { <span><strong>@uses</strong> muestras</span> }
                                         </div>
-                                        @if (hint.RequiresDatacronVerification)
-                                        {
-                                            <small class="datacron-note">Verifica datacron y mods antes de confirmar.</small>
-                                        }
-                                        @if (hint.MatchingTeamPresetId is Guid matchingPresetId)
-                                        {
-                                            <button class="secondary-button planner-hint-action" type="button" @onclick="() => PlanAttackAsync(defense.Id, matchingPresetId)">Usar mi equipo coincidente</button>
-                                        }
+                                        @if (hint.RequiresDatacronVerification) { <small class="datacron-note">Verifica datacron y mods antes de confirmar.</small> }
+                                        @if (hint.MatchingTeamPresetId is Guid matchingPresetId) { <button class="secondary-button planner-hint-action" type="button" @onclick="() => PlanAttackAsync(defense.Id, matchingPresetId)">Usar mi equipo coincidente</button> }
                                     </div>
                                 }
 
                                 <div class="planner-attack-designer">
-                                    <div class="planner-attack-designer-title">
-                                        <strong>Diseñar ataque</strong>
-                                        <span>Intento @NextAttempt(defense.Id)</span>
-                                    </div>
+                                    <div class="planner-attack-designer-title"><strong>Diseñar ataque</strong><span>Intento @NextAttempt(defense.Id)</span></div>
                                     <div class="planner-attack-row">
                                         <select value="@SelectedAttackPreset(defense.Id)" @onchange="eventArgs => SetAttackPreset(defense.Id, eventArgs.Value?.ToString())">
                                             <option value="">Selecciona tu equipo…</option>
@@ -427,17 +411,10 @@ else
                                         {
                                             GacPlannerApiClient.TeamPresetViewModel? attackTeam = FindPreset(attack.TeamPresetId);
                                             <div class="planner-attempt planner-attempt-@attack.Status.ToLowerInvariant()">
-                                                <div>
-                                                    <span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span>
-                                                    <strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong>
-                                                </div>
+                                                <div><span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span><strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong></div>
                                                 @if (attack.Status == "Planned")
                                                 {
-                                                    <div class="planner-attempt-actions">
-                                                        <button type="button" title="Victoria" @onclick="() => MarkAttackWonAsync(attack.Id)">✓</button>
-                                                        <button type="button" title="Fallo" @onclick="() => MarkAttackFailedAsync(attack.Id)">×</button>
-                                                        <button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button>
-                                                    </div>
+                                                    <div class="planner-attempt-actions"><button type="button" title="Victoria" @onclick="() => MarkAttackWonAsync(attack.Id)">✓</button><button type="button" title="Fallo" @onclick="() => MarkAttackFailedAsync(attack.Id)">×</button><button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button></div>
                                                 }
                                             </div>
                                         }
