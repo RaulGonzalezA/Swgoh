@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using RepositoryMongoDb.DependencyInjection;
 
 using Swgoh.Application.Abstractions;
+using Swgoh.Application.Conquest;
 using Swgoh.Application.Gac;
 using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
@@ -147,6 +148,21 @@ public static class DependencyInjection
                         Name = GacPersonalBattleMongoRepository.PlayerRoundIndexName
                     }));
 
+        IndexKeysDefinition<ConquestPlanDocument> conquestPlanIndexKeys = Builders<ConquestPlanDocument>.IndexKeys
+            .Ascending(plan => plan.AllyCode)
+            .Descending(plan => plan.UpdatedAtUtc);
+        services.AddMongoRepository<ConquestPlanDocument, string>(
+            ConquestPlanMongoRepository.CollectionName,
+            plan => plan.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    conquestPlanIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = ConquestPlanMongoRepository.AllyCodeUpdatedIndexName
+                    }));
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -198,6 +214,7 @@ public static class DependencyInjection
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
+        services.AddSingleton<IConquestPlanRepository, ConquestPlanMongoRepository>();
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
