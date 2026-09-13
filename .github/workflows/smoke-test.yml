@@ -129,6 +129,7 @@ jobs:
           ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
           Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
           Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
+          Swgoh__GameData__Locale: ENG_US
         run: |
           mkdir -p smoke-results
           dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build --no-restore > smoke-results/api.log 2>&1 &
@@ -176,13 +177,17 @@ jobs:
           jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
           jq -e '(.roster | length) == .rosterCount' smoke-results/player.json > /dev/null
           jq -e '.total > 0 and .page == 1 and .pageSize == 10 and (.items | length) > 0 and (.items | length) <= 10' smoke-results/roster.json > /dev/null
+          jq -e '.items[0].name | type == "string" and length > 0' smoke-results/roster.json > /dev/null
+          jq -e '.items[0].nameKey | type == "string" and length > 0' smoke-results/roster.json > /dev/null
+          jq -e '.items[0].thumbnailName | type == "string" and length > 0' smoke-results/roster.json > /dev/null
+          jq -e '.items[0].tags | type == "array" and length > 0' smoke-results/roster.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/analysis.json > /dev/null
           jq -e '.omicrons > 0' smoke-results/analysis.json > /dev/null
           jq -e 'type == "array" and length > 0' smoke-results/history.json > /dev/null
           jq -e 'type == "array"' smoke-results/gl-progress.json > /dev/null
 
           jq '{name, level, galacticPower, rosterCount, guildName, updatedAtUtc}' smoke-results/player.json
-          jq '{total, page, pageSize, totalPages, first: .items[0] | {definitionId, galacticPower, relicTier, zetaCount, omicronCount}}' smoke-results/roster.json
+          jq '{total, page, pageSize, totalPages, first: .items[0] | {definitionId, name, thumbnailName, factions, tags, galacticPower, relicTier, zetaCount, omicronCount}}' smoke-results/roster.json
           jq '{galacticPower, characterGalacticPower, shipGalacticPower, characterCount, shipCount, relicCharacters, relic7Plus, relic8Plus, relic9Plus, relic10, zetas, omicrons}' smoke-results/analysis.json
           jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
 
