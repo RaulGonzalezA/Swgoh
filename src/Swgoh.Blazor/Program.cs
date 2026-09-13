@@ -9,6 +9,7 @@ builder.Services.AddHttpClient<PlayerApiClient>(client => client.BaseAddress = n
 builder.Services.AddHttpClient<GacApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<GacPlannerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
+builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddScoped<PlayerSessionState>();
 builder.Services.AddScoped<PlayerPreferenceService>();
 builder.Services.AddScoped<PlayerContextService>();
