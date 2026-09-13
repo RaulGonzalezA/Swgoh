@@ -19,20 +19,21 @@ internal static class GacEndpoints
             .WithSummary("Get GAC defense requirements for a league and format");
         group.MapGet("/defense-requirements/transition", GetLeagueTransition)
             .WithSummary("Compare GAC defense requirements between two leagues");
+        group.MapPost("/opponents/{allyCode:long}/history", ImportHistoryAsync)
+            .WithSummary("Import normalized historical GAC rounds for an opponent");
+        group.MapGet("/opponents/{allyCode:long}/history", GetHistoryAsync)
+            .WithSummary("Get persisted historical GAC rounds for an opponent");
+        group.MapGet("/opponents/{allyCode:long}/scouting", GetScoutingAsync)
+            .WithSummary("Analyze historical GAC behavior for an opponent");
 
         return endpoints;
     }
 
-    private static IResult GetDefenseRequirements(
-        string league,
-        string format,
-        IGacRulesService service)
+    private static IResult GetDefenseRequirements(string league, string format, IGacRulesService service)
     {
         try
         {
-            GacDefenseRequirements requirements = service.GetDefenseRequirements(
-                ParseLeague(league),
-                ParseFormat(format));
+            GacDefenseRequirements requirements = service.GetDefenseRequirements(ParseLeague(league), ParseFormat(format));
             return Results.Ok(GacDefenseRequirementsResponse.From(requirements));
         }
         catch (ArgumentException exception)
@@ -61,9 +62,117 @@ internal static class GacEndpoints
         }
     }
 
+    private static async Task<IResult> ImportHistoryAsync(
+        long allyCode,
+        ImportHistoryRequest request,
+        IGacHistoryService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            GacHistoryRoundInput[] rounds =
+            [
+                .. (request.Rounds ?? []).Select(ToInput)
+            ];
+            GacHistoryImportResult result = await service.ImportAsync(allyCode, rounds, cancellationToken);
+            return Results.Ok(result);
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> GetHistoryAsync(
+        long allyCode,
+        string? format,
+        int? maxRounds,
+        IGacHistoryService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            GacFormat? parsedFormat = string.IsNullOrWhiteSpace(format) ? null : ParseFormat(format);
+            IReadOnlyCollection<GacHistoricalRound> history = await service.GetAsync(
+                allyCode,
+                new GacHistoryQuery(parsedFormat, maxRounds ?? 30),
+                cancellationToken);
+            return Results.Ok(history.Select(GacHistoricalRoundResponse.From));
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> GetScoutingAsync(
+        long allyCode,
+        string format,
+        string? targetLeague,
+        int? maxRounds,
+        IOpponentScoutingService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            GacLeague? league = string.IsNullOrWhiteSpace(targetLeague) ? null : ParseLeague(targetLeague);
+            OpponentScoutingReport? report = await service.GetAsync(
+                allyCode,
+                ParseFormat(format),
+                league,
+                maxRounds ?? 30,
+                cancellationToken);
+            return report is null
+                ? Results.NotFound()
+                : Results.Ok(OpponentScoutingResponse.From(report));
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static GacHistoryRoundInput ToInput(ImportRoundRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new GacHistoryRoundInput(
+            request.Season,
+            request.EventNumber,
+            request.RoundNumber,
+            ParseFormat(request.Format),
+            ParseLeague(request.League),
+            request.StartedAtUtc,
+            request.FullClear,
+            string.IsNullOrWhiteSpace(request.Source) ? "manual" : request.Source,
+            [.. (request.Defenses ?? []).Select(defense => new GacHistoryDefenseInput(
+                defense.Zone,
+                ToInput(defense.Squad),
+                defense.Holds,
+                defense.Defeated))],
+            [.. (request.OffenseBattles ?? []).Select(battle => new GacHistoryOffenseBattleInput(
+                battle.Zone,
+                ToInput(battle.Defender),
+                ToInput(battle.Attacker),
+                battle.Won,
+                battle.Banners,
+                battle.Attempt,
+                battle.AttackedAtUtc))]);
+    }
+
+    private static GacHistorySquadInput ToInput(ImportSquadRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new GacHistorySquadInput(
+            request.LeaderDefinitionId,
+            request.MemberDefinitionIds ?? [],
+            request.IsFleet);
+    }
+
     private static GacLeague ParseLeague(string value)
     {
-        if (!Enum.TryParse(value, ignoreCase: true, out GacLeague league) || !Enum.IsDefined(league))
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (!Enum.TryParse(value.Trim(), ignoreCase: true, out GacLeague league) || !Enum.IsDefined(league))
         {
             throw new ArgumentException(
                 "League must be Carbonite, Bronzium, Chromium, Aurodium or Kyber.",
@@ -73,18 +182,123 @@ internal static class GacEndpoints
         return league;
     }
 
-    private static GacFormat ParseFormat(string value) => value.Trim().ToLowerInvariant() switch
+    private static GacFormat ParseFormat(string value)
     {
-        "3" or "3v3" or "threevsthree" => GacFormat.ThreeVsThree,
-        "5" or "5v5" or "fivevsfive" => GacFormat.FiveVsFive,
-        _ => throw new ArgumentException("Format must be 3v3 or 5v5.", nameof(value))
-    };
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "3" or "3v3" or "threevsthree" => GacFormat.ThreeVsThree,
+            "5" or "5v5" or "fivevsfive" => GacFormat.FiveVsFive,
+            _ => throw new ArgumentException("Format must be 3v3 or 5v5.", nameof(value))
+        };
+    }
 
     private static IResult Validation(ArgumentException exception) => Results.ValidationProblem(
-        new Dictionary<string, string[]>
-        {
-            ["gac"] = [exception.Message]
-        });
+        new Dictionary<string, string[]> { ["gac"] = [exception.Message] });
+
+    internal sealed record ImportHistoryRequest(IReadOnlyCollection<ImportRoundRequest>? Rounds);
+
+    internal sealed record ImportRoundRequest(
+        int Season,
+        int EventNumber,
+        int RoundNumber,
+        string Format,
+        string League,
+        DateTimeOffset StartedAtUtc,
+        bool? FullClear,
+        string? Source,
+        IReadOnlyCollection<ImportDefenseRequest>? Defenses,
+        IReadOnlyCollection<ImportOffenseBattleRequest>? OffenseBattles);
+
+    internal sealed record ImportDefenseRequest(
+        string Zone,
+        ImportSquadRequest Squad,
+        int Holds,
+        bool Defeated);
+
+    internal sealed record ImportOffenseBattleRequest(
+        string Zone,
+        ImportSquadRequest Defender,
+        ImportSquadRequest Attacker,
+        bool Won,
+        int Banners,
+        int Attempt,
+        DateTimeOffset? AttackedAtUtc);
+
+    internal sealed record ImportSquadRequest(
+        string LeaderDefinitionId,
+        IReadOnlyCollection<string>? MemberDefinitionIds,
+        bool IsFleet);
+
+    internal sealed record GacHistoricalRoundResponse(
+        string Id,
+        long AllyCode,
+        int Season,
+        int EventNumber,
+        int RoundNumber,
+        string Format,
+        string League,
+        DateTimeOffset StartedAtUtc,
+        bool? FullClear,
+        string Source,
+        IReadOnlyCollection<GacDefensePlacement> Defenses,
+        IReadOnlyCollection<GacOffenseBattle> OffenseBattles)
+    {
+        public static GacHistoricalRoundResponse From(GacHistoricalRound round) => new(
+            round.Id,
+            round.AllyCode,
+            round.Season,
+            round.EventNumber,
+            round.RoundNumber,
+            FormatName(round.Format),
+            round.League.ToString(),
+            round.StartedAtUtc,
+            round.FullClear,
+            round.Source,
+            round.Defenses,
+            round.OffenseBattles);
+    }
+
+    internal sealed record OpponentScoutingResponse(
+        long AllyCode,
+        string Format,
+        int RoundsAnalyzed,
+        int SeasonsAnalyzed,
+        DateTimeOffset? EarliestRoundUtc,
+        DateTimeOffset? LatestRoundUtc,
+        string? LatestObservedLeague,
+        string TargetLeague,
+        int RequiredSquadDefenses,
+        int RequiredFleetDefenses,
+        int AdditionalUnobservedSquadSlots,
+        int AdditionalUnobservedFleetSlots,
+        decimal? FullClearRate,
+        decimal? AverageFirstAttackDelayMinutes,
+        IReadOnlyCollection<GacDefensePatternDetails> DefensePatterns,
+        IReadOnlyCollection<GacCounterPatternDetails> CounterPatterns,
+        IReadOnlyCollection<GacPredictedDefenseDetails> PredictedSquadDefenses,
+        IReadOnlyCollection<GacPredictedDefenseDetails> PredictedFleetDefenses)
+    {
+        public static OpponentScoutingResponse From(OpponentScoutingReport report) => new(
+            report.AllyCode,
+            FormatName(report.Format),
+            report.RoundsAnalyzed,
+            report.SeasonsAnalyzed,
+            report.EarliestRoundUtc,
+            report.LatestRoundUtc,
+            report.LatestObservedLeague?.ToString(),
+            report.TargetLeague.ToString(),
+            report.RequiredSquadDefenses,
+            report.RequiredFleetDefenses,
+            report.AdditionalUnobservedSquadSlots,
+            report.AdditionalUnobservedFleetSlots,
+            report.FullClearRate,
+            report.AverageFirstAttackDelayMinutes,
+            report.DefensePatterns,
+            report.CounterPatterns,
+            report.PredictedSquadDefenses,
+            report.PredictedFleetDefenses);
+    }
 
     private sealed record GacDefenseRequirementsResponse(
         string League,

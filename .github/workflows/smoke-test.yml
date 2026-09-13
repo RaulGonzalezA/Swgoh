@@ -149,6 +149,7 @@ jobs:
           set -euo pipefail
           api_root="http://127.0.0.1:5080"
           base_url="${api_root}/api/v1/players/${SWGOH_TEST_ALLY_CODE}"
+          gac_opponent_url="${api_root}/api/v1/gac/opponents/${SWGOH_TEST_ALLY_CODE}"
 
           curl --fail-with-body --silent --show-error "${api_root}/openapi/v1.json" --output smoke-results/openapi-v1.json
           curl --fail-with-body --silent --show-error "${api_root}/scalar" --output smoke-results/scalar.html
@@ -158,6 +159,8 @@ jobs:
           jq -e '.paths | has("/api/v1/squads/{id}")' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/gac/defense-requirements")' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/gac/defense-requirements/transition")' smoke-results/openapi-v1.json > /dev/null
+          jq -e '.paths | has("/api/v1/gac/opponents/{allyCode}/history")' smoke-results/openapi-v1.json > /dev/null
+          jq -e '.paths | has("/api/v1/gac/opponents/{allyCode}/scouting")' smoke-results/openapi-v1.json > /dev/null
 
           curl --fail-with-body --silent --show-error \
             "${api_root}/api/v1/gac/defense-requirements?league=Kyber&format=5v5" \
@@ -218,6 +221,64 @@ jobs:
             "${api_root}/api/v1/squads?format=5v5&use=Flexible&tag=smoke&search=Smoke&limit=10" \
             --output smoke-results/squad-search.json
 
+          jq -n \
+            --arg leader "${character_ids[0]}" \
+            --arg member1 "${character_ids[1]}" \
+            --arg member2 "${character_ids[2]}" \
+            --arg member3 "${character_ids[3]}" \
+            --arg member4 "${character_ids[4]}" \
+            '{
+              rounds: [{
+                season: 999,
+                eventNumber: 1,
+                roundNumber: 1,
+                format: "5v5",
+                league: "Aurodium",
+                startedAtUtc: "2026-09-01T18:00:00Z",
+                fullClear: true,
+                source: "smoke",
+                defenses: [{
+                  zone: "front-top",
+                  squad: {
+                    leaderDefinitionId: $leader,
+                    memberDefinitionIds: [$member1, $member2, $member3, $member4],
+                    isFleet: false
+                  },
+                  holds: 1,
+                  defeated: true
+                }],
+                offenseBattles: [{
+                  zone: "front-bottom",
+                  defender: {
+                    leaderDefinitionId: $leader,
+                    memberDefinitionIds: [$member1, $member2, $member3, $member4],
+                    isFleet: false
+                  },
+                  attacker: {
+                    leaderDefinitionId: $leader,
+                    memberDefinitionIds: [$member1, $member2, $member3, $member4],
+                    isFleet: false
+                  },
+                  won: true,
+                  banners: 65,
+                  attempt: 1,
+                  attackedAtUtc: "2026-09-01T19:00:00Z"
+                }]
+              }]
+            }' > smoke-results/gac-history-request.json
+
+          curl --fail-with-body --silent --show-error \
+            --request POST "${gac_opponent_url}/history" \
+            --header 'Content-Type: application/json' \
+            --data @smoke-results/gac-history-request.json \
+            --output smoke-results/gac-history-import.json
+          curl --fail-with-body --silent --show-error \
+            "${gac_opponent_url}/history?format=5v5&maxRounds=10" \
+            --output smoke-results/gac-history.json
+          curl --fail-with-body --silent --show-error \
+            "${gac_opponent_url}/scouting?format=5v5&targetLeague=Kyber&maxRounds=10" \
+            --output smoke-results/gac-scouting.json
+
           jq -e '.league == "Kyber" and .format == "5v5" and .squadDefenseCount == 11 and .fleetDefenseCount == 3' smoke-results/gac-requirements.json > /dev/null
           jq -e '.fromLeague == "Aurodium" and .toLeague == "Kyber" and .format == "3v3" and .fromSquadDefenseCount == 13 and .toSquadDefenseCount == 15 and .additionalSquadDefenses == 2 and .additionalFleetDefenses == 1 and .isPromotion == true' smoke-results/gac-transition.json > /dev/null
           jq -e '.name | length > 0' smoke-results/player.json > /dev/null
@@ -238,6 +299,14 @@ jobs:
           jq -e '.variants[0].members | length == 4' smoke-results/squad.json > /dev/null
           jq -e --arg id "${squad_id}" '.id == $id' smoke-results/squad-get.json > /dev/null
           jq -e 'type == "array" and length == 1 and .[0].id == $id' --arg id "${squad_id}" smoke-results/squad-search.json > /dev/null
+          jq -e '.importedRounds == 1' smoke-results/gac-history-import.json > /dev/null
+          jq -e 'type == "array" and length == 1 and .[0].format == "5v5" and .[0].league == "Aurodium"' smoke-results/gac-history.json > /dev/null
+          jq -e '.format == "5v5" and .roundsAnalyzed == 1 and .latestObservedLeague == "Aurodium" and .targetLeague == "Kyber"' smoke-results/gac-scouting.json > /dev/null
+          jq -e '.requiredSquadDefenses == 11 and .requiredFleetDefenses == 3 and .additionalUnobservedSquadSlots == 2 and .additionalUnobservedFleetSlots == 1' smoke-results/gac-scouting.json > /dev/null
+          jq -e '.fullClearRate == 100 and .averageFirstAttackDelayMinutes == 60' smoke-results/gac-scouting.json > /dev/null
+          jq -e '.defensePatterns | length == 1 and .[0].squadDefinitionName == "Smoke 5v5" and .[0].variantName == "Principal" and .[0].holdRate == 100' smoke-results/gac-scouting.json > /dev/null
+          jq -e '.counterPatterns | length == 1 and .[0].uses == 1 and .[0].wins == 1 and .[0].oneShots == 1 and .[0].winRate == 100' smoke-results/gac-scouting.json > /dev/null
+          jq -e '.predictedSquadDefenses | length == 1 and .[0].squadDefinitionName == "Smoke 5v5" and .[0].probability == 100' smoke-results/gac-scouting.json > /dev/null
 
           curl --fail-with-body --silent --show-error \
             --request DELETE "${api_root}/api/v1/squads/${squad_id}" \
@@ -250,6 +319,7 @@ jobs:
           jq '{galacticPower, characterGalacticPower, shipGalacticPower, characterCount, shipCount, relicCharacters, relic7Plus, relic8Plus, relic9Plus, relic10, zetas, omicrons}' smoke-results/analysis.json
           jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
           jq '{id, name, format, use, tags, leader: .variants[0].leader.name, members: [.variants[0].members[].name]}' smoke-results/squad.json
+          jq '{roundsAnalyzed, latestObservedLeague, targetLeague, requiredSquadDefenses, requiredFleetDefenses, additionalUnobservedSquadSlots, additionalUnobservedFleetSlots, fullClearRate, averageFirstAttackDelayMinutes, defense: .defensePatterns[0] | {leader: .leader.name, squadDefinitionName, variantName, placementRate, averageHolds, holdRate, confidence}, counter: .counterPatterns[0] | {defenderLeader: .defenderLeader.name, attackerLeader: .attackerLeader.name, uses, wins, winRate, oneShots, oneShotRate, averageBanners}}' smoke-results/gac-scouting.json
 
       - name: Upload live smoke responses
         if: always()
