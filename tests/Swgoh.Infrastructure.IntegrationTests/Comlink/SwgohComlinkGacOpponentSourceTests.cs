@@ -13,11 +13,11 @@ namespace Swgoh.Infrastructure.IntegrationTests.Comlink;
 public sealed class SwgohComlinkGacOpponentSourceTests
 {
     [Fact]
-    public async Task GetAsync_WithRealLeaderboardPlayerShape_DetectsAndEnrichesOpponent()
+    public async Task GetAsync_WithSparseBrackets_UsesSeasonInstanceAndFindsOpponent()
     {
         const string eventId = "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_83";
-        const string eventInstance = eventId + ":O1788998400000";
-        var handler = new GacHandler(eventId, eventInstance);
+        const string currentEventInstance = eventId + ":O1788998400000";
+        var handler = new GacHandler(eventId, currentEventInstance);
         var factory = new SingleClientFactory(new HttpClient(handler)
         {
             BaseAddress = new Uri("http://comlink/")
@@ -36,12 +36,14 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         Assert.Equal("opponent-id", opponent.OpponentPlayerId);
         Assert.Equal(GacLeague.Kyber, opponent.League);
         Assert.Equal(GacFormat.ThreeVsThree, opponent.Format);
-        Assert.Equal("SeasonStatus", opponent.FormatSource);
+        Assert.Equal("SeasonAlternationFallback", opponent.FormatSource);
         Assert.Equal("BracketOrderPairing", opponent.OpponentResolutionMethod);
-        Assert.EndsWith(":kyber:1", opponent.BracketId, StringComparison.Ordinal);
+        Assert.Equal(currentEventInstance, opponent.EventInstanceId);
+        Assert.EndsWith(":KYBER:9", opponent.BracketId, StringComparison.Ordinal);
         Assert.Equal(2, handler.PlayerArenaRequests);
-        Assert.InRange(handler.BracketRequests, 3, 20);
-        Assert.All(handler.GroupIds, groupId => Assert.Contains(":kyber:", groupId, StringComparison.Ordinal));
+        Assert.InRange(handler.BracketRequests, 10, 40);
+        Assert.DoesNotContain(handler.GroupIds, groupId => groupId.EndsWith(":KYBER:0", StringComparison.Ordinal) && handler.GroupIds.Count == 1);
+        Assert.All(handler.GroupIds, groupId => Assert.StartsWith(currentEventInstance, groupId, StringComparison.Ordinal));
     }
 
     private sealed class SingleClientFactory(HttpClient client) : IHttpClientFactory
@@ -49,7 +51,7 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         public HttpClient CreateClient(string name) => client;
     }
 
-    private sealed class GacHandler(string eventId, string eventInstance) : HttpMessageHandler
+    private sealed class GacHandler(string eventId, string currentEventInstance) : HttpMessageHandler
     {
         private readonly List<string> groupIds = [];
 
@@ -76,7 +78,10 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                       "gameEvent": [{
                         "id": "{{eventId}}",
                         "type": 10,
-                        "instance": [{ "id": "O1788998400000" }]
+                        "instance": [
+                          { "id": "O1788000000000" },
+                          { "id": "O1788998400000" }
+                        ]
                       }]
                     }
                     """),
@@ -102,17 +107,17 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                     """);
             }
 
-            return Json("""
+            return Json($$"""
                 {
                   "allyCode": "123456789",
                   "playerId": "self-id",
                   "name": "Yo",
                   "playerRating": { "league": "Kyber", "division": 15, "skillRating": 3200 },
                   "seasonStatus": [{
-                    "seasonId": "4zone_3v3_ga2_c3s1_83a",
-                    "eventInstanceId": "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_83:O1788998400000",
+                    "seasonId": "{{eventId}}",
+                    "eventInstanceId": "{{currentEventInstance}}",
                     "league": "Kyber",
-                    "rank": 9
+                    "rank": 81
                   }]
                 }
                 """);
@@ -126,21 +131,7 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                 ?? string.Empty;
             groupIds.Add(groupId);
 
-            if (string.Equals(groupId, eventInstance + ":kyber:0", StringComparison.Ordinal))
-            {
-                return Json(Bracket([
-                    ("p0", "P0"),
-                    ("p1", "P1"),
-                    ("p2", "P2"),
-                    ("p3", "P3"),
-                    ("p4", "P4"),
-                    ("p5", "P5"),
-                    ("p6", "P6"),
-                    ("p7", "P7")
-                ]));
-            }
-
-            if (string.Equals(groupId, eventInstance + ":kyber:1", StringComparison.Ordinal))
+            if (string.Equals(groupId, currentEventInstance + ":KYBER:9", StringComparison.Ordinal))
             {
                 return Json(Bracket([
                     ("a", "A"),
