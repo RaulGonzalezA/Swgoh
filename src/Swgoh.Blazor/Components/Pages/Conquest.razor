@@ -7,7 +7,7 @@
     <div>
         <span class="eyebrow">Conquest Assistant</span>
         <h1>Convierte las hazañas pendientes en un plan de batallas.</h1>
-        <p>Guarda el progreso, controla la stamina y encuentra equipos que avancen varias hazañas sin agotar tus mejores personajes.</p>
+        <p>Guarda el progreso, controla la stamina, prepara tus discos y encuentra equipos que avancen varias hazañas sin agotar tus mejores personajes.</p>
     </div>
     <nav class="conquest-nav" aria-label="Navegación del jugador">
         <a href="@($"/player/{AllyCode}")">Roster</a>
@@ -20,7 +20,7 @@
 {
     <div class="status-card">
         <span class="spinner" aria-hidden="true"></span>
-        <div><strong>Cargando Conquista</strong><p>Recuperando progreso, stamina y roster…</p></div>
+        <div><strong>Cargando Conquista</strong><p>Recuperando progreso, stamina, discos y roster…</p></div>
     </div>
 }
 else if (Error is not null)
@@ -49,9 +49,9 @@ else
             <small>todavía disponibles</small>
         </div>
         <div class="metric-card">
-            <span class="metric-label">Roster analizado</span>
+            <span class="metric-label">Preparación</span>
             <strong>@CharacterCount</strong>
-            <small>@TrackedStaminaCount con stamina ajustada</small>
+            <small>@TrackedStaminaCount stamina · @DataDisks.Count discos · @DiskLoadouts.Count presets</small>
         </div>
     </section>
 
@@ -175,6 +175,143 @@ else
         else
         {
             <div class="conquest-stamina-empty">Todo el roster se considera al 100% hasta que ajustes algún personaje.</div>
+        }
+    </section>
+
+    <section class="conquest-panel conquest-disks-panel">
+        <div class="conquest-panel-heading">
+            <div>
+                <span class="section-kicker">Discos de datos</span>
+                <h2>Guarda el inventario una vez y reutiliza presets</h2>
+                <p>El bonus de planificación es un peso configurable para comparar presets; no intenta reproducir una fórmula interna del juego.</p>
+            </div>
+            <div class="conquest-disk-heading-actions">
+                <button class="secondary-button" type="button" @onclick="ToggleDiskEditor">@(ShowDiskEditor ? "Cerrar disco" : "+ Disco")</button>
+                <button class="secondary-button" type="button" @onclick="ToggleLoadoutEditor" disabled="@(DataDisks.Count == 0)">@(ShowLoadoutEditor ? "Cerrar preset" : "+ Preset")</button>
+            </div>
+        </div>
+
+        <div class="conquest-disk-settings">
+            <label>
+                <span>Capacidad disponible</span>
+                <input type="number" min="1" max="100" @bind="DiskCapacityLimit" />
+                <small>Se valida al guardar cada preset.</small>
+            </label>
+            <div class="conquest-disk-stat"><span>Inventario</span><strong>@DataDisks.Count</strong><small>discos registrados</small></div>
+            <div class="conquest-disk-stat"><span>Presets</span><strong>@DiskLoadouts.Count</strong><small>combinaciones reutilizables</small></div>
+        </div>
+
+        @if (ShowDiskEditor)
+        {
+            <div class="conquest-disk-builder">
+                <label class="conquest-wide"><span>Nombre</span><input @bind="NewDiskName" placeholder="Ej. Ofensiva para Jedi" /></label>
+                <label><span>Coste de capacidad</span><input type="number" min="1" max="100" @bind="NewDiskCapacityCost" /></label>
+                <label><span>Bonus planificador</span><input type="number" min="0" max="25" step="0.5" @bind="NewDiskPlannerBonus" /></label>
+                <label>
+                    <span>Aplica a</span>
+                    <select @bind="NewDiskTargetType">
+                        <option value="AnyTeam">Cualquier equipo</option>
+                        <option value="Faction">Facción</option>
+                        <option value="SpecificUnits">Unidad concreta</option>
+                    </select>
+                </label>
+                @if (NewDiskTargetType == "Faction")
+                {
+                    <label>
+                        <span>Facción</span>
+                        <select @bind="NewDiskFaction">
+                            <option value="">Selecciona facción…</option>
+                            @foreach (string faction in FactionOptions)
+                            {
+                                <option value="@faction">@faction</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else if (NewDiskTargetType == "SpecificUnits")
+                {
+                    <label>
+                        <span>Unidad</span>
+                        <select @bind="NewDiskSpecificUnitId">
+                            <option value="">Selecciona unidad…</option>
+                            @foreach (PlayerApiClient.RosterUnitViewModel unit in CharacterOptions)
+                            {
+                                <option value="@unit.DefinitionId">@unit.Name · @ProgressLabel(unit)</option>
+                            }
+                        </select>
+                    </label>
+                }
+                <label><span>Mínimo que debe cumplir</span><input type="number" min="1" max="5" @bind="NewDiskMinimumMatchingUnits" /></label>
+                <label>
+                    <span>Hazaña a la que ayuda</span>
+                    <select @bind="NewDiskSupportedFeatId">
+                        <option value="">Ninguna específica</option>
+                        @foreach (FeatDraft feat in Feats.Where(feat => !feat.IsComplete))
+                        {
+                            <option value="@feat.Id">@feat.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="conquest-wide"><span>Notas</span><input @bind="NewDiskNotes" placeholder="Efecto real, uso previsto, jefe…" /></label>
+                <div class="conquest-builder-action"><button class="primary-button" type="button" @onclick="AddDataDisk" disabled="@(!CanAddDisk)">Añadir disco</button></div>
+            </div>
+        }
+
+        @if (DataDisks.Count == 0)
+        {
+            <div class="conquest-empty"><strong>No hay discos registrados.</strong><p>Añade los que realmente usas; después podrás agruparlos en presets y el optimizador escogerá el mejor para cada equipo.</p></div>
+        }
+        else
+        {
+            <div class="conquest-disk-grid">
+                @foreach (DataDiskDraft disk in DataDisks.OrderBy(disk => disk.CapacityCost).ThenBy(disk => disk.Name))
+                {
+                    <article class="conquest-disk-card">
+                        <div class="conquest-disk-card-heading"><div><span>@disk.CapacityCost cap</span><h3>@disk.Name</h3></div><strong>+@disk.PlannerBonus.ToString("0.#")</strong></div>
+                        <p>@DiskTargetLabel(disk)</p>
+                        <small>@SupportedFeatLabel(disk)</small>
+                        @if (!string.IsNullOrWhiteSpace(disk.Notes))
+                        {
+                            <small>@disk.Notes</small>
+                        }
+                        <button class="text-button danger" type="button" @onclick="() => RemoveDataDisk(disk.Id)">Eliminar</button>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (ShowLoadoutEditor && DataDisks.Count > 0)
+        {
+            <div class="conquest-loadout-builder">
+                <div class="conquest-loadout-builder-heading">
+                    <label><span>Nombre del preset</span><input @bind="NewLoadoutName" placeholder="Ej. Farm hazañas" /></label>
+                    <div class="conquest-loadout-capacity @(SelectedLoadoutCapacity > DiskCapacityLimit ? "over" : string.Empty)"><strong>@SelectedLoadoutCapacity / @DiskCapacityLimit</strong><span>capacidad</span></div>
+                </div>
+                <div class="conquest-loadout-disk-picker">
+                    @foreach (DataDiskDraft disk in DataDisks)
+                    {
+                        <label class="@(IsLoadoutDiskSelected(disk.Id) ? "selected" : string.Empty)">
+                            <input type="checkbox" checked="@IsLoadoutDiskSelected(disk.Id)" @onchange="_ => ToggleLoadoutDisk(disk.Id)" />
+                            <span><strong>@disk.Name</strong><small>@disk.CapacityCost cap · +@disk.PlannerBonus.ToString("0.#")</small></span>
+                        </label>
+                    }
+                </div>
+                <button class="primary-button" type="button" @onclick="AddDiskLoadout" disabled="@(!CanAddLoadout)">Guardar preset</button>
+            </div>
+        }
+
+        @if (DiskLoadouts.Count > 0)
+        {
+            <div class="conquest-loadout-list">
+                @foreach (DiskLoadoutDraft loadout in DiskLoadouts)
+                {
+                    int usedCapacity = GetLoadoutCapacity(loadout);
+                    <article class="conquest-loadout-card @(usedCapacity > DiskCapacityLimit ? "invalid" : string.Empty)">
+                        <div><span class="conquest-scope">Preset</span><h3>@loadout.Name</h3><p>@LoadoutDiskNames(loadout)</p></div>
+                        <div class="conquest-loadout-actions"><strong>@usedCapacity / @DiskCapacityLimit</strong><span>cap</span><button class="text-button danger" type="button" @onclick="() => RemoveDiskLoadout(loadout.Id)">Eliminar</button></div>
+                    </article>
+                }
+            </div>
         }
     </section>
 
@@ -305,9 +442,9 @@ else
     <section class="conquest-panel conquest-optimizer">
         <div class="conquest-panel-heading">
             <div>
-                <span class="section-kicker">Optimizador multi-hazaña + stamina</span>
-                <h2>¿Qué equipo debería usar ahora?</h2>
-                <p>Prioriza puntos de hazaña por batalla y, cuando la cobertura es comparable, favorece equipos descansados y protege tu reserva.</p>
+                <span class="section-kicker">Optimizador multi-hazaña + stamina + discos</span>
+                <h2>¿Qué equipo y qué preset debería usar ahora?</h2>
+                <p>Prioriza puntos de hazaña por batalla y, cuando la cobertura es comparable, pondera stamina, potencia y el preset de discos que mejor encaja.</p>
             </div>
             <button class="primary-button" @onclick="OptimizeAsync" disabled="@(Optimizing || Feats.Count == 0)">
                 @(Optimizing ? "Calculando…" : "Optimizar equipos")
@@ -322,6 +459,7 @@ else
                 <span><strong>@Optimization.Recommendations.Count</strong> equipos propuestos</span>
                 <span>coste <strong>@Optimization.StaminaCostPerBattle%</strong></span>
                 <span>reserva <strong>@Optimization.ReserveFloorPercent%</strong></span>
+                <span>discos <strong>@Optimization.DiskCapacityLimit cap</strong></span>
                 @if (Optimization.UncoveredFeatIds.Count > 0)
                 {
                     <span class="warning"><strong>@Optimization.UncoveredFeatIds.Count</strong> sin cubrir</span>
@@ -370,6 +508,19 @@ else
                                         isLeader = false;
                                     }
                                 </div>
+
+                                @if (recommendation.DiskLoadout is not null)
+                                {
+                                    <div class="conquest-disk-recommendation">
+                                        <div><span class="section-kicker">Preset recomendado</span><strong>@recommendation.DiskLoadout.LoadoutName</strong><small>@recommendation.DiskLoadout.CapacityUsed / @recommendation.DiskLoadout.CapacityLimit cap · bonus @recommendation.DiskLoadout.PlannerBonus.ToString("0.#")</small></div>
+                                        <div class="conquest-disk-recommendation-chips">
+                                            @foreach (ConquestApiClient.DataDiskViewModel disk in recommendation.DiskLoadout.Disks)
+                                            {
+                                                <span>@disk.Name · @disk.CapacityCost</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
 
                                 <div class="conquest-visual-meta">
                                     <span>Stamina media <strong>@recommendation.AverageStamina.ToString("0")% → @recommendation.ExpectedPostBattleAverageStamina.ToString("0")%</strong></span>
