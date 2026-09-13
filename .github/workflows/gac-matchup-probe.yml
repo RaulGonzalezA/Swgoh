@@ -98,6 +98,32 @@ jobs:
                       return error.code, raw, parsed
               raise RuntimeError("retry loop exhausted")
 
+          def flatten_players(value):
+              result = []
+              if not isinstance(value, dict):
+                  return result
+              root_players = value.get("player")
+              if isinstance(root_players, list):
+                  result.extend(root_players)
+              for leaderboard in value.get("leaderboard") or []:
+                  if isinstance(leaderboard, dict) and isinstance(leaderboard.get("player"), list):
+                      result.extend(leaderboard["player"])
+              return result
+
+          def interesting_fields(value, prefix=""):
+              found = {}
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      path = f"{prefix}.{key}" if prefix else key
+                      lowered = key.lower()
+                      if any(token in lowered for token in ("opponent", "match", "round", "status", "rank", "score", "result")):
+                          found[path] = child
+                      found.update(interesting_fields(child, path))
+              elif isinstance(value, list):
+                  for index, child in enumerate(value):
+                      found.update(interesting_fields(child, f"{prefix}[{index}]"))
+              return found
+
           player_status, _, player = post(
               "playerArena",
               {"payload": {"allyCode": ally_code, "playerDetailsOnly": True}, "enums": False},
@@ -108,7 +134,7 @@ jobs:
 
           rating = player.get("playerRating") or {}
           rank_status = rating.get("playerRankStatus") or {}
-          league = str(rank_status.get("leagueId") or "KYBER").lower()
+          league_name = str(rank_status.get("leagueId") or "KYBER")
           player_id = player.get("playerId") or player.get("id")
 
           now_ms = int(time.time() * 1000)
@@ -134,85 +160,58 @@ jobs:
               raise SystemExit("No active GAC instance found")
 
           event_instance_id = f"{active[0]}:{active[1]}"
-          group_id = f"{event_instance_id}:{league}:{bracket_index}"
-          status, raw, parsed = post(
-              "getLeaderboard",
-              {
-                  "payload": {
-                      "leaderboardType": 4,
-                      "eventInstanceId": event_instance_id,
-                      "groupId": group_id,
+          probes = []
+          for league_token in dict.fromkeys((league_name.lower(), league_name.upper())):
+              group_id = f"{event_instance_id}:{league_token}:{bracket_index}"
+              status, raw, parsed = post(
+                  "getLeaderboard",
+                  {
+                      "payload": {
+                          "leaderboardType": 4,
+                          "eventInstanceId": event_instance_id,
+                          "groupId": group_id,
+                      },
+                      "enums": False,
                   },
-                  "enums": False,
-              },
-          )
-
-          (output / "bracket-raw.json").write_text(raw + "\n", encoding="utf-8")
-          (output / "context.json").write_text(
-              json.dumps({
-                  "allyCode": ally_code,
-                  "playerId": player_id,
-                  "eventInstanceId": event_instance_id,
-                  "groupId": group_id,
+              )
+              (output / f"bracket-{league_token}.json").write_text(raw + "\n", encoding="utf-8")
+              players = flatten_players(parsed)
+              compact_players = []
+              for index, participant in enumerate(players):
+                  if not isinstance(participant, dict):
+                      continue
+                  compact_players.append({
+                      "index": index,
+                      "id": participant.get("id") or participant.get("playerId"),
+                      "name": participant.get("name"),
+                      "keys": list(participant.keys()),
+                      "interesting": interesting_fields(participant),
+                  })
+              probes.append({
+                  "leagueToken": league_token,
                   "status": status,
-              }, indent=2) + "\n",
-              encoding="utf-8",
-          )
-
-          def flatten_players(value):
-              result = []
-              if isinstance(value, dict):
-                  root_players = value.get("player")
-                  if isinstance(root_players, list):
-                      result.extend(root_players)
-                  for leaderboard in value.get("leaderboard") or []:
-                      if isinstance(leaderboard, dict) and isinstance(leaderboard.get("player"), list):
-                          result.extend(leaderboard["player"])
-              return result
-
-          def interesting_fields(value, prefix=""):
-              found = {}
-              if isinstance(value, dict):
-                  for key, child in value.items():
-                      path = f"{prefix}.{key}" if prefix else key
-                      lowered = key.lower()
-                      if any(token in lowered for token in ("opponent", "match", "round", "status", "rank", "score", "result")):
-                          found[path] = child
-                      found.update(interesting_fields(child, path))
-              elif isinstance(value, list):
-                  for index, child in enumerate(value):
-                      found.update(interesting_fields(child, f"{prefix}[{index}]"))
-              return found
-
-          players = flatten_players(parsed)
-          compact_players = []
-          for index, participant in enumerate(players):
-              if not isinstance(participant, dict):
-                  continue
-              compact_players.append({
-                  "index": index,
-                  "id": participant.get("id") or participant.get("playerId"),
-                  "name": participant.get("name"),
-                  "keys": list(participant.keys()),
-                  "interesting": interesting_fields(participant),
+                  "groupId": group_id,
+                  "rootKeys": list(parsed.keys()) if isinstance(parsed, dict) else None,
+                  "playerCount": len(players),
+                  "selfIndex": next((p["index"] for p in compact_players if p["id"] == player_id), None),
+                  "players": compact_players,
+                  "responseInteresting": interesting_fields(parsed),
               })
 
           summary = {
-              "status": status,
-              "groupId": group_id,
-              "rootKeys": list(parsed.keys()) if isinstance(parsed, dict) else None,
-              "playerCount": len(players),
-              "selfIndex": next((p["index"] for p in compact_players if p["id"] == player_id), None),
-              "players": compact_players,
-              "responseInteresting": interesting_fields(parsed),
+              "allyCode": ally_code,
+              "playerId": player_id,
+              "eventInstanceId": event_instance_id,
+              "bracketIndex": bracket_index,
+              "probes": probes,
           }
           (output / "summary.json").write_text(
               json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
               encoding="utf-8",
           )
           print(json.dumps(summary, indent=2, ensure_ascii=False))
-          if status != 200:
-              raise SystemExit(f"Known bracket request failed with {status}")
+          if not any(probe["status"] == 200 for probe in probes):
+              raise SystemExit("No successful bracket response")
           PY
 
       - name: Upload matchup probe artifact
