@@ -7,12 +7,12 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-using MongoDB.Bson;
 using MongoDB.Driver;
 
 using Swgoh.Application.GameData;
 using Swgoh.Infrastructure.IntegrationTests.Persistence;
 using Swgoh.Infrastructure.Persistence;
+using Swgoh.Infrastructure.Persistence.Documents;
 
 using Xunit;
 
@@ -60,7 +60,9 @@ public sealed class SquadApiFlowTests(MongoDbContainerFixture fixture)
         Assert.NotEqual(Guid.Empty, id);
         Assert.Equal("5v5", created.RootElement.GetProperty("format").GetString());
         Assert.Equal("Defense", created.RootElement.GetProperty("use").GetString());
-        Assert.Equal(["gac", "sith"], created.RootElement.GetProperty("tags").EnumerateArray().Select(item => item.GetString()).ToArray());
+        Assert.Equal(
+            ["gac", "sith"],
+            created.RootElement.GetProperty("tags").EnumerateArray().Select(item => item.GetString()).ToArray());
         JsonElement createdVariant = Assert.Single(created.RootElement.GetProperty("variants").EnumerateArray().ToArray());
         Assert.Equal("LEADER", createdVariant.GetProperty("leader").GetProperty("definitionId").GetString());
         Assert.Equal("Líder Sith", createdVariant.GetProperty("leader").GetProperty("name").GetString());
@@ -167,14 +169,15 @@ public sealed class SquadApiFlowTests(MongoDbContainerFixture fixture)
     {
         var mongoClient = new MongoClient(connectionString);
         IMongoDatabase database = mongoClient.GetDatabase("swgoh");
-        IMongoCollection<BsonDocument> collection = database.GetCollection<BsonDocument>(SquadMongoRepository.CollectionName);
-        BsonDocument? document = await collection
-            .Find(new BsonDocument("_id", id))
+        IMongoCollection<SquadDefinitionDocument> collection = database.GetCollection<SquadDefinitionDocument>(
+            SquadMongoRepository.CollectionName);
+        SquadDefinitionDocument? document = await collection
+            .Find(item => item.Id == id)
             .FirstOrDefaultAsync(cancellationToken);
 
         Assert.NotNull(document);
-        Assert.Equal(expectedName, document["Name"].AsString);
-        Assert.Equal(3, document["Format"].ToInt32());
+        Assert.Equal(expectedName, document.Name);
+        Assert.Equal(3, document.Format);
     }
 
     private static async Task<JsonDocument> ReadJsonAsync(
