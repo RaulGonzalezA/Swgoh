@@ -136,6 +136,7 @@ public sealed class GacAttackPlanOptimizerServiceTests
     [Fact]
     public async Task OptimizeCurrentAsync_WhenApplied_PersistsRecommendedAttack()
     {
+        DateTimeOffset now = new(2026, 9, 13, 19, 0, 0, TimeSpan.Zero);
         Guid defenseId = Guid.NewGuid();
         GacTeamPresetDetails team = Preset("Attack", ["A", "B", "C"], 25_000);
         GacVisibleDefenseDetails defense = Defense(defenseId, "Enemy", ["X", "Y", "Z"], 22_000);
@@ -148,7 +149,7 @@ public sealed class GacAttackPlanOptimizerServiceTests
             1,
             GacFormat.ThreeVsThree,
             GacLeague.Kyber,
-            DateTimeOffset.UtcNow);
+            now);
         plan.Replace(
             [],
             [GacVisibleDefense.Create(
@@ -157,12 +158,12 @@ public sealed class GacAttackPlanOptimizerServiceTests
                 "Enemy",
                 GacPlannerSquad.Create(GacFormat.ThreeVsThree, "X", ["Y", "Z"], false))],
             [],
-            DateTimeOffset.UtcNow);
+            now);
         var repository = new FakePlanRepository(plan);
         var service = new GacAttackPlanOptimizerService(
             new FakePlannerService(state),
             repository,
-            new FixedClock(new DateTimeOffset(2026, 9, 13, 19, 0, 0, TimeSpan.Zero)));
+            new FixedClock(now.AddMinutes(1)));
 
         GacAttackOptimizationLookup lookup = await service.OptimizeCurrentAsync(
             PlayerAllyCode,
