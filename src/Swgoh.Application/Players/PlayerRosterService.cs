@@ -1,8 +1,11 @@
+using Swgoh.Application.GameData;
 using Swgoh.Domain.Players;
 
 namespace Swgoh.Application.Players;
 
-internal sealed class PlayerRosterService(IPlayerRepository repository) : IPlayerRosterService
+internal sealed class PlayerRosterService(
+    IPlayerRepository repository,
+    ISwgohGameDataCatalog gameDataCatalog) : IPlayerRosterService
 {
     private const int MaxPageSize = 100;
 
@@ -20,14 +23,13 @@ internal sealed class PlayerRosterService(IPlayerRepository repository) : IPlaye
             return null;
         }
 
-        IEnumerable<RosterUnit> units = player.Roster;
+        GameDataCatalog catalog = await gameDataCatalog.GetAsync(cancellationToken).ConfigureAwait(false);
+        IEnumerable<PlayerRosterUnit> units = player.Roster.Select(unit => Enrich(unit, catalog));
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             string search = query.Search.Trim();
-            units = units.Where(unit =>
-                unit.DefinitionId.Contains(search, StringComparison.OrdinalIgnoreCase)
-                || unit.Id.Contains(search, StringComparison.OrdinalIgnoreCase));
+            units = units.Where(unit => MatchesSearch(unit, search));
         }
 
         units = query.Type switch
@@ -57,14 +59,15 @@ internal sealed class PlayerRosterService(IPlayerRepository repository) : IPlaye
             units = units.Where(unit => (unit.OmicronCount > 0) == hasOmicron);
         }
 
-        RosterUnit[] filtered = [.. units];
+        PlayerRosterUnit[] filtered = [.. units];
         int total = filtered.Length;
-        IOrderedEnumerable<RosterUnit> ordered = Order(filtered, query.OrderBy, query.Direction)
+        IOrderedEnumerable<PlayerRosterUnit> ordered = Order(filtered, query.OrderBy, query.Direction)
+            .ThenBy(unit => unit.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(unit => unit.DefinitionId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(unit => unit.Id, StringComparer.OrdinalIgnoreCase);
 
         long offset = (long)(query.Page - 1) * query.PageSize;
-        RosterUnit[] items = offset >= total
+        PlayerRosterUnit[] items = offset >= total
             ? []
             : [.. ordered.Skip((int)offset).Take(query.PageSize)];
         int totalPages = total == 0 ? 0 : (total + query.PageSize - 1) / query.PageSize;
@@ -79,8 +82,39 @@ internal sealed class PlayerRosterService(IPlayerRepository repository) : IPlaye
             items);
     }
 
-    private static IOrderedEnumerable<RosterUnit> Order(
-        IEnumerable<RosterUnit> units,
+    private static PlayerRosterUnit Enrich(RosterUnit unit, GameDataCatalog catalog)
+    {
+        catalog.Units.TryGetValue(unit.DefinitionId, out GameUnitDefinition? gameUnit);
+
+        return new PlayerRosterUnit(
+            unit.Id,
+            unit.DefinitionId,
+            gameUnit?.Name ?? unit.DefinitionId,
+            gameUnit?.NameKey,
+            gameUnit?.ThumbnailName,
+            gameUnit?.Factions ?? [],
+            gameUnit?.Tags ?? [],
+            unit.Level,
+            unit.Rarity,
+            unit.GearTier,
+            unit.RelicTier,
+            unit.EquippedModCount,
+            unit.GalacticPower,
+            unit.IsShip,
+            unit.ZetaCount,
+            unit.OmicronCount);
+    }
+
+    private static bool MatchesSearch(PlayerRosterUnit unit, string search) =>
+        unit.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || unit.DefinitionId.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || unit.Id.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || unit.NameKey?.Contains(search, StringComparison.OrdinalIgnoreCase) is true
+        || unit.Factions.Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase))
+        || unit.Tags.Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    private static IOrderedEnumerable<PlayerRosterUnit> Order(
+        IEnumerable<PlayerRosterUnit> units,
         PlayerRosterSortField field,
         PlayerRosterSortDirection direction)
     {
@@ -103,6 +137,9 @@ internal sealed class PlayerRosterService(IPlayerRepository repository) : IPlaye
             PlayerRosterSortField.DefinitionId => ascending
                 ? units.OrderBy(unit => unit.DefinitionId, StringComparer.OrdinalIgnoreCase)
                 : units.OrderByDescending(unit => unit.DefinitionId, StringComparer.OrdinalIgnoreCase),
+            PlayerRosterSortField.Name => ascending
+                ? units.OrderBy(unit => unit.Name, StringComparer.OrdinalIgnoreCase)
+                : units.OrderByDescending(unit => unit.Name, StringComparer.OrdinalIgnoreCase),
             _ => ascending
                 ? units.OrderBy(unit => unit.GalacticPower)
                 : units.OrderByDescending(unit => unit.GalacticPower)

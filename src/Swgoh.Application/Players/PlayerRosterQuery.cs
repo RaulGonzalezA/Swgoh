@@ -26,7 +26,8 @@ public enum PlayerRosterSortField
     Rarity,
     GearTier,
     Level,
-    DefinitionId
+    DefinitionId,
+    Name
 }
 
 public enum PlayerRosterSortDirection

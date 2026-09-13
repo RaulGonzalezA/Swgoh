@@ -20,7 +20,7 @@ internal static class PlayerEndpoints
         group.MapGet("/{allyCode:long}", GetAsync)
             .WithSummary("Get the persisted player profile");
         group.MapGet("/{allyCode:long}/roster", GetRosterAsync)
-            .WithSummary("Get a filtered, sorted and paged player roster");
+            .WithSummary("Get an enriched, filtered, sorted and paged player roster");
         group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync)
             .WithSummary("Get roster analysis metrics");
         group.MapGet("/{allyCode:long}/history", GetHistoryAsync)
@@ -180,7 +180,7 @@ internal static class PlayerEndpoints
         int Page,
         int PageSize,
         int TotalPages,
-        IReadOnlyCollection<RosterUnitResponse> Items)
+        IReadOnlyCollection<EnrichedRosterUnitResponse> Items)
     {
         public static RosterPageResponse From(PlayerRosterPage roster) => new(
             roster.AllyCode,
@@ -189,7 +189,44 @@ internal static class PlayerEndpoints
             roster.Page,
             roster.PageSize,
             roster.TotalPages,
-            [.. roster.Items.Select(RosterUnitResponse.From)]);
+            [.. roster.Items.Select(EnrichedRosterUnitResponse.From)]);
+    }
+
+    internal sealed record EnrichedRosterUnitResponse(
+        string Id,
+        string DefinitionId,
+        string Name,
+        string? NameKey,
+        string? ThumbnailName,
+        IReadOnlyCollection<string> Factions,
+        IReadOnlyCollection<string> Tags,
+        int Level,
+        int Rarity,
+        int GearTier,
+        int RelicTier,
+        int EquippedModCount,
+        long GalacticPower,
+        bool IsShip,
+        int ZetaCount,
+        int OmicronCount)
+    {
+        public static EnrichedRosterUnitResponse From(PlayerRosterUnit unit) => new(
+            unit.Id,
+            unit.DefinitionId,
+            unit.Name,
+            unit.NameKey,
+            unit.ThumbnailName,
+            unit.Factions,
+            unit.Tags,
+            unit.Level,
+            unit.Rarity,
+            unit.GearTier,
+            unit.RelicTier,
+            unit.EquippedModCount,
+            unit.GalacticPower,
+            unit.IsShip,
+            unit.ZetaCount,
+            unit.OmicronCount);
     }
 
     internal sealed record RosterUnitResponse(

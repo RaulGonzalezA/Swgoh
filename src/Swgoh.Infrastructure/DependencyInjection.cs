@@ -55,12 +55,16 @@ public static class DependencyInjection
 
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
+        string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "ENG_US";
         services.AddHttpClient(SwgohGameDataCatalogClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(gameDataBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromMinutes(5);
         });
-        services.AddSingleton<ISwgohGameDataCatalog, SwgohGameDataCatalogClient>();
+        services.AddSingleton<ISwgohGameDataCatalog>(serviceProvider =>
+            new SwgohGameDataCatalogClient(
+                serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                gameDataLocale));
 
         string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
         services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>

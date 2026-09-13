@@ -1,3 +1,4 @@
+using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
 using Swgoh.Domain.Players;
 
@@ -12,7 +13,7 @@ public sealed class PlayerRosterServiceTests
     [Fact]
     public async Task GetAsync_WhenPlayerDoesNotExist_ReturnsNull()
     {
-        var service = new PlayerRosterService(new FakePlayerRepository(null));
+        var service = CreateService(null);
 
         PlayerRosterPage? result = await service.GetAsync(
             476_825_771,
@@ -23,10 +24,10 @@ public sealed class PlayerRosterServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_AppliesFiltersOrderingAndPaging()
+    public async Task GetAsync_AppliesFiltersOrderingPagingAndEnrichment()
     {
         PlayerProfile player = CreatePlayer();
-        var service = new PlayerRosterService(new FakePlayerRepository(player));
+        var service = CreateService(player);
         var query = new PlayerRosterQuery(
             Page: 2,
             PageSize: 1,
@@ -52,9 +53,42 @@ public sealed class PlayerRosterServiceTests
         Assert.Equal(1, page.PageSize);
         Assert.Equal(2, page.TotalPages);
 
-        RosterUnit unit = Assert.Single(page.Items);
+        PlayerRosterUnit unit = Assert.Single(page.Items);
         Assert.Equal("CHAR_ALPHA", unit.DefinitionId);
+        Assert.Equal("Alpha Trooper", unit.Name);
+        Assert.Equal("UNIT_CHAR_ALPHA_NAME", unit.NameKey);
+        Assert.Equal("tex.charui_alpha", unit.ThumbnailName);
+        Assert.Contains("Galactic Republic", unit.Factions);
+        Assert.Contains("affiliation_republic", unit.Tags);
         Assert.Equal(900, unit.GalacticPower);
+    }
+
+    [Fact]
+    public async Task GetAsync_SearchesLocalizedNameAndFactionAndFallsBackForUnknownUnit()
+    {
+        var service = CreateService(CreatePlayer());
+
+        PlayerRosterPage? factionResult = await service.GetAsync(
+            476_825_771,
+            new PlayerRosterQuery(
+                Search: "Galactic Republic",
+                Type: PlayerRosterUnitType.Character,
+                OrderBy: PlayerRosterSortField.Name,
+                Direction: PlayerRosterSortDirection.Ascending),
+            TestContext.Current.CancellationToken);
+        PlayerRosterUnit factionUnit = Assert.Single(Assert.IsType<PlayerRosterPage>(factionResult).Items);
+        Assert.Equal("CHAR_ALPHA", factionUnit.DefinitionId);
+
+        PlayerRosterPage? fallbackResult = await service.GetAsync(
+            476_825_771,
+            new PlayerRosterQuery(Search: "CHAR_GAMMA"),
+            TestContext.Current.CancellationToken);
+        PlayerRosterUnit fallbackUnit = Assert.Single(Assert.IsType<PlayerRosterPage>(fallbackResult).Items);
+        Assert.Equal("CHAR_GAMMA", fallbackUnit.Name);
+        Assert.Null(fallbackUnit.NameKey);
+        Assert.Null(fallbackUnit.ThumbnailName);
+        Assert.Empty(fallbackUnit.Factions);
+        Assert.Empty(fallbackUnit.Tags);
     }
 
     [Theory]
@@ -63,12 +97,47 @@ public sealed class PlayerRosterServiceTests
     [InlineData(1, 101)]
     public async Task GetAsync_WhenPagingIsInvalid_Throws(int page, int pageSize)
     {
-        var service = new PlayerRosterService(new FakePlayerRepository(CreatePlayer()));
+        var service = CreateService(CreatePlayer());
         var query = new PlayerRosterQuery(Page: page, PageSize: pageSize);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => service.GetAsync(476_825_771, query, TestContext.Current.CancellationToken));
     }
+
+    private static PlayerRosterService CreateService(PlayerProfile? player) => new(
+        new FakePlayerRepository(player),
+        new FakeGameDataCatalog(CreateCatalog()));
+
+    private static GameDataCatalog CreateCatalog() => new(
+        new Dictionary<string, GameUnitDefinition>(StringComparer.Ordinal)
+        {
+            ["CHAR_ALPHA"] = new(
+                "CHAR_ALPHA",
+                false,
+                "UNIT_CHAR_ALPHA_NAME",
+                "Alpha Trooper",
+                "tex.charui_alpha",
+                ["Clone Trooper", "Galactic Republic"],
+                ["profession_clonetrooper", "affiliation_republic"]),
+            ["CHAR_BETA"] = new(
+                "CHAR_BETA",
+                false,
+                "UNIT_CHAR_BETA_NAME",
+                "Beta Guard",
+                "tex.charui_beta",
+                ["Empire"],
+                ["affiliation_empire"]),
+            ["SHIP_ALPHA"] = new(
+                "SHIP_ALPHA",
+                true,
+                "UNIT_SHIP_ALPHA_NAME",
+                "Alpha Fighter",
+                "tex.charui_ship_alpha",
+                ["Galactic Republic"],
+                ["affiliation_republic", "shipclass_fighter"])
+        },
+        new Dictionary<string, GameSkillDefinition>(StringComparer.Ordinal),
+        []);
 
     private static PlayerProfile CreatePlayer() => PlayerProfile.Import(
         476_825_771,
@@ -86,6 +155,12 @@ public sealed class PlayerRosterServiceTests
             new RosterUnit("ship-alpha", "SHIP_ALPHA", 85, 7, 1, 0, 0, 1_100, true, 0, 0),
             new RosterUnit("ship-beta", "SHIP_BETA", 85, 6, 1, 0, 0, 900, true, 0, 0)
         ]);
+
+    private sealed class FakeGameDataCatalog(GameDataCatalog catalog) : ISwgohGameDataCatalog
+    {
+        public Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(catalog);
+    }
 
     private sealed class FakePlayerRepository(PlayerProfile? player) : IPlayerRepository
     {

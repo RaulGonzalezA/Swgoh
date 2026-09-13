@@ -1,17 +1,27 @@
+using System.IO.Compression;
 using System.Text.Json;
 
 using Swgoh.Application.GameData;
 
 namespace Swgoh.Infrastructure.GameData;
 
-internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFactory) : ISwgohGameDataCatalog
+internal sealed class SwgohGameDataCatalogClient : ISwgohGameDataCatalog
 {
     internal const string HttpClientName = "swgoh-game-data";
 
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(6);
+    private readonly IHttpClientFactory httpClientFactory;
+    private readonly string locale;
     private readonly SemaphoreSlim cacheLock = new(1, 1);
     private GameDataCatalog? cachedCatalog;
     private DateTimeOffset cacheExpiresAtUtc;
+
+    public SwgohGameDataCatalogClient(IHttpClientFactory httpClientFactory, string locale = "ENG_US")
+    {
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
+        this.httpClientFactory = httpClientFactory;
+        this.locale = NormalizeLocale(locale);
+    }
 
     public async Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -33,14 +43,33 @@ internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFa
             Task<JsonDocument> skillsTask = GetJsonAsync(httpClient, "skill.json", cancellationToken);
             Task<JsonDocument> guidesTask = GetJsonAsync(httpClient, "unitGuideDefinition.json", cancellationToken);
             Task<JsonDocument> requirementsTask = GetJsonAsync(httpClient, "requirement.json", cancellationToken);
+            Task<JsonDocument> categoriesTask = GetJsonAsync(httpClient, "category.json", cancellationToken);
+            Task<JsonDocument> localizationTask = GetBrotliJsonAsync(
+                httpClient,
+                $"Loc_{locale}.txt.json.br",
+                cancellationToken);
 
-            await Task.WhenAll(unitsTask, skillsTask, guidesTask, requirementsTask).ConfigureAwait(false);
+            await Task.WhenAll(
+                unitsTask,
+                skillsTask,
+                guidesTask,
+                requirementsTask,
+                categoriesTask,
+                localizationTask).ConfigureAwait(false);
+
             using JsonDocument unitsDocument = await unitsTask.ConfigureAwait(false);
             using JsonDocument skillsDocument = await skillsTask.ConfigureAwait(false);
             using JsonDocument guidesDocument = await guidesTask.ConfigureAwait(false);
             using JsonDocument requirementsDocument = await requirementsTask.ConfigureAwait(false);
+            using JsonDocument categoriesDocument = await categoriesTask.ConfigureAwait(false);
+            using JsonDocument localizationDocument = await localizationTask.ConfigureAwait(false);
 
-            Dictionary<string, GameUnitDefinition> units = ParseUnits(unitsDocument.RootElement);
+            IReadOnlyDictionary<string, string> localization = ParseLocalization(localizationDocument.RootElement);
+            IReadOnlyDictionary<string, CategoryDefinition> categories = ParseCategories(categoriesDocument.RootElement);
+            Dictionary<string, GameUnitDefinition> units = ParseUnits(
+                unitsDocument.RootElement,
+                categories,
+                localization);
             Dictionary<string, GameSkillDefinition> skills = ParseSkills(skillsDocument.RootElement);
             IReadOnlyCollection<GalacticLegendDefinition> legends = ParseGalacticLegends(
                 guidesDocument.RootElement,
@@ -66,7 +95,47 @@ internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFa
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
-    private static Dictionary<string, GameUnitDefinition> ParseUnits(JsonElement root)
+    private static async Task<JsonDocument> GetBrotliJsonAsync(
+        HttpClient httpClient,
+        string relativeUrl,
+        CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            relativeUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        byte[] payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        if (LooksLikeJson(payload))
+        {
+            return JsonDocument.Parse(payload);
+        }
+
+        using var compressed = new MemoryStream(payload, writable: false);
+        using var brotli = new BrotliStream(compressed, CompressionMode.Decompress);
+        return await JsonDocument.ParseAsync(brotli, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool LooksLikeJson(ReadOnlySpan<byte> payload)
+    {
+        foreach (byte value in payload)
+        {
+            if (value is (byte)' ' or (byte)'\r' or (byte)'\n' or (byte)'\t')
+            {
+                continue;
+            }
+
+            return value is (byte)'{' or (byte)'[';
+        }
+
+        return false;
+    }
+
+    private static Dictionary<string, GameUnitDefinition> ParseUnits(
+        JsonElement root,
+        IReadOnlyDictionary<string, CategoryDefinition> categories,
+        IReadOnlyDictionary<string, string> localization)
     {
         Dictionary<string, GameUnitDefinition> result = new(StringComparer.Ordinal);
         foreach (JsonElement unit in EnumerateData(root))
@@ -77,7 +146,74 @@ internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFa
                 continue;
             }
 
-            result[baseId] = new GameUnitDefinition(baseId, IsShip(unit));
+            string? nameKey = GetString(unit, "nameKey");
+            string name = ResolveText(localization, nameKey) ?? baseId;
+            string? thumbnailName = GetString(unit, "thumbnailName");
+            string[] tags = GetStringArray(unit, "categoryId");
+            string[] factions =
+            [
+                .. tags
+                    .Where(tag => IsVisibleFactionCategory(tag, categories))
+                    .Select(tag => categories.TryGetValue(tag, out CategoryDefinition? category)
+                        ? ResolveText(localization, category.DescriptionKey) ?? FormatCategoryId(tag)
+                        : FormatCategoryId(tag))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            ];
+
+            result[baseId] = new GameUnitDefinition(
+                baseId,
+                IsShip(unit),
+                nameKey,
+                name,
+                thumbnailName,
+                factions,
+                tags);
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, CategoryDefinition> ParseCategories(JsonElement root)
+    {
+        Dictionary<string, CategoryDefinition> result = new(StringComparer.Ordinal);
+        foreach (JsonElement category in EnumerateData(root))
+        {
+            string? id = GetString(category, "id");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+
+            result[id] = new CategoryDefinition(
+                GetString(category, "descKey"),
+                GetBoolean(category, "visible"));
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, string> ParseLocalization(JsonElement root)
+    {
+        JsonElement data = root;
+        if (root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("data", out JsonElement nestedData)
+            && nestedData.ValueKind == JsonValueKind.Object)
+        {
+            data = nestedData;
+        }
+
+        Dictionary<string, string> result = new(StringComparer.Ordinal);
+        if (data.ValueKind == JsonValueKind.Object)
+        {
+            foreach (JsonProperty property in data.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String
+                    && property.Value.GetString() is string value)
+                {
+                    result[property.Name] = value;
+                }
+            }
         }
 
         return result;
@@ -327,6 +463,62 @@ internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFa
             || text?.Contains("SHIP", StringComparison.OrdinalIgnoreCase) is true;
     }
 
+    private static bool IsVisibleFactionCategory(
+        string categoryId,
+        IReadOnlyDictionary<string, CategoryDefinition> categories) =>
+        IsFactionCategory(categoryId)
+        && (!categories.TryGetValue(categoryId, out CategoryDefinition? category) || category.Visible);
+
+    private static bool IsFactionCategory(string categoryId) =>
+        categoryId.StartsWith("affiliation_", StringComparison.Ordinal)
+        || categoryId.StartsWith("profession_", StringComparison.Ordinal)
+        || categoryId.StartsWith("species_", StringComparison.Ordinal)
+        || string.Equals(categoryId, "unaligned_force_user", StringComparison.Ordinal)
+        || string.Equals(categoryId, "galactic_legend", StringComparison.Ordinal);
+
+    private static string? ResolveText(IReadOnlyDictionary<string, string> localization, string? key) =>
+        !string.IsNullOrWhiteSpace(key) && localization.TryGetValue(key, out string? value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
+
+    private static string FormatCategoryId(string categoryId)
+    {
+        int separator = categoryId.IndexOf('_', StringComparison.Ordinal);
+        string value = separator >= 0 ? categoryId[(separator + 1)..] : categoryId;
+        return value.Replace('_', ' ').Trim();
+    }
+
+    private static string[] GetStringArray(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out JsonElement property)
+            || property.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. property.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+        ];
+    }
+
+    private static string NormalizeLocale(string locale)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(locale);
+        string normalized = locale.Trim().ToUpperInvariant();
+        if (normalized.Length > 16
+            || normalized.Any(character => !(char.IsAsciiLetter(character) || character == '_')))
+        {
+            throw new ArgumentException("Game Data locale must contain only ASCII letters and underscores.", nameof(locale));
+        }
+
+        return normalized;
+    }
+
     private static string? GetString(JsonElement element, string propertyName) =>
         element.TryGetProperty(propertyName, out JsonElement property) && property.ValueKind == JsonValueKind.String
             ? property.GetString()
@@ -352,6 +544,8 @@ internal sealed class SwgohGameDataCatalogClient(IHttpClientFactory httpClientFa
             ? value
             : 0;
     }
+
+    private sealed record CategoryDefinition(string? DescriptionKey, bool Visible);
 
     private sealed record RequirementAccumulator(
         int MinimumRarity = 0,

@@ -51,7 +51,7 @@ public sealed class SwgohComlinkClientTests
         var catalog = new FakeGameDataCatalog(new GameDataCatalog(
             new Dictionary<string, GameUnitDefinition>
             {
-                ["CHARACTER"] = new("CHARACTER", false)
+                ["CHARACTER"] = new("CHARACTER", false, null, "CHARACTER", null, [], [])
             },
             new Dictionary<string, GameSkillDefinition>
             {

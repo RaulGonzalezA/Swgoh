@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 
+using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
 using Swgoh.Infrastructure.IntegrationTests.Persistence;
 using Swgoh.Infrastructure.Persistence;
@@ -23,14 +24,14 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
     private const long AllyCode = 476_825_771;
 
     [Fact]
-    public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesRosterAnalysisAndHistory()
+    public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesEnrichedRosterAnalysisAndHistory()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         using var connectionStringScope = new EnvironmentVariableScope(
             "ConnectionStrings__swgoh",
             fixture.ConnectionString);
         var provider = new FakePlayerClient(CreateImportedPlayer());
-        await using var factory = new SwgohApiFactory(provider);
+        await using var factory = new SwgohApiFactory(provider, new FakeGameDataCatalog(CreateGameDataCatalog()));
         using HttpClient client = factory.CreateClient();
 
         using HttpResponseMessage refreshResponse = await client.PostAsync(
@@ -55,7 +56,7 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         Assert.Equal(2, persisted.RootElement.GetProperty("roster").GetArrayLength());
 
         using HttpResponseMessage rosterResponse = await client.GetAsync(
-            $"/api/v1/players/{AllyCode}/roster?type=Character&minRarity=7&minRelic=8&hasZeta=true&orderBy=GalacticPower&direction=Descending&page=1&pageSize=1",
+            $"/api/v1/players/{AllyCode}/roster?search=Clone%20Captain&type=Character&minRarity=7&minRelic=8&hasZeta=true&orderBy=Name&direction=Ascending&page=1&pageSize=1",
             cancellationToken);
         using JsonDocument roster = await ReadJsonAsync(rosterResponse, cancellationToken);
 
@@ -66,6 +67,11 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         Assert.Equal(1, roster.RootElement.GetProperty("totalPages").GetInt32());
         JsonElement rosterUnit = Assert.Single(roster.RootElement.GetProperty("items").EnumerateArray().ToArray());
         Assert.Equal("CHARACTER", rosterUnit.GetProperty("definitionId").GetString());
+        Assert.Equal("Clone Captain", rosterUnit.GetProperty("name").GetString());
+        Assert.Equal("UNIT_CHARACTER_NAME", rosterUnit.GetProperty("nameKey").GetString());
+        Assert.Equal("tex.charui_character", rosterUnit.GetProperty("thumbnailName").GetString());
+        Assert.Contains("Galactic Republic", rosterUnit.GetProperty("factions").EnumerateArray().Select(item => item.GetString()));
+        Assert.Contains("affiliation_republic", rosterUnit.GetProperty("tags").EnumerateArray().Select(item => item.GetString()));
         Assert.Equal(60_000, rosterUnit.GetProperty("galacticPower").GetInt64());
         Assert.False(rosterUnit.GetProperty("isShip").GetBoolean());
         Assert.Equal(2, rosterUnit.GetProperty("zetaCount").GetInt32());
@@ -139,6 +145,29 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
     }
 
+    private static GameDataCatalog CreateGameDataCatalog() => new(
+        new Dictionary<string, GameUnitDefinition>(StringComparer.Ordinal)
+        {
+            ["CHARACTER"] = new(
+                "CHARACTER",
+                false,
+                "UNIT_CHARACTER_NAME",
+                "Clone Captain",
+                "tex.charui_character",
+                ["Galactic Republic", "Clone Trooper"],
+                ["affiliation_republic", "profession_clonetrooper", "role_support"]),
+            ["SHIP"] = new(
+                "SHIP",
+                true,
+                "UNIT_SHIP_NAME",
+                "Republic Fighter",
+                "tex.charui_ship",
+                ["Galactic Republic"],
+                ["affiliation_republic", "shipclass_fighter"])
+        },
+        new Dictionary<string, GameSkillDefinition>(StringComparer.Ordinal),
+        []);
+
     private static ImportedPlayer CreateImportedPlayer() => new(
         AllyCode,
         "player-id",
@@ -172,7 +201,9 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
                 IsShip: true)
         ]);
 
-    private sealed class SwgohApiFactory(ISwgohPlayerClient playerClient) : WebApplicationFactory<global::Program>
+    private sealed class SwgohApiFactory(
+        ISwgohPlayerClient playerClient,
+        ISwgohGameDataCatalog gameDataCatalog) : WebApplicationFactory<global::Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -180,7 +211,9 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<ISwgohPlayerClient>();
+                services.RemoveAll<ISwgohGameDataCatalog>();
                 services.AddSingleton(playerClient);
+                services.AddSingleton(gameDataCatalog);
             });
         }
     }
@@ -199,6 +232,12 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
             Assert.Equal(player.AllyCode, allyCode);
             return Task.FromResult(player);
         }
+    }
+
+    private sealed class FakeGameDataCatalog(GameDataCatalog catalog) : ISwgohGameDataCatalog
+    {
+        public Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(catalog);
     }
 
     private sealed class EnvironmentVariableScope : IDisposable
