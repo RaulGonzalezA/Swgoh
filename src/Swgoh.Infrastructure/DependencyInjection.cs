@@ -119,21 +119,32 @@ public static class DependencyInjection
                         Name = GacRoundPlanMongoRepository.PlayerUpdatedIndexName
                     }));
 
-        IndexKeysDefinition<GacPersonalRoundOutcomeDocument> personalOutcomeIndexKeys =
-            Builders<GacPersonalRoundOutcomeDocument>.IndexKeys
-                .Ascending(outcome => outcome.AllyCode)
-                .Ascending(outcome => outcome.Format)
-                .Descending(outcome => outcome.UpdatedAtUtc);
-        services.AddMongoRepository<GacPersonalRoundOutcomeDocument, string>(
-            GacPersonalOutcomeMongoRepository.CollectionName,
-            outcome => outcome.Id,
+        IndexKeysDefinition<GacPersonalBattleDocument> personalBattleIndexKeys =
+            Builders<GacPersonalBattleDocument>.IndexKeys
+                .Ascending(battle => battle.PlayerAllyCode)
+                .Ascending(battle => battle.Format)
+                .Descending(battle => battle.RecordedAtUtc);
+        IndexKeysDefinition<GacPersonalBattleDocument> personalBattleRoundIndexKeys =
+            Builders<GacPersonalBattleDocument>.IndexKeys
+                .Ascending(battle => battle.PlayerAllyCode)
+                .Ascending(battle => battle.EventInstanceId)
+                .Ascending(battle => battle.RoundNumber);
+        services.AddMongoRepository<GacPersonalBattleDocument, string>(
+            GacPersonalBattleMongoRepository.CollectionName,
+            battle => battle.Id,
             collection => collection
                 .CreateIfMissing()
                 .HasIndex(
-                    personalOutcomeIndexKeys,
+                    personalBattleIndexKeys,
                     new CreateIndexOptions
                     {
-                        Name = GacPersonalOutcomeMongoRepository.AllyFormatUpdatedIndexName
+                        Name = GacPersonalBattleMongoRepository.PlayerFormatRecordedIndexName
+                    })
+                .HasIndex(
+                    personalBattleRoundIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacPersonalBattleMongoRepository.PlayerRoundIndexName
                     }));
 
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
@@ -190,7 +201,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
-        services.AddSingleton<IGacPersonalOutcomeRepository, GacPersonalOutcomeMongoRepository>();
+        services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
         services.AddSingleton<SwgohComlinkGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkCurrentRoundOpponentSource>();
         return services;
