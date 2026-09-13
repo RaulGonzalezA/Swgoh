@@ -13,5 +13,4 @@ internal interface ISwgohStatsClient
 
 internal sealed record CalculatedRosterUnitStats(
     long GalacticPower,
-    RosterUnitStats? Stats,
-    decimal? ModSpeedBonus);
+    RosterUnitStats? Stats);
