@@ -153,6 +153,7 @@ jobs:
           curl --fail-with-body --silent --show-error "${api_root}/openapi/v1.json" --output smoke-results/openapi-v1.json
           curl --fail-with-body --silent --show-error "${api_root}/scalar" --output smoke-results/scalar.html
           jq -e '.paths | length > 0' smoke-results/openapi-v1.json > /dev/null
+          jq -e '.paths | has("/api/v1/players/{allyCode}/roster")' smoke-results/openapi-v1.json > /dev/null
 
           curl --fail-with-body --silent --show-error --request POST "${base_url}/refresh" --output smoke-results/refresh.json
 
@@ -165,6 +166,7 @@ jobs:
           grep -qi '^retry-after:' smoke-results/refresh-rate-limit-headers.txt
 
           curl --fail-with-body --silent --show-error "${base_url}" --output smoke-results/player.json
+          curl --fail-with-body --silent --show-error "${base_url}/roster?page=1&pageSize=10&orderBy=GalacticPower&direction=Descending" --output smoke-results/roster.json
           curl --fail-with-body --silent --show-error "${base_url}/analysis" --output smoke-results/analysis.json
           curl --fail-with-body --silent --show-error "${base_url}/history?limit=5" --output smoke-results/history.json
           curl --fail-with-body --silent --show-error "${base_url}/gl-progress" --output smoke-results/gl-progress.json
@@ -173,12 +175,14 @@ jobs:
           jq -e '.rosterCount > 0' smoke-results/player.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
           jq -e '(.roster | length) == .rosterCount' smoke-results/player.json > /dev/null
+          jq -e '.total > 0 and .page == 1 and .pageSize == 10 and (.items | length) > 0 and (.items | length) <= 10' smoke-results/roster.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/analysis.json > /dev/null
           jq -e '.omicrons > 0' smoke-results/analysis.json > /dev/null
           jq -e 'type == "array" and length > 0' smoke-results/history.json > /dev/null
           jq -e 'type == "array"' smoke-results/gl-progress.json > /dev/null
 
           jq '{name, level, galacticPower, rosterCount, guildName, updatedAtUtc}' smoke-results/player.json
+          jq '{total, page, pageSize, totalPages, first: .items[0] | {definitionId, galacticPower, relicTier, zetaCount, omicronCount}}' smoke-results/roster.json
           jq '{galacticPower, characterGalacticPower, shipGalacticPower, characterCount, shipCount, relicCharacters, relic7Plus, relic8Plus, relic9Plus, relic10, zetas, omicrons}' smoke-results/analysis.json
           jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
 
