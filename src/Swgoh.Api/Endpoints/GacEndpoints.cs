@@ -21,7 +21,7 @@ internal static class GacEndpoints
         group.MapGet("/defense-requirements/transition", GetLeagueTransition)
             .WithSummary("Compare GAC defense requirements between two leagues");
         group.MapGet("/players/{allyCode:long}/current-opponent/scouting", GetCurrentOpponentScoutingAsync)
-            .WithSummary("Detect the current GAC opponent and analyze only the active GAC format");
+            .WithSummary("Detect the current GAC opponent, scout both rosters and build a battle plan for the active format");
         group.MapPost("/opponents/{allyCode:long}/history", ImportHistoryAsync)
             .WithSummary("Import normalized historical GAC rounds for an opponent");
         group.MapGet("/opponents/{allyCode:long}/history", GetHistoryAsync)
@@ -302,7 +302,8 @@ internal static class GacEndpoints
     internal sealed record CurrentGacScoutingResponse(
         CurrentGacOpponentResponse Opponent,
         OpponentScoutingResponse? Scouting,
-        CurrentOpponentRosterScoutingResponse? RosterScouting)
+        CurrentOpponentRosterScoutingResponse? RosterScouting,
+        CurrentGacBattlePlan? BattlePlan)
     {
         public static CurrentGacScoutingResponse From(CurrentGacScoutingResult result)
         {
@@ -311,7 +312,8 @@ internal static class GacEndpoints
             return new CurrentGacScoutingResponse(
                 CurrentGacOpponentResponse.From(opponent),
                 result.Scouting is null ? null : OpponentScoutingResponse.From(result.Scouting),
-                result.RosterScouting is null ? null : CurrentOpponentRosterScoutingResponse.From(result.RosterScouting));
+                result.RosterScouting is null ? null : CurrentOpponentRosterScoutingResponse.From(result.RosterScouting),
+                result.BattlePlan);
         }
     }
 
