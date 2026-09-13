@@ -60,7 +60,7 @@ internal sealed class GacHistoryMongoRepository(IMongoDbRepository<GacHistoryRou
         return [.. documents.Select(ToDomain)];
     }
 
-    private Task<IReadOnlyCollection<GacHistoryRoundDocument>> FindRecentAsync(
+    private async Task<IReadOnlyCollection<GacHistoryRoundDocument>> FindRecentAsync(
         FilterDefinition<GacHistoryRoundDocument> filter,
         int maxRounds,
         CancellationToken cancellationToken)
@@ -70,7 +70,10 @@ internal sealed class GacHistoryMongoRepository(IMongoDbRepository<GacHistoryRou
             .Descending(document => document.Season)
             .Descending(document => document.EventNumber)
             .Descending(document => document.RoundNumber);
-        return repository.FindPageAsync(filter, skip: 0, maxRounds, sort, cancellationToken);
+        List<GacHistoryRoundDocument> documents = await repository
+            .FindPageAsync(filter, skip: 0, maxRounds, sort, cancellationToken)
+            .ConfigureAwait(false);
+        return documents;
     }
 
     private static GacHistoryRoundDocument ToDocument(GacHistoricalRound round) => new()
