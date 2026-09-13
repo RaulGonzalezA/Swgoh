@@ -19,6 +19,8 @@ internal static class PlayerEndpoints
 
         group.MapGet("/{allyCode:long}", GetAsync)
             .WithSummary("Get the persisted player profile");
+        group.MapGet("/{allyCode:long}/roster", GetRosterAsync)
+            .WithSummary("Get a filtered, sorted and paged player roster");
         group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync)
             .WithSummary("Get roster analysis metrics");
         group.MapGet("/{allyCode:long}/history", GetHistoryAsync)
@@ -39,6 +41,44 @@ internal static class PlayerEndpoints
     {
         PlayerProfile? player = await service.GetAsync(allyCode, cancellationToken);
         return player is null ? Results.NotFound() : Results.Ok(PlayerResponse.From(player));
+    }
+
+    private static async Task<IResult> GetRosterAsync(
+        long allyCode,
+        int? page,
+        int? pageSize,
+        string? search,
+        PlayerRosterUnitType? type,
+        int? minRarity,
+        int? minRelic,
+        bool? hasZeta,
+        bool? hasOmicron,
+        PlayerRosterSortField? orderBy,
+        PlayerRosterSortDirection? direction,
+        IPlayerRosterService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var query = new PlayerRosterQuery(
+                page ?? 1,
+                pageSize ?? 50,
+                search,
+                type ?? PlayerRosterUnitType.All,
+                minRarity,
+                minRelic,
+                hasZeta,
+                hasOmicron,
+                orderBy ?? PlayerRosterSortField.GalacticPower,
+                direction ?? PlayerRosterSortDirection.Descending);
+
+            PlayerRosterPage? roster = await service.GetAsync(allyCode, query, cancellationToken);
+            return roster is null ? Results.NotFound() : Results.Ok(RosterPageResponse.From(roster));
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["roster"] = [exception.Message] });
+        }
     }
 
     private static async Task<IResult> GetAnalysisAsync(
@@ -131,6 +171,25 @@ internal static class PlayerEndpoints
             player.UpdatedAtUtc,
             player.Roster.Count,
             [.. player.Roster.Select(RosterUnitResponse.From)]);
+    }
+
+    internal sealed record RosterPageResponse(
+        long AllyCode,
+        DateTimeOffset UpdatedAtUtc,
+        int Total,
+        int Page,
+        int PageSize,
+        int TotalPages,
+        IReadOnlyCollection<RosterUnitResponse> Items)
+    {
+        public static RosterPageResponse From(PlayerRosterPage roster) => new(
+            roster.AllyCode,
+            roster.UpdatedAtUtc,
+            roster.Total,
+            roster.Page,
+            roster.PageSize,
+            roster.TotalPages,
+            [.. roster.Items.Select(RosterUnitResponse.From)]);
     }
 
     internal sealed record RosterUnitResponse(
