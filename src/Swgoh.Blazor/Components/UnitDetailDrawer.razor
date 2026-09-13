@@ -65,6 +65,82 @@
                 </div>
             </section>
 
+            @if (Unit?.Stats is not null)
+            {
+                <section class="unit-detail-section">
+                    <div class="unit-detail-section-heading">
+                        <span class="section-kicker">Stats reales</span>
+                        <h3>Con mods aplicados</h3>
+                    </div>
+                    <div class="unit-detail-stats">
+                        @if (Unit.Stats.Speed is decimal speed)
+                        {
+                            <div><span>Velocidad</span><strong>@FormatNumber(speed)</strong></div>
+                        }
+                        @if (Unit.Stats.Health is decimal health)
+                        {
+                            <div><span>Salud</span><strong>@FormatNumber(health)</strong></div>
+                        }
+                        @if (Unit.Stats.Protection is decimal protection)
+                        {
+                            <div><span>Protección</span><strong>@FormatNumber(protection)</strong></div>
+                        }
+                        @if (Unit.Stats.PhysicalDamage is decimal physicalDamage)
+                        {
+                            <div><span>Daño físico</span><strong>@FormatNumber(physicalDamage)</strong></div>
+                        }
+                        @if (Unit.Stats.SpecialDamage is decimal specialDamage)
+                        {
+                            <div><span>Daño especial</span><strong>@FormatNumber(specialDamage)</strong></div>
+                        }
+                        @if (Unit.Stats.Armor is decimal armor)
+                        {
+                            <div><span>Armadura</span><strong>@FormatPercentOrNumber(armor)</strong></div>
+                        }
+                        @if (Unit.Stats.Resistance is decimal resistance)
+                        {
+                            <div><span>Resistencia</span><strong>@FormatPercentOrNumber(resistance)</strong></div>
+                        }
+                        @if (Unit.Stats.Potency is decimal potency)
+                        {
+                            <div><span>Potencia</span><strong>@FormatPercent(potency)</strong></div>
+                        }
+                        @if (Unit.Stats.Tenacity is decimal tenacity)
+                        {
+                            <div><span>Tenacidad</span><strong>@FormatPercent(tenacity)</strong></div>
+                        }
+                        @if (Unit.Stats.CriticalDamage is decimal criticalDamage)
+                        {
+                            <div><span>Daño crítico</span><strong>@FormatPercent(criticalDamage)</strong></div>
+                        }
+                    </div>
+                </section>
+            }
+
+            @if (Unit?.Mods is not null && !Unit.IsShip)
+            {
+                <section class="unit-detail-section unit-detail-tactical">
+                    <div class="unit-detail-section-heading">
+                        <span class="section-kicker">Mods</span>
+                        <h3>Calidad táctica</h3>
+                    </div>
+                    <div class="unit-detail-stats">
+                        <div><span>Equipados</span><strong>@Unit.Mods.EquippedCount/6</strong></div>
+                        <div><span>6 puntos</span><strong>@Unit.Mods.SixDotCount</strong></div>
+                        <div><span>Set velocidad</span><strong>@Unit.Mods.SpeedSetModCount</strong></div>
+                        <div><span>Primaria velocidad</span><strong>@Unit.Mods.SpeedPrimaryCount</strong></div>
+                        @if (Unit.Mods.SpeedBonus is decimal speedBonus)
+                        {
+                            <div><span>Velocidad en mods</span><strong>+@FormatNumber(speedBonus)</strong></div>
+                        }
+                    </div>
+                    @if (!Unit.Mods.IsComplete)
+                    {
+                        <p class="unit-detail-context">El personaje no lleva los seis mods equipados; el optimizador penaliza ligeramente su preparación táctica.</p>
+                    }
+                </section>
+            }
+
             @if (Unit is not null && Unit.Factions.Count > 0)
             {
                 <section class="unit-detail-section">
@@ -202,6 +278,14 @@
 
         return AssetBaseUrl + Uri.EscapeDataString(assetName);
     }
+
+    private static string FormatNumber(decimal value) => Math.Round(value).ToString("N0");
+
+    private static string FormatPercent(decimal value) => $"{(value <= 2m ? value * 100m : value):0.#}%";
+
+    private static string FormatPercentOrNumber(decimal value) => value <= 2m
+        ? FormatPercent(value)
+        : FormatNumber(value);
 
     private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
         ? "?"

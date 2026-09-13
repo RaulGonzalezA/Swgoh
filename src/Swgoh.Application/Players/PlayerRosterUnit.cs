@@ -1,3 +1,5 @@
+using Swgoh.Domain.Players;
+
 namespace Swgoh.Application.Players;
 
 public sealed record PlayerRosterUnit(
@@ -16,4 +18,6 @@ public sealed record PlayerRosterUnit(
     long GalacticPower,
     bool IsShip,
     int ZetaCount,
-    int OmicronCount);
+    int OmicronCount,
+    RosterUnitStats? Stats = null,
+    RosterModSummary? Mods = null);

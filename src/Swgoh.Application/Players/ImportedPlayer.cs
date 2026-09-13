@@ -1,3 +1,5 @@
+using Swgoh.Domain.Players;
+
 namespace Swgoh.Application.Players;
 
 public sealed record ImportedPlayer(
@@ -8,7 +10,8 @@ public sealed record ImportedPlayer(
     string? GuildName,
     int Level,
     long GalacticPower,
-    IReadOnlyCollection<ImportedRosterUnit> Roster);
+    IReadOnlyCollection<ImportedRosterUnit> Roster,
+    IReadOnlyCollection<PlayerDatacron>? Datacrons = null);
 
 public sealed record ImportedRosterUnit(
     string Id,
@@ -21,4 +24,6 @@ public sealed record ImportedRosterUnit(
     long GalacticPower = 0,
     bool IsShip = false,
     int ZetaCount = 0,
-    int OmicronCount = 0);
+    int OmicronCount = 0,
+    RosterUnitStats? Stats = null,
+    RosterModSummary? Mods = null);

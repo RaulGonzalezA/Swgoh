@@ -1,12 +1,15 @@
 using Swgoh.Application.Abstractions;
+using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
+using Swgoh.Domain.Players;
 
 namespace Swgoh.Application.Gac;
 
 internal sealed class GacAttackPlanOptimizerService(
     IGacPlannerService plannerService,
     IGacRoundPlanRepository planRepository,
-    IClock clock) : IGacAttackPlanOptimizerService
+    IClock clock,
+    IPlayerProfileService? playerProfileService = null) : IGacAttackPlanOptimizerService
 {
     private const int MaxCandidatesPerDefense = 6;
     private const int MaxSearchNodes = 100_000;
@@ -35,7 +38,11 @@ internal sealed class GacAttackPlanOptimizerService(
         }
 
         GacPlannerState state = plannerLookup.State;
-        GacAttackOptimizationResult optimization = Optimize(state, mode);
+        GacTacticalOptimizationContext tacticalContext = await BuildTacticalContextAsync(
+            allyCode,
+            state.Plan.OpponentAllyCode,
+            cancellationToken).ConfigureAwait(false);
+        GacAttackOptimizationResult optimization = Optimize(state, mode, tacticalContext);
         if (!apply || optimization.Recommendations.Count == 0)
         {
             return new GacAttackOptimizationLookup(
@@ -61,7 +68,9 @@ internal sealed class GacAttackPlanOptimizerService(
                 .Select(attack => attack.Attempt)
                 .DefaultIfEmpty(0)
                 .Max() + 1;
-            string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; coste {recommendation.StrategicCost:0.#}.";
+            string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
+                $"coste {recommendation.StrategicCost:0.#}; ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0}; " +
+                $"datacron {recommendation.DatacronStatus}.";
             retainedAttacks.Add(GacAttackAssignment.Create(
                 Guid.NewGuid(),
                 recommendation.DefenseId,
@@ -86,9 +95,16 @@ internal sealed class GacAttackPlanOptimizerService(
 
     internal static GacAttackOptimizationResult Optimize(
         GacPlannerState state,
-        GacAttackOptimizationMode mode)
+        GacAttackOptimizationMode mode) =>
+        Optimize(state, mode, GacTacticalOptimizationContext.Empty);
+
+    internal static GacAttackOptimizationResult Optimize(
+        GacPlannerState state,
+        GacAttackOptimizationMode mode,
+        GacTacticalOptimizationContext tacticalContext)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(tacticalContext);
         if (!Enum.IsDefined(mode))
         {
             throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported optimization mode.");
@@ -129,7 +145,8 @@ internal sealed class GacAttackPlanOptimizerService(
                             defense,
                             preset,
                             hints.GetValueOrDefault(defense.Id),
-                            maxTeamPowerByType.GetValueOrDefault(defense.Squad.IsFleet)))
+                            maxTeamPowerByType.GetValueOrDefault(defense.Squad.IsFleet),
+                            tacticalContext))
                         .Where(candidate => candidate is not null)
                         .Select(candidate => candidate!)
                         .OrderByDescending(candidate => candidate.Score)
@@ -186,6 +203,24 @@ internal sealed class GacAttackPlanOptimizerService(
             search.SearchLimitReached);
     }
 
+    private async Task<GacTacticalOptimizationContext> BuildTacticalContextAsync(
+        long allyCode,
+        long opponentAllyCode,
+        CancellationToken cancellationToken)
+    {
+        if (playerProfileService is null)
+        {
+            return GacTacticalOptimizationContext.Empty;
+        }
+
+        Task<PlayerProfile?> playerTask = playerProfileService.GetAsync(allyCode, cancellationToken);
+        Task<PlayerProfile?> opponentTask = playerProfileService.GetAsync(opponentAllyCode, cancellationToken);
+        await Task.WhenAll(playerTask, opponentTask).ConfigureAwait(false);
+        return GacTacticalOptimizationContext.From(
+            await playerTask.ConfigureAwait(false),
+            await opponentTask.ConfigureAwait(false));
+    }
+
     private static HashSet<string> BuildBlockedUnits(
         GacPlannerState state,
         GacAttackOptimizationMode mode)
@@ -229,18 +264,30 @@ internal sealed class GacAttackPlanOptimizerService(
         GacVisibleDefenseDetails defense,
         GacTeamPresetDetails preset,
         GacPlannerCounterHint? hint,
-        decimal maxTeamPower)
+        decimal maxTeamPower,
+        GacTacticalOptimizationContext tacticalContext)
     {
         decimal teamPower = TeamPower(preset);
         decimal defensePower = SquadPower(defense.Squad);
         (decimal matchScore, string evidence, string confidence, string rationale) =
             ScoreMatch(defense, preset, hint, teamPower, defensePower);
         decimal strategicCost = CalculateStrategicCost(preset, teamPower, defensePower, maxTeamPower);
-        decimal score = Math.Clamp(matchScore - strategicCost, 0m, 100m);
+        GacTacticalEvaluation tactical = tacticalContext.Evaluate(
+            defense,
+            preset,
+            hint?.RequiresDatacronVerification == true);
+        decimal score = Math.Clamp(matchScore - strategicCost + tactical.Adjustment, 0m, 100m);
         if (score < 25m)
         {
             return null;
         }
+
+        string adjustedConfidence = tactical.DatacronStatus == "NoCandidate"
+            ? DowngradeConfidence(confidence)
+            : confidence;
+        string tacticalRationale = tactical.Summary.StartsWith("Sin datos", StringComparison.Ordinal)
+            ? rationale
+            : $"{rationale} {tactical.Summary}";
 
         return new Candidate(
             defense,
@@ -248,12 +295,18 @@ internal sealed class GacAttackPlanOptimizerService(
             score,
             strategicCost,
             evidence,
-            confidence,
-            rationale,
+            adjustedConfidence,
+            tacticalRationale,
             hint?.WinRate,
             hint?.OneShotRate,
             hint?.AverageBanners,
             hint?.Uses,
+            tactical.Adjustment,
+            tactical.TeamAverageSpeed,
+            tactical.DefenseAverageSpeed,
+            tactical.TeamModSpeedBonus,
+            tactical.DefenseModSpeedBonus,
+            tactical.DatacronStatus,
             [.. preset.Squad.AllUnits.Select(unit => unit.DefinitionId)]);
     }
 
@@ -463,7 +516,13 @@ internal sealed class GacAttackPlanOptimizerService(
         candidate.WinRate,
         candidate.OneShotRate,
         candidate.AverageBanners,
-        candidate.Uses);
+        candidate.Uses,
+        candidate.TacticalAdjustment,
+        candidate.TeamAverageSpeed,
+        candidate.DefenseAverageSpeed,
+        candidate.TeamModSpeedBonus,
+        candidate.DefenseModSpeedBonus,
+        candidate.DatacronStatus);
 
     private static bool HasHistoricalEvidence(GacPlannerCounterHint hint) =>
         hint.WinRate is not null || hint.Uses is > 0 ||
@@ -521,6 +580,12 @@ internal sealed class GacAttackPlanOptimizerService(
         decimal? OneShotRate,
         decimal? AverageBanners,
         int? Uses,
+        decimal TacticalAdjustment,
+        decimal? TeamAverageSpeed,
+        decimal? DefenseAverageSpeed,
+        decimal? TeamModSpeedBonus,
+        decimal? DefenseModSpeedBonus,
+        string DatacronStatus,
         IReadOnlyCollection<string> UnitDefinitionIds);
 
     private sealed record DefenseChoice(

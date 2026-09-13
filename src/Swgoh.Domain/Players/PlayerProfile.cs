@@ -3,6 +3,7 @@ namespace Swgoh.Domain.Players;
 public sealed class PlayerProfile
 {
     private readonly List<RosterUnit> _roster;
+    private readonly List<PlayerDatacron> _datacrons;
 
     private PlayerProfile(
         long allyCode,
@@ -13,7 +14,8 @@ public sealed class PlayerProfile
         int level,
         long galacticPower,
         DateTimeOffset updatedAtUtc,
-        IEnumerable<RosterUnit> roster)
+        IEnumerable<RosterUnit> roster,
+        IEnumerable<PlayerDatacron>? datacrons)
     {
         AllyCode = allyCode;
         PlayerId = playerId;
@@ -24,6 +26,7 @@ public sealed class PlayerProfile
         GalacticPower = galacticPower;
         UpdatedAtUtc = updatedAtUtc;
         _roster = [.. roster];
+        _datacrons = datacrons is null ? [] : [.. datacrons];
     }
 
     public long AllyCode { get; private set; }
@@ -35,11 +38,12 @@ public sealed class PlayerProfile
     public long GalacticPower { get; private set; }
     public DateTimeOffset UpdatedAtUtc { get; private set; }
     public IReadOnlyList<RosterUnit> Roster => _roster;
+    public IReadOnlyList<PlayerDatacron> Datacrons => _datacrons;
 
     public static PlayerProfile Create(long allyCode, string name, long galacticPower, DateTimeOffset updatedAtUtc)
     {
         Validate(allyCode, name, galacticPower);
-        return new PlayerProfile(allyCode, string.Empty, name.Trim(), null, null, 0, galacticPower, updatedAtUtc, []);
+        return new PlayerProfile(allyCode, string.Empty, name.Trim(), null, null, 0, galacticPower, updatedAtUtc, [], []);
     }
 
     public static PlayerProfile Import(
@@ -51,7 +55,8 @@ public sealed class PlayerProfile
         int level,
         long galacticPower,
         DateTimeOffset updatedAtUtc,
-        IEnumerable<RosterUnit> roster)
+        IEnumerable<RosterUnit> roster,
+        IEnumerable<PlayerDatacron>? datacrons = null)
     {
         Validate(allyCode, name, galacticPower);
         ArgumentNullException.ThrowIfNull(roster);
@@ -65,7 +70,8 @@ public sealed class PlayerProfile
             level,
             galacticPower,
             updatedAtUtc,
-            roster);
+            roster,
+            datacrons);
     }
 
     public void Refresh(string name, long galacticPower, DateTimeOffset updatedAtUtc)

@@ -1,4 +1,5 @@
 using Swgoh.Domain.Gac;
+using Swgoh.Domain.Players;
 
 namespace Swgoh.Application.Gac;
 
@@ -44,7 +45,9 @@ public sealed record GacPlannerUnitDetails(
     long? GalacticPower,
     int? RelicTier,
     int? ZetaCount,
-    int? OmicronCount);
+    int? OmicronCount,
+    RosterUnitStats? Stats = null,
+    RosterModSummary? Mods = null);
 
 public sealed record GacPlannerSquadDetails(
     GacPlannerUnitDetails Leader,
@@ -105,6 +108,23 @@ public sealed record GacPlannerCounterHint(
     decimal? AverageBanners,
     int? PlayersObserved);
 
+public sealed record GacPlannerDatacronDetails(
+    string Id,
+    string SetId,
+    string TemplateId,
+    int Tier,
+    bool Locked,
+    int HighestRequiredRelicTier,
+    bool HasAbilityAffix,
+    IReadOnlyCollection<GacPlannerDatacronAffixDetails> Affixes);
+
+public sealed record GacPlannerDatacronAffixDetails(
+    string? AbilityId,
+    int? StatType,
+    long? StatValue,
+    int? RequiredRelicTier,
+    IReadOnlyCollection<string> Tags);
+
 public sealed record GacRoundPlanDetails(
     string Id,
     long PlayerAllyCode,
@@ -125,7 +145,13 @@ public sealed record GacRoundPlanDetails(
 public sealed record GacPlannerState(
     CurrentGacOpponent Opponent,
     IReadOnlyCollection<GacTeamPresetDetails> Presets,
-    GacRoundPlanDetails Plan);
+    GacRoundPlanDetails Plan,
+    IReadOnlyCollection<GacPlannerDatacronDetails>? Datacrons = null,
+    IReadOnlyCollection<GacPlannerDatacronDetails>? OpponentDatacrons = null)
+{
+    public IReadOnlyCollection<GacPlannerDatacronDetails> PlayerDatacrons => Datacrons ?? [];
+    public IReadOnlyCollection<GacPlannerDatacronDetails> RivalDatacrons => OpponentDatacrons ?? [];
+}
 
 public sealed record GacPlannerLookup(
     CurrentGacOpponentStatus Status,

@@ -22,7 +22,13 @@ public sealed record GacAttackOptimizationRecommendation(
     decimal? WinRate,
     decimal? OneShotRate,
     decimal? AverageBanners,
-    int? Uses);
+    int? Uses,
+    decimal TacticalAdjustment = 0m,
+    decimal? TeamAverageSpeed = null,
+    decimal? DefenseAverageSpeed = null,
+    decimal? TeamModSpeedBonus = null,
+    decimal? DefenseModSpeedBonus = null,
+    string DatacronStatus = "NotRequired");
 
 public sealed record GacAttackOptimizationResult(
     GacAttackOptimizationMode Mode,

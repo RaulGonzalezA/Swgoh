@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 
 using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
+using Swgoh.Domain.Players;
 
 namespace Swgoh.Infrastructure.Comlink;
 
@@ -14,6 +15,8 @@ internal sealed class SwgohComlinkClient(
     ISwgohGameDataCatalog gameDataCatalog) : ISwgohPlayerClient
 {
     private const int GameDataSkillTierOffset = 2;
+    private const int SpeedStatId = 5;
+    private const decimal RawStatScale = 100_000_000m;
 
     public async Task<ImportedPlayer> GetPlayerAsync(long allyCode, CancellationToken cancellationToken = default)
     {
@@ -58,14 +61,19 @@ internal sealed class SwgohComlinkClient(
 
             ValidateRosterIdentity(player.RosterUnit);
 
-            Task<IReadOnlyDictionary<string, long>> powerTask = statsClient.CalculateGalacticPowerAsync(rawRoster, cancellationToken);
+            Task<IReadOnlyDictionary<string, CalculatedRosterUnitStats>> statsTask = statsClient
+                .CalculateRosterStatsAsync(rawRoster, cancellationToken);
             Task<GameDataCatalog> catalogTask = gameDataCatalog.GetAsync(cancellationToken);
-            await Task.WhenAll(powerTask, catalogTask).ConfigureAwait(false);
+            await Task.WhenAll(statsTask, catalogTask).ConfigureAwait(false);
 
-            IReadOnlyDictionary<string, long> powerByUnit = await powerTask.ConfigureAwait(false);
+            IReadOnlyDictionary<string, CalculatedRosterUnitStats> calculatedByUnit = await statsTask.ConfigureAwait(false);
             GameDataCatalog catalog = await catalogTask.ConfigureAwait(false);
-            ImportedRosterUnit[] roster = [.. player.RosterUnit.Select(unit => MapRosterUnit(unit, powerByUnit, catalog))];
+            ImportedRosterUnit[] roster =
+            [
+                .. player.RosterUnit.Select(unit => MapRosterUnit(unit, calculatedByUnit, catalog))
+            ];
             long galacticPower = roster.Sum(unit => unit.GalacticPower);
+            PlayerDatacron[] datacrons = ParseDatacrons(rawPlayer.RootElement);
 
             return new ImportedPlayer(
                 allyCode,
@@ -75,24 +83,25 @@ internal sealed class SwgohComlinkClient(
                 player.GuildName,
                 player.Level,
                 galacticPower,
-                roster);
+                roster,
+                datacrons);
         }
     }
 
     private static ImportedRosterUnit MapRosterUnit(
         ComlinkRosterUnitDto unit,
-        IReadOnlyDictionary<string, long> powerByUnit,
+        IReadOnlyDictionary<string, CalculatedRosterUnitStats> calculatedByUnit,
         GameDataCatalog catalog)
     {
         string id = unit.Id!.Trim();
         string definitionId = NormalizeDefinitionId(unit.DefinitionId);
 
-        if (!powerByUnit.TryGetValue(id, out long galacticPower))
+        if (!calculatedByUnit.TryGetValue(id, out CalculatedRosterUnitStats? calculated))
         {
-            throw InvalidProviderData($"SWGOH Stats did not return Galactic Power for roster unit '{id}'.");
+            throw InvalidProviderData($"SWGOH Stats did not return calculated data for roster unit '{id}'.");
         }
 
-        if (galacticPower < 0)
+        if (calculated.GalacticPower < 0)
         {
             throw InvalidProviderData($"SWGOH Stats returned a negative Galactic Power for roster unit '{id}'.");
         }
@@ -123,6 +132,9 @@ internal sealed class SwgohComlinkClient(
             }
         }
 
+        RosterModSummary? modSummary = definition.IsShip
+            ? null
+            : BuildModSummary(unit.EquippedStatMod ?? []);
         return new ImportedRosterUnit(
             id,
             definitionId,
@@ -131,11 +143,237 @@ internal sealed class SwgohComlinkClient(
             unit.CurrentTier,
             NormalizeRelicTier(unit.Relic?.CurrentTier ?? 0),
             unit.EquippedStatMod?.Count ?? 0,
-            galacticPower,
+            calculated.GalacticPower,
             definition.IsShip,
             zetaCount,
-            omicronCount);
+            omicronCount,
+            calculated.Stats,
+            modSummary);
     }
+
+    private static RosterModSummary BuildModSummary(IReadOnlyCollection<JsonElement> mods)
+    {
+        int sixDotCount = 0;
+        int speedSetModCount = 0;
+        int speedPrimaryCount = 0;
+        decimal speedBonus = 0m;
+        bool hasSpeedValue = false;
+
+        foreach (JsonElement mod in mods)
+        {
+            string definitionId = ReadScalarString(mod, "definitionId") ?? string.Empty;
+            if (definitionId.Length >= 2 && definitionId[1] == '6')
+            {
+                sixDotCount++;
+            }
+
+            if (definitionId.Length >= 1 && definitionId[0] == '4')
+            {
+                speedSetModCount++;
+            }
+
+            if (TryGetStat(mod, "primaryStat", out int primaryId, out decimal primaryValue))
+            {
+                if (primaryId == SpeedStatId)
+                {
+                    speedPrimaryCount++;
+                    speedBonus += primaryValue;
+                    hasSpeedValue = true;
+                }
+            }
+
+            if (mod.TryGetProperty("secondaryStat", out JsonElement secondaryStats)
+                && secondaryStats.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement secondary in secondaryStats.EnumerateArray())
+                {
+                    if (TryReadStat(secondary, out int statId, out decimal value) && statId == SpeedStatId)
+                    {
+                        speedBonus += value;
+                        hasSpeedValue = true;
+                    }
+                }
+            }
+        }
+
+        return new RosterModSummary(
+            mods.Count,
+            sixDotCount,
+            speedSetModCount,
+            speedPrimaryCount,
+            hasSpeedValue ? Math.Round(speedBonus, 2) : null);
+    }
+
+    private static bool TryGetStat(JsonElement source, string propertyName, out int statId, out decimal value)
+    {
+        statId = default;
+        value = default;
+        return source.TryGetProperty(propertyName, out JsonElement stat)
+            && stat.ValueKind == JsonValueKind.Object
+            && TryReadStat(stat, out statId, out value);
+    }
+
+    private static bool TryReadStat(JsonElement stat, out int statId, out decimal value)
+    {
+        statId = ReadNullableInt(stat, "unitStatId") ?? ReadNullableInt(stat, "unitStat") ?? 0;
+        JsonElement rawValue;
+        if (!stat.TryGetProperty("unscaledDecimalValue", out rawValue)
+            && !stat.TryGetProperty("value", out rawValue))
+        {
+            value = default;
+            return false;
+        }
+
+        decimal? parsed = ReadDecimal(rawValue);
+        if (statId <= 0 || parsed is null)
+        {
+            value = default;
+            return false;
+        }
+
+        value = parsed.Value / RawStatScale;
+        return true;
+    }
+
+    private static PlayerDatacron[] ParseDatacrons(JsonElement player)
+    {
+        if (!player.TryGetProperty("datacron", out JsonElement datacrons)
+            || datacrons.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var result = new List<PlayerDatacron>();
+        foreach (JsonElement datacron in datacrons.EnumerateArray())
+        {
+            if (datacron.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            string? id = ReadScalarString(datacron, "id");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+
+            PlayerDatacronAffix[] affixes = ParseDatacronAffixes(datacron);
+            result.Add(new PlayerDatacron(
+                id.Trim(),
+                ReadScalarString(datacron, "setId") ?? string.Empty,
+                ReadScalarString(datacron, "templateId") ?? string.Empty,
+                ReadNullableInt(datacron, "tier") ?? affixes.Length,
+                ReadBoolean(datacron, "locked"),
+                affixes));
+        }
+
+        return [.. result];
+    }
+
+    private static PlayerDatacronAffix[] ParseDatacronAffixes(JsonElement datacron)
+    {
+        if (!datacron.TryGetProperty("affix", out JsonElement affixes)
+            || affixes.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. affixes.EnumerateArray()
+                .Where(affix => affix.ValueKind == JsonValueKind.Object)
+                .Select(affix => new PlayerDatacronAffix(
+                    ReadScalarString(affix, "abilityId"),
+                    ReadNullableInt(affix, "statType"),
+                    ReadNullableLong(affix, "statValue") ?? ReadNullableLong(affix, "value"),
+                    ReadNullableInt(affix, "requiredRelicTier"),
+                    ReadStringArray(affix, "tag")))
+        ];
+    }
+
+    private static IReadOnlyCollection<string> ReadStringArray(JsonElement source, string propertyName)
+    {
+        if (!source.TryGetProperty(propertyName, out JsonElement values)
+            || values.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. values.EnumerateArray()
+                .Where(value => value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
+                .Select(value => value.GetString()!.Trim())
+        ];
+    }
+
+    private static string? ReadScalarString(JsonElement source, string propertyName)
+    {
+        if (!source.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => string.IsNullOrWhiteSpace(value.GetString()) ? null : value.GetString()!.Trim(),
+            JsonValueKind.Number => value.GetRawText(),
+            _ => null
+        };
+    }
+
+    private static int? ReadNullableInt(JsonElement source, string propertyName)
+    {
+        if (!source.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number))
+        {
+            return number;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+                ? parsed
+                : null;
+    }
+
+    private static long? ReadNullableLong(JsonElement source, string propertyName)
+    {
+        if (!source.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long number))
+        {
+            return number;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            && long.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
+                ? parsed
+                : null;
+    }
+
+    private static decimal? ReadDecimal(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out decimal number))
+        {
+            return number;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            && decimal.TryParse(value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out decimal parsed)
+                ? parsed
+                : null;
+    }
+
+    private static bool ReadBoolean(JsonElement source, string propertyName) =>
+        source.TryGetProperty(propertyName, out JsonElement value)
+        && value.ValueKind == JsonValueKind.True;
 
     private static void ValidatePlayer(ComlinkPlayerDto player, long requestedAllyCode)
     {
@@ -256,7 +494,7 @@ internal sealed class SwgohComlinkClient(
         public ComlinkRelicDto? Relic { get; init; }
 
         [JsonPropertyName("equippedStatMod")]
-        public List<object>? EquippedStatMod { get; init; }
+        public List<JsonElement>? EquippedStatMod { get; init; }
 
         [JsonPropertyName("skill")]
         public List<ComlinkSkillDto> Skill { get; init; } = [];

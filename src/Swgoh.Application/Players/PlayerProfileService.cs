@@ -64,7 +64,9 @@ internal sealed class PlayerProfileService(
                 unit.GalacticPower,
                 unit.IsShip,
                 unit.ZetaCount,
-                unit.OmicronCount))
+                unit.OmicronCount,
+                unit.Stats,
+                unit.Mods))
         ];
 
         PlayerProfile player = PlayerProfile.Import(
@@ -76,7 +78,8 @@ internal sealed class PlayerProfileService(
             imported.Level,
             imported.GalacticPower,
             clock.UtcNow,
-            roster);
+            roster,
+            imported.Datacrons ?? []);
 
         await repository.UpsertAsync(player, cancellationToken).ConfigureAwait(false);
         await snapshotRepository.UpsertAsync(PlayerRosterMetrics.CreateSnapshot(player), cancellationToken).ConfigureAwait(false);
