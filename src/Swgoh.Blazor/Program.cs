@@ -5,6 +5,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddHttpClient<PlayerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
+builder.Services.AddHttpClient<GacApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 
 WebApplication app = builder.Build();
 if (!app.Environment.IsDevelopment())
