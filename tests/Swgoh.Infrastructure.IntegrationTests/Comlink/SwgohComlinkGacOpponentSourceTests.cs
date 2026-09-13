@@ -13,7 +13,7 @@ namespace Swgoh.Infrastructure.IntegrationTests.Comlink;
 public sealed class SwgohComlinkGacOpponentSourceTests
 {
     [Fact]
-    public async Task GetAsync_WithSparseBadRequestBrackets_UsesSeasonInstanceAndFindsOpponent()
+    public async Task GetAsync_WithNestedLeaderboardAndRateLimit_RetriesAndFindsOpponent()
     {
         const string eventId = "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_83";
         const string currentEventInstance = eventId + ":O1788998400000";
@@ -41,8 +41,9 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         Assert.Equal(currentEventInstance, opponent.EventInstanceId);
         Assert.EndsWith(":KYBER:9", opponent.BracketId, StringComparison.Ordinal);
         Assert.Equal(2, handler.PlayerArenaRequests);
-        Assert.InRange(handler.BracketRequests, 10, 40);
+        Assert.InRange(handler.BracketRequests, 10, 50);
         Assert.True(handler.BadRequestBracketResponses > 0);
+        Assert.Equal(1, handler.RateLimitedResponses);
         Assert.DoesNotContain(handler.GroupIds, groupId => groupId.EndsWith(":KYBER:0", StringComparison.Ordinal) && handler.GroupIds.Count == 1);
         Assert.All(handler.GroupIds, groupId => Assert.StartsWith(currentEventInstance, groupId, StringComparison.Ordinal));
     }
@@ -55,12 +56,15 @@ public sealed class SwgohComlinkGacOpponentSourceTests
     private sealed class GacHandler(string eventId, string currentEventInstance) : HttpMessageHandler
     {
         private readonly List<string> groupIds = [];
+        private bool rateLimitReturned;
 
         public int BracketRequests { get; private set; }
 
         public int PlayerArenaRequests { get; private set; }
 
         public int BadRequestBracketResponses { get; private set; }
+
+        public int RateLimitedResponses { get; private set; }
 
         public IReadOnlyCollection<string> GroupIds => groupIds;
 
@@ -134,6 +138,14 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                 ?? string.Empty;
             groupIds.Add(groupId);
 
+            if (string.Equals(groupId, currentEventInstance + ":KYBER:8", StringComparison.Ordinal) &&
+                !rateLimitReturned)
+            {
+                rateLimitReturned = true;
+                RateLimitedResponses++;
+                return Json("""{"code":6,"message":"Rate exceeded!"}""", HttpStatusCode.BadRequest);
+            }
+
             if (string.Equals(groupId, currentEventInstance + ":KYBER:9", StringComparison.Ordinal))
             {
                 return Json(Bracket([
@@ -149,17 +161,27 @@ public sealed class SwgohComlinkGacOpponentSourceTests
             }
 
             BadRequestBracketResponses++;
-            return new HttpResponseMessage(HttpStatusCode.BadRequest);
+            return Json("""{"code":5,"message":"Leaderboard not found"}""", HttpStatusCode.BadRequest);
         }
 
         private static string Bracket(IReadOnlyCollection<(string Id, string Name)> players)
         {
             string entries = string.Join(",", players.Select(player =>
                 $$"""{"id":"{{player.Id}}","name":"{{player.Name}}","level":85,"power":10000000}"""));
-            return $$"""{"player":[{{entries}}]}""";
+            return $$"""
+                {
+                  "player": [],
+                  "leaderboard": [{
+                    "player": [{{entries}}],
+                    "id": "",
+                    "playerStatus": { "rank": 1, "rankDelta": 0, "score": 0, "scoreDelta": 0, "tier": 0 }
+                  }],
+                  "playerStatus": null
+                }
+                """;
         }
 
-        private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK)
+        private static HttpResponseMessage Json(string json, HttpStatusCode statusCode = HttpStatusCode.OK) => new(statusCode)
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
