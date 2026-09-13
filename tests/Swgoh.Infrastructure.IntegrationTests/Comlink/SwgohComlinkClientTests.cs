@@ -4,6 +4,7 @@ using System.Text.Json;
 
 using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
+using Swgoh.Domain.Players;
 using Swgoh.Infrastructure.Comlink;
 
 using Xunit;
@@ -71,6 +72,84 @@ public sealed class SwgohComlinkClientTests
     }
 
     [Fact]
+    public async Task GetPlayerAsync_WithTacticalData_MapsStatsModsAndDatacrons()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        const string playerJson = """
+            {
+              "allyCode":"476825771",
+              "playerId":"player-id",
+              "name":"Aberronko",
+              "level":85,
+              "rosterUnit":[
+                {
+                  "id":"unit-1",
+                  "definitionId":"CHARACTER:SEVEN_STAR",
+                  "currentLevel":85,
+                  "currentRarity":7,
+                  "currentTier":13,
+                  "relic":{"currentTier":11},
+                  "equippedStatMod":[
+                    {
+                      "definitionId":"461",
+                      "primaryStat":{"unitStatId":5,"unscaledDecimalValue":"3200000000"},
+                      "secondaryStat":[]
+                    },
+                    {
+                      "definitionId":"521",
+                      "primaryStat":{"unitStatId":1,"unscaledDecimalValue":"500000000000"},
+                      "secondaryStat":[{"unitStatId":5,"unscaledDecimalValue":"2500000000"}]
+                    }
+                  ],
+                  "skill":[]
+                }
+              ],
+              "datacron":[
+                {
+                  "id":"dc-1",
+                  "setId":"set-14",
+                  "templateId":"template-1",
+                  "tier":9,
+                  "locked":true,
+                  "affix":[
+                    {"abilityId":"ability-1","requiredRelicTier":7,"tag":["JEDI"]},
+                    {"statType":5,"statValue":"1200000000"}
+                  ]
+                }
+              ]
+            }
+            """;
+
+        using var httpClient = CreateHttpClient(playerJson);
+        var stats = new FakeStatsClient(
+            new Dictionary<string, long> { ["unit-1"] = 50_000 },
+            new Dictionary<string, RosterUnitStats>
+            {
+                ["unit-1"] = new(Health: 120_000m, Protection: 95_000m, Speed: 333m, PhysicalDamage: 11_000m)
+            });
+        var client = new SwgohComlinkClient(httpClient, stats, CatalogWithCharacter("CHARACTER"));
+
+        ImportedPlayer result = await client.GetPlayerAsync(476_825_771, cancellationToken);
+
+        ImportedRosterUnit unit = Assert.Single(result.Roster);
+        Assert.Equal(333m, unit.Stats?.Speed);
+        Assert.NotNull(unit.Mods);
+        Assert.Equal(2, unit.Mods.EquippedCount);
+        Assert.Equal(1, unit.Mods.SixDotCount);
+        Assert.Equal(1, unit.Mods.SpeedSetModCount);
+        Assert.Equal(1, unit.Mods.SpeedPrimaryCount);
+        Assert.Equal(57m, unit.Mods.SpeedBonus);
+
+        PlayerDatacron datacron = Assert.Single(result.Datacrons!);
+        Assert.Equal("dc-1", datacron.Id);
+        Assert.Equal(9, datacron.Tier);
+        Assert.True(datacron.Locked);
+        Assert.True(datacron.HasAbilityAffix);
+        Assert.Equal(7, datacron.HighestRequiredRelicTier);
+        Assert.Equal(2, datacron.Affixes.Count);
+    }
+
+    [Fact]
     public async Task GetPlayerAsync_WhenComlinkReturnsDifferentAllyCode_RejectsPayload()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -126,7 +205,7 @@ public sealed class SwgohComlinkClientTests
         HttpRequestException exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
             client.GetPlayerAsync(476_825_771, cancellationToken));
 
-        Assert.Contains("did not return Galactic Power", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("did not return calculated data", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -196,12 +275,22 @@ public sealed class SwgohComlinkClientTests
             new Dictionary<string, GameSkillDefinition>(),
             []));
 
-    private sealed class FakeStatsClient(IReadOnlyDictionary<string, long> powerByUnit) : ISwgohStatsClient
+    private sealed class FakeStatsClient(
+        IReadOnlyDictionary<string, long> powerByUnit,
+        IReadOnlyDictionary<string, RosterUnitStats>? statsByUnit = null) : ISwgohStatsClient
     {
-        public Task<IReadOnlyDictionary<string, long>> CalculateGalacticPowerAsync(
+        public Task<IReadOnlyDictionary<string, CalculatedRosterUnitStats>> CalculateRosterStatsAsync(
             IReadOnlyCollection<JsonElement> roster,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(powerByUnit);
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyDictionary<string, CalculatedRosterUnitStats> result = powerByUnit.ToDictionary(
+                pair => pair.Key,
+                pair => new CalculatedRosterUnitStats(
+                    pair.Value,
+                    statsByUnit?.GetValueOrDefault(pair.Key)),
+                StringComparer.Ordinal);
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class FakeGameDataCatalog(GameDataCatalog catalog) : ISwgohGameDataCatalog
