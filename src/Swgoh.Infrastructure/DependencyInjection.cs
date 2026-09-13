@@ -87,6 +87,38 @@ public static class DependencyInjection
                         Name = GacHistoryMongoRepository.FormatStartedIndexName
                     }));
 
+        IndexKeysDefinition<GacTeamPresetDocument> gacTeamPresetIndexKeys = Builders<GacTeamPresetDocument>.IndexKeys
+            .Ascending(preset => preset.AllyCode)
+            .Ascending(preset => preset.Format)
+            .Ascending(preset => preset.Use)
+            .Ascending(preset => preset.Name);
+        services.AddMongoRepository<GacTeamPresetDocument, string>(
+            GacTeamPresetMongoRepository.CollectionName,
+            preset => preset.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    gacTeamPresetIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacTeamPresetMongoRepository.AllyCodeFormatIndexName
+                    }));
+
+        IndexKeysDefinition<GacRoundPlanDocument> gacRoundPlanIndexKeys = Builders<GacRoundPlanDocument>.IndexKeys
+            .Ascending(plan => plan.PlayerAllyCode)
+            .Descending(plan => plan.UpdatedAtUtc);
+        services.AddMongoRepository<GacRoundPlanDocument, string>(
+            GacRoundPlanMongoRepository.CollectionName,
+            plan => plan.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    gacRoundPlanIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacRoundPlanMongoRepository.PlayerUpdatedIndexName
+                    }));
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -139,6 +171,8 @@ public static class DependencyInjection
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
+        services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
+        services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
         services.AddSingleton<SwgohComlinkGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource, SwgohComlinkCurrentRoundOpponentSource>();
         return services;

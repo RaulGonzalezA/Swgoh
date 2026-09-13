@@ -1,0 +1,136 @@
+using Swgoh.Domain.Gac;
+
+namespace Swgoh.Application.Gac;
+
+public sealed record SaveGacTeamPreset(
+    string Name,
+    GacFormat Format,
+    GacPlannerTeamUse Use,
+    string LeaderDefinitionId,
+    IReadOnlyCollection<string> MemberDefinitionIds,
+    bool IsFleet);
+
+public sealed record SaveGacOwnDefenseAssignment(
+    Guid? Id,
+    string Zone,
+    Guid TeamPresetId);
+
+public sealed record SaveGacVisibleDefense(
+    Guid? Id,
+    string Zone,
+    string? Label,
+    string LeaderDefinitionId,
+    IReadOnlyCollection<string> MemberDefinitionIds,
+    bool IsFleet);
+
+public sealed record SaveGacAttackAssignment(
+    Guid? Id,
+    Guid DefenseId,
+    Guid TeamPresetId,
+    int Attempt,
+    GacAttackPlanStatus Status,
+    string? Notes);
+
+public sealed record SaveCurrentGacRoundPlan(
+    IReadOnlyCollection<SaveGacOwnDefenseAssignment> OwnDefenses,
+    IReadOnlyCollection<SaveGacVisibleDefense> VisibleDefenses,
+    IReadOnlyCollection<SaveGacAttackAssignment> Attacks);
+
+public sealed record GacPlannerUnitDetails(
+    string DefinitionId,
+    string Name,
+    string? ThumbnailName,
+    bool IsShip,
+    long? GalacticPower,
+    int? RelicTier,
+    int? ZetaCount,
+    int? OmicronCount);
+
+public sealed record GacPlannerSquadDetails(
+    GacPlannerUnitDetails Leader,
+    IReadOnlyCollection<GacPlannerUnitDetails> Members,
+    bool IsFleet)
+{
+    public IReadOnlyCollection<GacPlannerUnitDetails> AllUnits => [Leader, .. Members];
+}
+
+public sealed record GacTeamPresetDetails(
+    Guid Id,
+    long AllyCode,
+    string Name,
+    GacFormat Format,
+    GacPlannerTeamUse Use,
+    GacPlannerSquadDetails Squad,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record GacOwnDefenseAssignmentDetails(
+    Guid Id,
+    string Zone,
+    GacTeamPresetDetails Team);
+
+public sealed record GacVisibleDefenseDetails(
+    Guid Id,
+    string Zone,
+    string? Label,
+    GacPlannerSquadDetails Squad,
+    bool Defeated);
+
+public sealed record GacAttackAssignmentDetails(
+    Guid Id,
+    Guid DefenseId,
+    GacTeamPresetDetails Team,
+    int Attempt,
+    GacAttackPlanStatus Status,
+    string? Notes);
+
+public sealed record GacPlannerConflict(
+    string Code,
+    string Severity,
+    string Message,
+    IReadOnlyCollection<Guid> RelatedAssignmentIds,
+    IReadOnlyCollection<string> UnitDefinitionIds);
+
+public sealed record GacPlannerCounterHint(
+    Guid DefenseId,
+    string ThreatName,
+    string Confidence,
+    string Source,
+    string Rationale,
+    bool RequiresDatacronVerification,
+    Guid? MatchingTeamPresetId,
+    IReadOnlyCollection<GacPlannerUnitDetails> RecommendedTeam,
+    int? Uses,
+    decimal? WinRate,
+    decimal? OneShotRate,
+    decimal? AverageBanners,
+    int? PlayersObserved);
+
+public sealed record GacRoundPlanDetails(
+    string Id,
+    long PlayerAllyCode,
+    long OpponentAllyCode,
+    string OpponentName,
+    string EventId,
+    string EventInstanceId,
+    int RoundNumber,
+    GacFormat Format,
+    GacLeague League,
+    IReadOnlyCollection<GacOwnDefenseAssignmentDetails> OwnDefenses,
+    IReadOnlyCollection<GacVisibleDefenseDetails> VisibleDefenses,
+    IReadOnlyCollection<GacAttackAssignmentDetails> Attacks,
+    IReadOnlyCollection<GacPlannerConflict> Conflicts,
+    IReadOnlyCollection<GacPlannerCounterHint> CounterHints,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record GacPlannerState(
+    CurrentGacOpponent Opponent,
+    IReadOnlyCollection<GacTeamPresetDetails> Presets,
+    GacRoundPlanDetails Plan);
+
+public sealed record GacPlannerLookup(
+    CurrentGacOpponentStatus Status,
+    string? Message,
+    GacPlannerState? State)
+{
+    public bool IsAvailable => Status == CurrentGacOpponentStatus.Found && State is not null;
+}

@@ -95,6 +95,7 @@ app.MapDefaultEndpoints();
 app.MapPlayerEndpoints();
 app.MapSquadEndpoints();
 app.MapGacEndpoints();
+app.MapGacPlannerEndpoints();
 app.MapGacDataEndpoints();
 app.MapOpenApi().WithDocumentPerVersion();
 app.MapScalarApiReference("/scalar", options =>
