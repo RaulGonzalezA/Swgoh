@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -12,9 +13,12 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
     internal const string HttpClientName = "SwgohComlinkGac";
 
     private const int BracketSize = 8;
-    private const int BracketBatchSize = 32;
+    private const int BracketBatchSize = 4;
     private const int RankSearchRadius = 512;
     private const int MaxBracketIndex = 8191;
+    private const int MaxRateLimitRetries = 5;
+    private const int RateLimitBaseDelayMilliseconds = 250;
+    private static readonly TimeSpan BracketBatchDelay = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan PositiveCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan NegativeCacheDuration = TimeSpan.FromMinutes(1);
 
@@ -50,10 +54,10 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         GacFormat? formatOverride,
         CancellationToken cancellationToken)
     {
-        using JsonDocument arena = await GetPlayerArenaByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
-        string? playerId = ReadString(arena.RootElement, "playerId") ?? ReadString(arena.RootElement, "id");
-        SeasonContext? season = ReadCurrentSeason(arena.RootElement);
-        GacLeague? league = season?.League ?? ReadLeague(arena.RootElement);
+        using JsonDocument player = await GetPlayerAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        string? playerId = ReadString(player.RootElement, "playerId") ?? ReadString(player.RootElement, "id");
+        SeasonContext? season = ReadCurrentSeason(player.RootElement);
+        GacLeague? league = season?.League ?? ReadLeague(player.RootElement);
 
         using JsonDocument events = await PostAsync(
             "getEvents",
@@ -62,9 +66,10 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         EventContext? activeEvent = ReadActiveGacEvent(events.RootElement, season?.EventInstanceId);
 
         string? seasonEventInstanceId = NullIfWhiteSpace(season?.EventInstanceId);
-        string? eventInstanceId = seasonEventInstanceId ?? activeEvent?.EventInstanceId;
-        string? eventId = NullIfWhiteSpace(season?.SeasonId) ?? activeEvent?.EventId;
-        if (string.IsNullOrWhiteSpace(eventInstanceId) || string.IsNullOrWhiteSpace(eventId))
+        string? fallbackEventInstanceId = NullIfWhiteSpace(activeEvent?.EventInstanceId);
+        string? eventId = NullIfWhiteSpace(activeEvent?.EventId) ?? NullIfWhiteSpace(season?.SeasonId);
+        if ((string.IsNullOrWhiteSpace(seasonEventInstanceId) && string.IsNullOrWhiteSpace(fallbackEventInstanceId)) ||
+            string.IsNullOrWhiteSpace(eventId))
         {
             return CurrentGacOpponentLookup.Unavailable(
                 CurrentGacOpponentStatus.NoActiveEvent,
@@ -95,7 +100,7 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
 
         string[] eventCandidates =
         [
-            .. new[] { seasonEventInstanceId, activeEvent?.EventInstanceId }
+            .. new[] { seasonEventInstanceId, fallbackEventInstanceId }
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -145,18 +150,18 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             eventId,
             match.Value.EventInstanceId,
             match.Value.BracketId,
-            activeEvent is null ? null : ReadRoundNumber(activeEvent.Element),
+            activeEvent is null ? null : ReadRoundNumber(activeEvent.EventElement),
             source,
             resolutionMethod);
         return CurrentGacOpponentLookup.Found(currentOpponent);
     }
 
-    private Task<JsonDocument> GetPlayerArenaByAllyCodeAsync(long allyCode, CancellationToken cancellationToken) =>
+    private Task<JsonDocument> GetPlayerAsync(long allyCode, CancellationToken cancellationToken) =>
         PostAsync(
-            "playerArena",
+            "player",
             new
             {
-                payload = new { allyCode = allyCode.ToString(), playerDetailsOnly = true },
+                payload = new { allyCode = allyCode.ToString() },
                 enums = false
             },
             cancellationToken);
@@ -219,11 +224,8 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
                 if (rank is > 0)
                 {
                     int estimatedBracket = Math.Clamp((rank.Value - 1) / BracketSize, 0, MaxBracketIndex);
-                    int start = Math.Max(0, estimatedBracket - RankSearchRadius);
-                    int end = Math.Min(MaxBracketIndex, estimatedBracket + RankSearchRadius);
-                    BracketMatch? nearRank = await ScanRangeAsync(
-                        start,
-                        end,
+                    BracketMatch? nearRank = await ScanIndexesAsync(
+                        BuildIndexesAround(estimatedBracket, RankSearchRadius),
                         checkedIndexes,
                         allyCode,
                         playerId,
@@ -236,9 +238,8 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
                     }
                 }
 
-                BracketMatch? fullScan = await ScanRangeAsync(
-                    0,
-                    MaxBracketIndex,
+                BracketMatch? fullScan = await ScanIndexesAsync(
+                    Enumerable.Range(0, MaxBracketIndex + 1),
                     checkedIndexes,
                     allyCode,
                     playerId,
@@ -255,9 +256,27 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         return null;
     }
 
-    private async Task<BracketMatch?> ScanRangeAsync(
-        int start,
-        int end,
+    private static IEnumerable<int> BuildIndexesAround(int center, int radius)
+    {
+        yield return center;
+        for (int distance = 1; distance <= radius; distance++)
+        {
+            int lower = center - distance;
+            if (lower >= 0)
+            {
+                yield return lower;
+            }
+
+            int upper = center + distance;
+            if (upper <= MaxBracketIndex)
+            {
+                yield return upper;
+            }
+        }
+    }
+
+    private async Task<BracketMatch?> ScanIndexesAsync(
+        IEnumerable<int> indexes,
         ISet<int> checkedIndexes,
         long allyCode,
         string playerId,
@@ -266,7 +285,7 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         CancellationToken cancellationToken)
     {
         var pending = new List<int>(BracketBatchSize);
-        for (int index = start; index <= end; index++)
+        foreach (int index in indexes)
         {
             if (!checkedIndexes.Add(index))
             {
@@ -274,7 +293,7 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             }
 
             pending.Add(index);
-            if (pending.Count < BracketBatchSize && index < end)
+            if (pending.Count < BracketBatchSize)
             {
                 continue;
             }
@@ -292,9 +311,18 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             }
 
             pending.Clear();
+            await Task.Delay(BracketBatchDelay, cancellationToken).ConfigureAwait(false);
         }
 
-        return null;
+        return pending.Count == 0
+            ? null
+            : await ScanBatchAsync(
+                pending,
+                allyCode,
+                playerId,
+                leagueToken,
+                eventInstanceId,
+                cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<BracketMatch?> ScanBatchAsync(
@@ -347,37 +375,86 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             enums = false
         };
 
-        HttpClient client = httpClientFactory.CreateClient(HttpClientName);
-        using HttpResponseMessage httpResponse = await client.PostAsJsonAsync(
-            "getLeaderboard",
-            request,
-            cancellationToken).ConfigureAwait(false);
-        if (httpResponse.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        for (int attempt = 0; attempt <= MaxRateLimitRetries; attempt++)
         {
-            return null;
+            HttpClient client = httpClientFactory.CreateClient(HttpClientName);
+            using HttpResponseMessage httpResponse = await client.PostAsJsonAsync(
+                "getLeaderboard",
+                request,
+                cancellationToken).ConfigureAwait(false);
+            string body = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            if (httpResponse.StatusCode == HttpStatusCode.BadRequest)
+            {
+                if (!IsRateLimited(body))
+                {
+                    return null;
+                }
+
+                if (attempt == MaxRateLimitRetries)
+                {
+                    throw new HttpRequestException(
+                        $"Comlink rate limit persisted while reading GAC bracket '{bracketId}'.",
+                        inner: null,
+                        httpResponse.StatusCode);
+                }
+
+                int exponentialDelay = RateLimitBaseDelayMilliseconds * (1 << attempt);
+                int jitter = Math.Abs(bracketIndex % 100);
+                await Task.Delay(TimeSpan.FromMilliseconds(exponentialDelay + jitter), cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            httpResponse.EnsureSuccessStatusCode();
+            using JsonDocument response = JsonDocument.Parse(body);
+            Participant[] players = ReadLeaderboardParticipants(response.RootElement);
+            return players.Length == 0 ? null : new BracketData(bracketId, players);
         }
 
-        httpResponse.EnsureSuccessStatusCode();
-        await using Stream stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await JsonDocument.ParseAsync(
-            stream,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return null;
+    }
 
-        if (!TryGetProperty(response.RootElement, "player", out JsonElement playersElement) ||
+    private static bool IsRateLimited(string body) =>
+        body.Contains("Rate exceeded", StringComparison.OrdinalIgnoreCase);
+
+    private static Participant[] ReadLeaderboardParticipants(JsonElement root)
+    {
+        Participant[] rootPlayers = ReadParticipants(root);
+        if (rootPlayers.Length > 0)
+        {
+            return rootPlayers;
+        }
+
+        if (!TryGetProperty(root, "leaderboard", out JsonElement leaderboard) ||
+            leaderboard.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. leaderboard.EnumerateArray()
+                .SelectMany(ReadParticipants)
+        ];
+    }
+
+    private static Participant[] ReadParticipants(JsonElement container)
+    {
+        if (!TryGetProperty(container, "player", out JsonElement playersElement) ||
             playersElement.ValueKind != JsonValueKind.Array ||
             playersElement.GetArrayLength() == 0)
         {
-            return null;
+            return [];
         }
 
-        Participant[] players =
+        return
         [
             .. playersElement.EnumerateArray()
                 .Select(ReadParticipant)
                 .Where(value => value is not null)
                 .Select(value => value!)
         ];
-        return players.Length == 0 ? null : new BracketData(bracketId, players);
     }
 
     private static Participant? ResolveOpponent(
@@ -493,24 +570,22 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             {
                 return exact;
             }
-
-            string? preferredEventId = EventIdFromInstance(preferredEventInstanceId);
-            EventContext? sameSeason = gacEvents.FirstOrDefault(value =>
-                string.Equals(value.EventId, preferredEventId, StringComparison.OrdinalIgnoreCase));
-            if (sameSeason is not null)
-            {
-                return sameSeason;
-            }
         }
 
-        return gacEvents[0];
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        EventContext? active = gacEvents.FirstOrDefault(value =>
+            value.StartTimeMilliseconds is long start &&
+            value.EndTimeMilliseconds is long end &&
+            start <= now &&
+            now <= end);
+        return active ?? gacEvents[0];
     }
 
-    private static IEnumerable<EventContext> ReadEvents(JsonElement element)
+    private static IEnumerable<EventContext> ReadEvents(JsonElement eventElement)
     {
-        string? eventId = ReadString(element, "id");
+        string? eventId = ReadString(eventElement, "id");
         if (string.IsNullOrWhiteSpace(eventId) ||
-            !TryGetProperty(element, "instance", out JsonElement instances) ||
+            !TryGetProperty(eventElement, "instance", out JsonElement instances) ||
             instances.ValueKind != JsonValueKind.Array)
         {
             yield break;
@@ -519,10 +594,17 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         foreach (JsonElement instance in instances.EnumerateArray())
         {
             string? instanceId = ReadString(instance, "id");
-            if (!string.IsNullOrWhiteSpace(instanceId))
+            if (string.IsNullOrWhiteSpace(instanceId))
             {
-                yield return new EventContext(eventId, $"{eventId}:{instanceId}", element.Clone());
+                continue;
             }
+
+            yield return new EventContext(
+                eventId,
+                $"{eventId}:{instanceId}",
+                eventElement.Clone(),
+                ReadLong(instance, "startTime"),
+                ReadLong(instance, "endTime"));
         }
     }
 
@@ -543,8 +625,11 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
                 ReadString(status, "seasonId"),
                 ReadString(status, "eventInstanceId"),
                 ReadLeague(status),
-                ReadInt(status, "rank")))
-            .OrderByDescending(status => ParseSeasonNumber(status.SeasonId ?? status.EventInstanceId ?? string.Empty) ?? -1)
+                ReadInt(status, "rank"),
+                ReadLong(status, "endTime")))
+            .OrderByDescending(status =>
+                ParseSeasonNumber(status.SeasonId) ?? ParseSeasonNumber(status.EventInstanceId) ?? -1)
+            .ThenByDescending(status => status.EndTimeMilliseconds ?? -1)
             .ThenByDescending(status => status.EventInstanceId, StringComparer.Ordinal)
             .FirstOrDefault();
     }
@@ -568,7 +653,7 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
 
         if (activeEvent is not null)
         {
-            foreach ((_, JsonElement value) in EnumerateProperties(activeEvent.Element))
+            foreach ((_, JsonElement value) in EnumerateProperties(activeEvent.EventElement))
             {
                 GacFormat? eventFormat = ParseFormat(JsonString(value));
                 if (eventFormat.HasValue)
@@ -587,23 +672,46 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         return (null, "Unavailable");
     }
 
-    private static int? ParseSeasonNumber(string eventId)
+    private static int? ParseSeasonNumber(string? value)
     {
-        const string marker = "SEASON_";
-        int markerIndex = eventId.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (markerIndex < 0)
+        if (string.IsNullOrWhiteSpace(value))
         {
             return null;
         }
 
-        ReadOnlySpan<char> remaining = eventId.AsSpan(markerIndex + marker.Length);
+        const string marker = "SEASON_";
+        int markerIndex = value.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex >= 0)
+        {
+            int? marked = ParseLeadingNumber(value.AsSpan(markerIndex + marker.Length));
+            if (marked.HasValue)
+            {
+                return marked;
+            }
+        }
+
+        string[] segments = value.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        for (int index = segments.Length - 1; index >= 0; index--)
+        {
+            int? parsed = ParseLeadingNumber(segments[index].AsSpan());
+            if (parsed.HasValue)
+            {
+                return parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? ParseLeadingNumber(ReadOnlySpan<char> value)
+    {
         int length = 0;
-        while (length < remaining.Length && char.IsDigit(remaining[length]))
+        while (length < value.Length && char.IsDigit(value[length]))
         {
             length++;
         }
 
-        return length > 0 && int.TryParse(remaining[..length], out int season) ? season : null;
+        return length > 0 && int.TryParse(value[..length], out int number) ? number : null;
     }
 
     private static GacFormat? ParseFormat(string? value)
@@ -764,6 +872,9 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
     private static int? ReadInt(JsonElement element, string name) =>
         TryGetProperty(element, name, out JsonElement value) && TryReadInt(value, out int result) ? result : null;
 
+    private static long? ReadLong(JsonElement element, string name) =>
+        TryGetProperty(element, name, out JsonElement value) && TryReadLong(value, out long result) ? result : null;
+
     private static bool TryReadInt(JsonElement value, out int result)
     {
         if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out result))
@@ -792,12 +903,6 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
 
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
-    private static string? EventIdFromInstance(string eventInstanceId)
-    {
-        int separator = eventInstanceId.IndexOf(':');
-        return separator > 0 ? eventInstanceId[..separator] : null;
-    }
-
     private static bool IsValidAllyCode(long allyCode) => allyCode is >= 100_000_000 and <= 999_999_999;
 
     private sealed record CacheEntry(CurrentGacOpponentLookup Lookup, DateTimeOffset ExpiresAtUtc);
@@ -806,12 +911,15 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         string? SeasonId,
         string? EventInstanceId,
         GacLeague? League,
-        int? Rank);
+        int? Rank,
+        long? EndTimeMilliseconds);
 
     private sealed record EventContext(
         string EventId,
         string EventInstanceId,
-        JsonElement Element);
+        JsonElement EventElement,
+        long? StartTimeMilliseconds,
+        long? EndTimeMilliseconds);
 
     private sealed record Participant(
         long? AllyCode,
