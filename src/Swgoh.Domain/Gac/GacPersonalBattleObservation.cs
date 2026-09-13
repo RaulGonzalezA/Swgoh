@@ -123,24 +123,25 @@ public sealed record GacPersonalBattleObservation(
     private static string[] NormalizeSquad(IEnumerable<string> definitionIds, string parameterName)
     {
         ArgumentNullException.ThrowIfNull(definitionIds);
-        string[] values =
+        string[] source =
         [
             .. definitionIds.Select(value => string.IsNullOrWhiteSpace(value)
                 ? throw new ArgumentException("Unit definition IDs cannot be empty.", parameterName)
                 : value.Trim().ToUpperInvariant())
-                .OrderBy(value => value, StringComparer.Ordinal)
         ];
-        if (values.Length == 0)
+        if (source.Length == 0)
         {
             throw new ArgumentException("A squad must contain at least one unit.", parameterName);
         }
 
-        if (values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != values.Length)
+        if (source.Distinct(StringComparer.OrdinalIgnoreCase).Count() != source.Length)
         {
             throw new ArgumentException("A squad cannot contain duplicate units.", parameterName);
         }
 
-        return values;
+        // The first unit is the leader/capital ship. Members are sorted so the matchup key
+        // stays stable regardless of UI selection order without losing leader identity.
+        return [source[0], .. source.Skip(1).OrderBy(value => value, StringComparer.Ordinal)];
     }
 
     private static void ValidateSquadSize(GacFormat format, bool isFleet, IReadOnlyCollection<string> units, string parameterName)
