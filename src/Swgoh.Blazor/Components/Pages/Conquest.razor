@@ -1,0 +1,291 @@
+@page "/conquest/{AllyCode:long}"
+@rendermode InteractiveServer
+
+<PageTitle>Conquista · SWGOH Planner</PageTitle>
+
+<section class="conquest-hero">
+    <div>
+        <span class="eyebrow">Conquest Assistant</span>
+        <h1>Convierte las hazañas pendientes en un plan de batallas.</h1>
+        <p>Guarda el progreso de la Conquista y encuentra equipos que avancen varias hazañas a la vez con tu roster real.</p>
+    </div>
+    <nav class="conquest-nav" aria-label="Navegación del jugador">
+        <a href="@($"/player/{AllyCode}")">Roster</a>
+        <a href="@($"/gac/{AllyCode}")">GAC</a>
+        <a class="active" href="@($"/conquest/{AllyCode}")">Conquista</a>
+    </nav>
+</section>
+
+@if (Loading)
+{
+    <div class="status-card">
+        <span class="spinner" aria-hidden="true"></span>
+        <div><strong>Cargando Conquista</strong><p>Recuperando progreso y roster…</p></div>
+    </div>
+}
+else if (Error is not null)
+{
+    <div class="status-card status-error" role="alert">
+        <span class="status-icon">!</span>
+        <div><strong>No se ha podido cargar Conquista</strong><p>@Error</p></div>
+    </div>
+}
+else
+{
+    <section class="conquest-summary">
+        <div class="metric-card metric-primary">
+            <span class="metric-label">Hazañas</span>
+            <strong>@CompletedFeatCount / @Feats.Count</strong>
+            <small>completadas</small>
+        </div>
+        <div class="metric-card">
+            <span class="metric-label">Puntos cerrados</span>
+            <strong>@EarnedFeatPoints</strong>
+            <small>de hazañas completadas</small>
+        </div>
+        <div class="metric-card">
+            <span class="metric-label">Puntos pendientes</span>
+            <strong>@AvailableFeatPoints</strong>
+            <small>todavía disponibles</small>
+        </div>
+        <div class="metric-card">
+            <span class="metric-label">Roster analizado</span>
+            <strong>@CharacterCount</strong>
+            <small>personajes</small>
+        </div>
+    </section>
+
+    <section class="conquest-panel">
+        <div class="conquest-panel-heading">
+            <div>
+                <span class="section-kicker">Evento</span>
+                <h2>Conquista actual</h2>
+            </div>
+            <button class="primary-button" @onclick="SavePlanAsync" disabled="@Saving">
+                @(Saving ? "Guardando…" : "Guardar progreso")
+            </button>
+        </div>
+
+        <div class="conquest-form-grid">
+            <label>
+                <span>Identificador</span>
+                <input @bind="EventId" placeholder="conquest-2026-09" />
+            </label>
+            <label>
+                <span>Nombre</span>
+                <input @bind="EventName" placeholder="Conquista actual" />
+            </label>
+            <label>
+                <span>Dificultad</span>
+                <select @bind="Difficulty">
+                    <option value="Easy">Fácil</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Hard">Difícil</option>
+                </select>
+            </label>
+        </div>
+    </section>
+
+    <section class="conquest-panel">
+        <div class="conquest-panel-heading">
+            <div>
+                <span class="section-kicker">Hazañas</span>
+                <h2>Progreso y requisitos</h2>
+            </div>
+            <button class="secondary-button" @onclick="ToggleFeatBuilder">
+                @(ShowFeatBuilder ? "Cerrar" : "+ Añadir hazaña")
+            </button>
+        </div>
+
+        @if (ShowFeatBuilder)
+        {
+            <div class="conquest-feat-builder">
+                <label class="conquest-wide">
+                    <span>Nombre de la hazaña</span>
+                    <input @bind="NewFeatName" placeholder="Ej. Gana 5 batallas con Jedi" />
+                </label>
+                <label>
+                    <span>Ámbito</span>
+                    <select @bind="NewFeatScope">
+                        <option value="Global">Global</option>
+                        <option value="Sector">Sector</option>
+                        <option value="Boss">Jefe</option>
+                    </select>
+                </label>
+                @if (NewFeatScope != "Global")
+                {
+                    <label>
+                        <span>Sector</span>
+                        <select @bind="NewFeatSector">
+                            @for (int sector = 1; sector <= 5; sector++)
+                            {
+                                <option value="@sector">Sector @sector</option>
+                            }
+                        </select>
+                    </label>
+                }
+                <label><span>Puntos</span><input type="number" min="1" @bind="NewFeatPoints" /></label>
+                <label><span>Objetivo</span><input type="number" min="1" @bind="NewFeatTarget" /></label>
+                <label><span>Progreso actual</span><input type="number" min="0" @bind="NewFeatProgress" /></label>
+                <label><span>Progreso / batalla</span><input type="number" min="1" @bind="NewFeatProgressPerBattle" /></label>
+                <label>
+                    <span>Regla</span>
+                    <select @bind="NewFeatRuleType">
+                        <option value="Faction">Facción</option>
+                        <option value="SpecificUnits">Unidad concreta</option>
+                        <option value="AnyCharacter">Cualquier equipo</option>
+                    </select>
+                </label>
+                @if (NewFeatRuleType == "Faction")
+                {
+                    <label>
+                        <span>Facción</span>
+                        <select @bind="NewFeatFaction">
+                            <option value="">Selecciona facción…</option>
+                            @foreach (string faction in FactionOptions)
+                            {
+                                <option value="@faction">@faction</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else if (NewFeatRuleType == "SpecificUnits")
+                {
+                    <label class="conquest-wide">
+                        <span>Unidad</span>
+                        <select @bind="NewFeatSpecificUnitId">
+                            <option value="">Selecciona unidad…</option>
+                            @foreach (PlayerApiClient.RosterUnitViewModel unit in CharacterOptions)
+                            {
+                                <option value="@unit.DefinitionId">@unit.Name · @ProgressLabel(unit)</option>
+                            }
+                        </select>
+                    </label>
+                }
+                <label>
+                    <span>Mínimo en el equipo</span>
+                    <input type="number" min="1" max="5" @bind="NewFeatMinimumMatchingUnits" />
+                </label>
+                <div class="conquest-builder-action">
+                    <button class="primary-button" @onclick="AddFeat" disabled="@(!CanAddFeat)">Añadir</button>
+                </div>
+            </div>
+        }
+
+        @if (Feats.Count == 0)
+        {
+            <div class="conquest-empty">
+                <strong>Aún no hay hazañas.</strong>
+                <p>Añade las globales y las del sector en el que estés. El optimizador empezará a cruzarlas entre sí.</p>
+            </div>
+        }
+        else
+        {
+            <div class="conquest-feat-list">
+                @foreach (FeatDraft feat in Feats.OrderBy(item => item.IsComplete).ThenBy(item => item.Sector ?? 0))
+                {
+                    <article class="conquest-feat-card @(feat.IsComplete ? "complete" : string.Empty)">
+                        <div class="conquest-feat-main">
+                            <div>
+                                <span class="conquest-scope">@ScopeLabel(feat)</span>
+                                <h3>@feat.Name</h3>
+                                <p>@RuleLabel(feat)</p>
+                            </div>
+                            <span class="conquest-points">@feat.Points pts</span>
+                        </div>
+                        <div class="conquest-progress-row">
+                            <label>
+                                <span>Progreso</span>
+                                <input type="number" min="0" max="@feat.Target" @bind="feat.Progress" />
+                            </label>
+                            <div class="conquest-progress-copy">
+                                <strong>@Math.Min(feat.Progress, feat.Target) / @feat.Target</strong>
+                                <span>@Math.Max(0, feat.Target - feat.Progress) restantes</span>
+                            </div>
+                            <button class="text-button danger" @onclick="() => RemoveFeat(feat.Id)">Eliminar</button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="conquest-panel conquest-optimizer">
+        <div class="conquest-panel-heading">
+            <div>
+                <span class="section-kicker">Optimizador multi-hazaña</span>
+                <h2>¿Qué equipo debería usar ahora?</h2>
+                <p>Prioriza puntos de hazaña por batalla y usa potencia/reliquias/velocidad como criterio táctico secundario.</p>
+            </div>
+            <button class="primary-button" @onclick="OptimizeAsync" disabled="@(Optimizing || Feats.Count == 0)">
+                @(Optimizing ? "Calculando…" : "Optimizar equipos")
+            </button>
+        </div>
+
+        @if (Optimization is not null)
+        {
+            <div class="conquest-optimization-meta">
+                <span><strong>@Optimization.PendingFeats</strong> hazañas pendientes</span>
+                <span><strong>@Optimization.CandidateCharacters</strong> candidatos</span>
+                <span><strong>@Optimization.Recommendations.Count</strong> equipos propuestos</span>
+                @if (Optimization.UncoveredFeatIds.Count > 0)
+                {
+                    <span class="warning"><strong>@Optimization.UncoveredFeatIds.Count</strong> sin cubrir</span>
+                }
+            </div>
+
+            @if (Optimization.Recommendations.Count == 0)
+            {
+                <div class="conquest-empty"><strong>No hay una combinación válida todavía.</strong><p>Revisa las reglas de las hazañas o refresca el roster.</p></div>
+            }
+            else
+            {
+                <div class="conquest-team-list">
+                    @foreach (ConquestApiClient.TeamViewModel recommendation in Optimization.Recommendations)
+                    {
+                        <article class="conquest-team-card">
+                            <div class="conquest-team-rank">#@recommendation.Rank</div>
+                            <div class="conquest-team-content">
+                                <div class="conquest-team-heading">
+                                    <div>
+                                        <h3>@recommendation.AdvancesFeats.Count hazaña(s) a la vez</h3>
+                                        <p>@recommendation.Rationale</p>
+                                    </div>
+                                    <div class="conquest-team-score">
+                                        <strong>@recommendation.Score.ToString("0.#")</strong>
+                                        <span>score</span>
+                                    </div>
+                                </div>
+                                <div class="conquest-unit-row">
+                                    @foreach (ConquestApiClient.UnitViewModel unit in recommendation.Team)
+                                    {
+                                        <div class="conquest-unit">
+                                            @if (GetPortraitUrl(unit.ThumbnailName) is string portrait)
+                                            {
+                                                <img src="@portrait" alt="" />
+                                            }
+                                            else
+                                            {
+                                                <span class="conquest-unit-fallback">@Initial(unit.Name)</span>
+                                            }
+                                            <div><strong>@unit.Name</strong><span>R@unit.RelicTier · @unit.GalacticPower.ToString("N0") GP</span></div>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="conquest-contributions">
+                                    @foreach (ConquestApiClient.ContributionViewModel contribution in recommendation.AdvancesFeats)
+                                    {
+                                        <span>
+                                            <strong>@contribution.FeatName</strong>
+                                            +@contribution.ExpectedProgress · valor @contribution.PointValueThisBattle.ToString("0.##") pts/batalla
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        }
+    </section>
+}
