@@ -13,7 +13,7 @@ namespace Swgoh.Infrastructure.IntegrationTests.Comlink;
 public sealed class SwgohComlinkGacOpponentSourceTests
 {
     [Fact]
-    public async Task GetAsync_WithSparseBrackets_UsesSeasonInstanceAndFindsOpponent()
+    public async Task GetAsync_WithSparseBadRequestBrackets_UsesSeasonInstanceAndFindsOpponent()
     {
         const string eventId = "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_83";
         const string currentEventInstance = eventId + ":O1788998400000";
@@ -42,6 +42,7 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         Assert.EndsWith(":KYBER:9", opponent.BracketId, StringComparison.Ordinal);
         Assert.Equal(2, handler.PlayerArenaRequests);
         Assert.InRange(handler.BracketRequests, 10, 40);
+        Assert.True(handler.BadRequestBracketResponses > 0);
         Assert.DoesNotContain(handler.GroupIds, groupId => groupId.EndsWith(":KYBER:0", StringComparison.Ordinal) && handler.GroupIds.Count == 1);
         Assert.All(handler.GroupIds, groupId => Assert.StartsWith(currentEventInstance, groupId, StringComparison.Ordinal));
     }
@@ -58,6 +59,8 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         public int BracketRequests { get; private set; }
 
         public int PlayerArenaRequests { get; private set; }
+
+        public int BadRequestBracketResponses { get; private set; }
 
         public IReadOnlyCollection<string> GroupIds => groupIds;
 
@@ -145,7 +148,8 @@ public sealed class SwgohComlinkGacOpponentSourceTests
                 ]));
             }
 
-            return Json("{\"player\":[]}");
+            BadRequestBracketResponses++;
+            return new HttpResponseMessage(HttpStatusCode.BadRequest);
         }
 
         private static string Bracket(IReadOnlyCollection<(string Id, string Name)> players)
