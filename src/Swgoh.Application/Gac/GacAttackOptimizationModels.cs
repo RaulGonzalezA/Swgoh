@@ -33,7 +33,15 @@ public sealed record GacAttackOptimizationRecommendation(
     decimal OpportunityCost = 0m,
     int StrategicAlternatives = 0,
     int FutureDefensesAtRisk = 0,
-    string StrategicRationale = "");
+    string StrategicRationale = "",
+    decimal PersonalAdjustment = 0m,
+    int PersonalSamples = 0,
+    int PersonalWins = 0,
+    decimal? PersonalWinRate = null,
+    decimal? PersonalOneShotRate = null,
+    decimal? PersonalAverageBanners = null,
+    string PersonalScope = "None",
+    string PersonalRationale = "");
 
 public sealed record GacAttackOptimizationResult(
     GacAttackOptimizationMode Mode,
