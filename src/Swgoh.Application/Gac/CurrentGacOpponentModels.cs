@@ -102,7 +102,13 @@ public sealed record GacBattleCounterSuggestion(
     string Confidence,
     string Source,
     string Rationale,
-    bool RequiresDatacronVerification);
+    bool RequiresDatacronVerification,
+    IReadOnlyCollection<GacBattleUnit>? RecommendedTeam = null,
+    int? Uses = null,
+    decimal? WinRate = null,
+    decimal? OneShotRate = null,
+    decimal? AverageBanners = null,
+    int? PlayersObserved = null);
 
 public sealed record CurrentGacBattlePlan(
     GacBattleRosterComparison Comparison,
@@ -116,4 +122,5 @@ public sealed record CurrentGacScoutingResult(
     CurrentGacOpponentLookup Lookup,
     OpponentScoutingReport? Scouting,
     CurrentOpponentRosterScouting? RosterScouting,
-    CurrentGacBattlePlan? BattlePlan);
+    CurrentGacBattlePlan? BattlePlan,
+    GacHistorySyncResult? HistorySync = null);

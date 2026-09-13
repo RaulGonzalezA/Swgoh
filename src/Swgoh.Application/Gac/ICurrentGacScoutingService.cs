@@ -17,11 +17,16 @@ internal sealed class CurrentGacScoutingService(
     ICurrentGacOpponentSource opponentSource,
     IOpponentScoutingService scoutingService,
     IPlayerProfileService playerProfileService,
-    IPlayerRosterService playerRosterService) : ICurrentGacScoutingService
+    IPlayerRosterService playerRosterService,
+    IGacHistorySyncService historySyncService,
+    IGacCounterStatisticsService counterStatisticsService) : ICurrentGacScoutingService
 {
     private const int MaxRounds = 200;
+    private const int CounterSourceRoundLimit = 2_000;
+    private const int CounterResultLimit = 500;
     private const int CharacterScoutLimit = 100;
     private const int ShipScoutLimit = 50;
+    private const int RosterPageSize = 100;
     private const int TopCharacterLimit = 20;
     private const int TopShipLimit = 12;
     private const int OmicronScoutLimit = 30;
@@ -51,13 +56,19 @@ internal sealed class CurrentGacScoutingService(
         }
 
         CurrentGacOpponent opponent = lookup.Opponent;
-        PlayerProfile refreshedOpponent = await playerProfileService
-            .RefreshFromGameAsync(opponent.OpponentAllyCode, cancellationToken)
-            .ConfigureAwait(false);
-        PlayerProfile refreshedPlayer = await playerProfileService
-            .RefreshFromGameAsync(allyCode, cancellationToken)
+        int historyRoundLimit = Math.Clamp(maxRounds, 1, MaxRounds);
+        GacHistorySyncResult historySync = await historySyncService
+            .SyncAsync(opponent.OpponentAllyCode, opponent.Format, historyRoundLimit, cancellationToken)
             .ConfigureAwait(false);
 
+        Task<PlayerProfile> refreshedOpponentTask = playerProfileService
+            .RefreshFromGameAsync(opponent.OpponentAllyCode, cancellationToken);
+        Task<PlayerProfile> refreshedPlayerTask = playerProfileService
+            .RefreshFromGameAsync(allyCode, cancellationToken);
+        await Task.WhenAll(refreshedOpponentTask, refreshedPlayerTask).ConfigureAwait(false);
+
+        PlayerProfile refreshedOpponent = await refreshedOpponentTask.ConfigureAwait(false);
+        PlayerProfile refreshedPlayer = await refreshedPlayerTask.ConfigureAwait(false);
         PlayerRosterAnalysis opponentAnalysis = PlayerRosterMetrics.Calculate(refreshedOpponent);
         PlayerRosterAnalysis playerAnalysis = PlayerRosterMetrics.Calculate(refreshedPlayer);
 
@@ -65,7 +76,13 @@ internal sealed class CurrentGacScoutingService(
             opponent.OpponentAllyCode,
             opponent.Format,
             opponent.League,
-            Math.Clamp(maxRounds, 1, MaxRounds),
+            historyRoundLimit,
+            cancellationToken);
+        Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = counterStatisticsService.GetAsync(
+            new GacCounterStatisticsQuery(
+                opponent.Format,
+                MaxRounds: CounterSourceRoundLimit,
+                Limit: CounterResultLimit),
             cancellationToken);
 
         Task<PlayerRosterPage?> opponentCharactersTask = LoadRosterAsync(
@@ -87,17 +104,13 @@ internal sealed class CurrentGacScoutingService(
             hasOmicron: true,
             cancellationToken);
 
-        Task<PlayerRosterPage?> playerCharactersTask = LoadRosterAsync(
+        Task<IReadOnlyCollection<PlayerRosterUnit>> playerCharactersTask = LoadFullRosterAsync(
             allyCode,
             PlayerRosterUnitType.Character,
-            CharacterScoutLimit,
-            hasOmicron: null,
             cancellationToken);
-        Task<PlayerRosterPage?> playerShipsTask = LoadRosterAsync(
+        Task<IReadOnlyCollection<PlayerRosterUnit>> playerShipsTask = LoadFullRosterAsync(
             allyCode,
             PlayerRosterUnitType.Ship,
-            ShipScoutLimit,
-            hasOmicron: null,
             cancellationToken);
         Task<PlayerRosterPage?> playerOmicronsTask = LoadRosterAsync(
             allyCode,
@@ -108,6 +121,7 @@ internal sealed class CurrentGacScoutingService(
 
         await Task.WhenAll(
             historicalScoutingTask,
+            counterStatisticsTask,
             opponentCharactersTask,
             opponentShipsTask,
             opponentOmicronsTask,
@@ -116,11 +130,12 @@ internal sealed class CurrentGacScoutingService(
             playerOmicronsTask).ConfigureAwait(false);
 
         OpponentScoutingReport? historicalScouting = await historicalScoutingTask.ConfigureAwait(false);
+        IReadOnlyCollection<GacCounterStatistics> counterStatistics = await counterStatisticsTask.ConfigureAwait(false);
         PlayerRosterPage? opponentCharacters = await opponentCharactersTask.ConfigureAwait(false);
         PlayerRosterPage? opponentShips = await opponentShipsTask.ConfigureAwait(false);
         PlayerRosterPage? opponentOmicrons = await opponentOmicronsTask.ConfigureAwait(false);
-        PlayerRosterPage? playerCharacters = await playerCharactersTask.ConfigureAwait(false);
-        PlayerRosterPage? playerShips = await playerShipsTask.ConfigureAwait(false);
+        IReadOnlyCollection<PlayerRosterUnit> playerCharacters = await playerCharactersTask.ConfigureAwait(false);
+        IReadOnlyCollection<PlayerRosterUnit> playerShips = await playerShipsTask.ConfigureAwait(false);
         PlayerRosterPage? playerOmicrons = await playerOmicronsTask.ConfigureAwait(false);
 
         CurrentOpponentRosterScouting rosterScouting = new(
@@ -133,13 +148,24 @@ internal sealed class CurrentGacScoutingService(
         CurrentGacBattlePlan battlePlan = CurrentGacBattlePlanBuilder.Build(
             opponent,
             playerAnalysis,
-            playerCharacters?.Items ?? [],
-            playerShips?.Items ?? [],
+            playerCharacters,
+            playerShips,
             playerOmicrons?.Items ?? [],
             rosterScouting,
             historicalScouting);
+        battlePlan = GacCounterSuggestionEnricher.Enrich(
+            battlePlan,
+            opponent.Format,
+            counterStatistics,
+            playerCharacters,
+            playerShips);
 
-        return new CurrentGacScoutingResult(lookup, historicalScouting, rosterScouting, battlePlan);
+        return new CurrentGacScoutingResult(
+            lookup,
+            historicalScouting,
+            rosterScouting,
+            battlePlan,
+            historySync);
     }
 
     private Task<PlayerRosterPage?> LoadRosterAsync(
@@ -156,6 +182,48 @@ internal sealed class CurrentGacScoutingService(
             OrderBy: PlayerRosterSortField.GalacticPower,
             Direction: PlayerRosterSortDirection.Descending),
         cancellationToken);
+
+    private async Task<IReadOnlyCollection<PlayerRosterUnit>> LoadFullRosterAsync(
+        long allyCode,
+        PlayerRosterUnitType type,
+        CancellationToken cancellationToken)
+    {
+        PlayerRosterPage? firstPage = await playerRosterService.GetAsync(
+            allyCode,
+            new PlayerRosterQuery(
+                Page: 1,
+                PageSize: RosterPageSize,
+                Type: type,
+                OrderBy: PlayerRosterSortField.GalacticPower,
+                Direction: PlayerRosterSortDirection.Descending),
+            cancellationToken).ConfigureAwait(false);
+        if (firstPage is null)
+        {
+            return [];
+        }
+
+        var units = new List<PlayerRosterUnit>(firstPage.Items);
+        for (int page = 2; page <= firstPage.TotalPages; page++)
+        {
+            PlayerRosterPage? nextPage = await playerRosterService.GetAsync(
+                allyCode,
+                new PlayerRosterQuery(
+                    Page: page,
+                    PageSize: RosterPageSize,
+                    Type: type,
+                    OrderBy: PlayerRosterSortField.GalacticPower,
+                    Direction: PlayerRosterSortDirection.Descending),
+                cancellationToken).ConfigureAwait(false);
+            if (nextPage is null)
+            {
+                break;
+            }
+
+            units.AddRange(nextPage.Items);
+        }
+
+        return units;
+    }
 
     private static bool IsGalacticLegend(PlayerRosterUnit unit) =>
         unit.Tags.Any(tag => tag.Contains("galactic_legend", StringComparison.OrdinalIgnoreCase));
