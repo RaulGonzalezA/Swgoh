@@ -11,4 +11,6 @@ public sealed record RosterUnit(
     long GalacticPower = 0,
     bool IsShip = false,
     int ZetaCount = 0,
-    int OmicronCount = 0);
+    int OmicronCount = 0,
+    RosterUnitStats? Stats = null,
+    RosterModSummary? Mods = null);
