@@ -246,7 +246,7 @@ internal sealed class ConquestService(
         decimal featEfficiency = Math.Round(contributions.Sum(item => item.PointValueThisBattle), 2);
         long totalGp = team.Sum(candidate => candidate.Unit.GalacticPower);
         decimal? averageSpeed = AverageNullable(team.Select(candidate => candidate.Unit.Stats?.Speed));
-        decimal relicDepth = team.Average(candidate => candidate.Unit.RelicTier);
+        decimal relicDepth = team.Average(candidate => (decimal)candidate.Unit.RelicTier);
         decimal tactical = Math.Min(14m, totalGp / 30_000m) + Math.Min(6m, relicDepth * 0.75m);
         decimal score = Math.Round(Math.Clamp(
             (featEfficiency * 4m) + (contributions.Length * 5m) + tactical,
