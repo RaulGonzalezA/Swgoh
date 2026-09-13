@@ -1,29 +1,122 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@using Swgoh.Blazor.State
+@inject PlayerSessionState Session
 
-<div class="app-shell">
-    <header class="topbar">
-        <div class="topbar-inner">
-            <a class="brand" href="/" aria-label="SWGOH Planner - inicio">
-                <span class="brand-mark" aria-hidden="true">S</span>
-                <span>
-                    <strong>SWGOH Planner</strong>
-                    <small>Roster &amp; Grand Arena</small>
-                </span>
-            </a>
+<div class="command-shell">
+    <aside class="command-sidebar" aria-label="Navegación principal">
+        <a class="command-brand" href="/" aria-label="SWGOH Assistant - inicio">
+            <span class="command-brand-mark" aria-hidden="true">S</span>
+            <span>
+                <strong>SWGOH Assistant</strong>
+                <small>Plan · Optimize · Win</small>
+            </span>
+        </a>
 
-            <nav class="main-nav" aria-label="Navegación principal">
-                <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
-            </nav>
+        <nav class="command-nav">
+            <NavLink href="/" Match="NavLinkMatch.All">
+                <span class="command-nav-icon" aria-hidden="true">⌂</span>
+                <span>Inicio</span>
+            </NavLink>
+
+            @if (Session.AllyCode is long allyCode)
+            {
+                <NavLink href="@($"/player/{allyCode}")">
+                    <span class="command-nav-icon" aria-hidden="true">R</span>
+                    <span>Mi roster</span>
+                </NavLink>
+                <NavLink href="@($"/gac/{allyCode}")">
+                    <span class="command-nav-icon" aria-hidden="true">G</span>
+                    <span>GAC</span>
+                </NavLink>
+                <NavLink href="@($"/gac/{allyCode}/planner")">
+                    <span class="command-nav-icon" aria-hidden="true">P</span>
+                    <span>Planner</span>
+                </NavLink>
+                <NavLink href="@($"/conquest/{allyCode}")">
+                    <span class="command-nav-icon" aria-hidden="true">C</span>
+                    <span>Conquista</span>
+                </NavLink>
+            }
+            else
+            {
+                <span class="command-nav-disabled"><span class="command-nav-icon">R</span>Mi roster</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">G</span>GAC</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">P</span>Planner</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">C</span>Conquista</span>
+            }
+        </nav>
+
+        <div class="command-sidebar-foot">
+            <span>Datos reales</span>
+            <small>Roster · GAC · Conquista</small>
         </div>
-    </header>
+    </aside>
 
-    <main class="main-content">
-        <article class="content">@Body</article>
-    </main>
+    <div class="command-main">
+        <header class="command-topbar">
+            <div>
+                <span class="command-topbar-kicker">SWGOH Assistant</span>
+                <strong>@(Session.PlayerName ?? "Centro de operaciones")</strong>
+            </div>
+            @if (Session.AllyCode is long currentAllyCode)
+            {
+                <a class="command-player-chip" href="/" title="Cambiar jugador">
+                    <span>@PlayerInitials(Session.PlayerName)</span>
+                    <small>#@FormatAllyCode(currentAllyCode)</small>
+                </a>
+            }
+        </header>
 
-    <footer class="app-footer">
-        <span>SWGOH Planner</span>
-        <span class="footer-dot">•</span>
-        <span>Datos propios y análisis de Gran Arena</span>
-    </footer>
+        <main class="main-content">
+            <article class="content command-content">@Body</article>
+        </main>
+
+        <footer class="command-footer">
+            <span>SWGOH Assistant</span>
+            <span>•</span>
+            <span>Decisiones basadas en tu roster y tus resultados</span>
+        </footer>
+    </div>
+
+    <nav class="command-mobile-nav" aria-label="Navegación móvil">
+        <NavLink href="/" Match="NavLinkMatch.All"><span>⌂</span><small>Inicio</small></NavLink>
+        @if (Session.AllyCode is long mobileAllyCode)
+        {
+            <NavLink href="@($"/player/{mobileAllyCode}")"><span>R</span><small>Roster</small></NavLink>
+            <NavLink href="@($"/gac/{mobileAllyCode}/planner")"><span>G</span><small>GAC</small></NavLink>
+            <NavLink href="@($"/conquest/{mobileAllyCode}")"><span>C</span><small>Conquista</small></NavLink>
+        }
+    </nav>
 </div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private static string PlayerInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "P";
+        }
+
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
+    }
+
+    private static string FormatAllyCode(long allyCode)
+    {
+        string value = allyCode.ToString("000000000");
+        return $"{value[..3]}-{value[3..6]}-{value[6..]}";
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+    }
+}
