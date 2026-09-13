@@ -31,6 +31,11 @@ The public HTTP API uses URL-segment versioning. Version 1 is exposed under `/ap
 - `GET /api/v1/players/{allyCode}/analysis` returns roster metrics including character/ship GP, relic thresholds, zetas, omicrons and mod coverage.
 - `GET /api/v1/players/{allyCode}/history?limit=30` returns recent snapshots ordered from newest to oldest. The limit is clamped between 1 and 365.
 - `GET /api/v1/players/{allyCode}/gl-progress` calculates Galactic Legend unit-requirement progress using current Game Data.
+- `GET /api/v1/squads` searches persisted squad definitions. Optional filters: `search`, `format` (`3v3` or `5v5`), `use` (`Flexible`, `Offense`, `Defense`), `tag` and `limit` (1-200).
+- `GET /api/v1/squads/{id}` returns one enriched squad definition.
+- `POST /api/v1/squads` creates a squad definition; `PUT /api/v1/squads/{id}` updates it and `DELETE /api/v1/squads/{id}` removes it.
+
+Squad definitions are character-only GAC team archetypes. A definition groups one or more complete variants under the same name, format and intended use. A 3v3 variant always contains one leader plus two unique members; a 5v5 variant contains one leader plus four unique members. Unit IDs are validated against current Game Data and API responses enrich leaders/members with localized names, thumbnails and factions. Definitions are persisted in MongoDB so they can later be reused by opponent scouting and GAC recommendation features.
 
 ### API hardening
 
@@ -65,7 +70,7 @@ Game Data, category metadata and localization are cached in-process for six hour
 GitHub Actions uses two separate workflows:
 
 - `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
-- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis and Galactic Legend progress.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis, Galactic Legend progress and the squad definition flow.
 
 A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
 

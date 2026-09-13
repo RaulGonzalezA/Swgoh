@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using Swgoh.Application.Players;
+using Swgoh.Application.Squads;
 
 namespace Swgoh.Application;
 
@@ -15,6 +16,7 @@ public static class DependencyInjection
         services.AddScoped<IPlayerHistoryService, PlayerHistoryService>();
         services.AddScoped<IPlayerRosterService, PlayerRosterService>();
         services.AddScoped<IGalacticLegendProgressService, GalacticLegendProgressService>();
+        services.AddScoped<ISquadService, SquadService>();
         return services;
     }
 }

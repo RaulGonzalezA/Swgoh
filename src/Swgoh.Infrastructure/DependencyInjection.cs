@@ -8,6 +8,7 @@ using RepositoryMongoDb.DependencyInjection;
 using Swgoh.Application.Abstractions;
 using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
+using Swgoh.Application.Squads;
 using Swgoh.Infrastructure.Comlink;
 using Swgoh.Infrastructure.GameData;
 using Swgoh.Infrastructure.Persistence;
@@ -53,6 +54,11 @@ public static class DependencyInjection
                         Name = PlayerSnapshotMongoRepository.AllyCodeCapturedAtIndexName
                     }));
 
+        services.AddMongoRepository<SquadDefinitionDocument, string>(
+            SquadMongoRepository.CollectionName,
+            squad => squad.Id,
+            collection => collection.CreateIfMissing());
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -83,6 +89,7 @@ public static class DependencyInjection
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
+        services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         return services;
     }
 }
