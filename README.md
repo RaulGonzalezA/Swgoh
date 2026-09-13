@@ -56,7 +56,7 @@ Outside Aspire, configure:
 - `Swgoh:Comlink:BaseUrl` (normally `http://localhost:3000`)
 - `Swgoh:Stats:BaseUrl` (normally `http://localhost:3223`)
 - `Swgoh:GameData:BaseUrl` when overriding the default `swgoh-utils/gamedata` source
-- `Swgoh:GameData:Locale` to select the localization bundle used for enriched roster names/factions (`ENG_US` by default; for example `SPA_XM`)
+- `Swgoh:GameData:Locale` to select the localization bundle used for enriched roster names/factions (`SPA_XM` / Spanish by default; for example `ENG_US` for English)
 
 Game Data, category metadata and localization are cached in-process for six hours.
 
