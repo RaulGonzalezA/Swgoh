@@ -21,37 +21,56 @@
                 <span>Inicio</span>
             </NavLink>
 
+            <span class="command-nav-section">Juego</span>
             @if (Session.AllyCode is long allyCode)
             {
-                <NavLink href="@($"/player/{allyCode}")">
+                <NavLink href="@($"/player/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">R</span>
-                    <span>Mi roster</span>
+                    <span>Roster</span>
                 </NavLink>
-                <NavLink href="@($"/gac/{allyCode}")">
+                <NavLink href="@($"/gac/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">G</span>
                     <span>GAC</span>
                 </NavLink>
-                <NavLink href="@($"/gac/{allyCode}/planner")">
+                <NavLink href="@($"/gac/{allyCode}/planner")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">P</span>
                     <span>Planner</span>
                 </NavLink>
-                <NavLink href="@($"/conquest/{allyCode}")">
+                <NavLink href="@($"/conquest/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">C</span>
                     <span>Conquista</span>
                 </NavLink>
             }
             else
             {
-                <span class="command-nav-disabled"><span class="command-nav-icon">R</span>Mi roster</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">R</span>Roster</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">G</span>GAC</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">P</span>Planner</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">C</span>Conquista</span>
             }
+
+            <span class="command-nav-section">Sistema</span>
+            <NavLink href="/data" Match="NavLinkMatch.All">
+                <span class="command-nav-icon" aria-hidden="true">D</span>
+                <span>Datos</span>
+            </NavLink>
+            <NavLink href="/settings" Match="NavLinkMatch.All">
+                <span class="command-nav-icon" aria-hidden="true">A</span>
+                <span>Ajustes</span>
+            </NavLink>
         </nav>
 
         <div class="command-sidebar-foot">
-            <span>Datos reales</span>
-            <small>Roster · GAC · Conquista</small>
+            @if (Session.AllyCode is long sidebarAllyCode)
+            {
+                <span>@(Session.PlayerName ?? "Jugador activo")</span>
+                <small>#@FormatAllyCode(sidebarAllyCode) · contexto persistente</small>
+            }
+            else
+            {
+                <span>Sin jugador activo</span>
+                <small>Selecciona uno desde Inicio</small>
+            }
         </div>
     </aside>
 
@@ -63,7 +82,7 @@
             </div>
             @if (Session.AllyCode is long currentAllyCode)
             {
-                <a class="command-player-chip" href="/" title="Cambiar jugador">
+                <a class="command-player-chip" href="/settings" title="Jugador y ajustes">
                     <span>@PlayerInitials(Session.PlayerName)</span>
                     <small>#@FormatAllyCode(currentAllyCode)</small>
                 </a>
@@ -81,19 +100,69 @@
         </footer>
     </div>
 
+    @if (_showMobileMore)
+    {
+        <div class="command-mobile-more" role="dialog" aria-label="Más navegación">
+            <div class="command-mobile-more-head">
+                <strong>Más</strong>
+                <button type="button" @onclick="CloseMobileMore" aria-label="Cerrar">×</button>
+            </div>
+            @if (Session.AllyCode is long moreAllyCode)
+            {
+                <NavLink href="@($"/gac/{moreAllyCode}/planner")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                    <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Diseña y ejecuta la ronda</small></span>
+                </NavLink>
+            }
+            else
+            {
+                <span class="command-mobile-more-disabled">
+                    <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Selecciona primero un jugador</small></span>
+                </span>
+            }
+            <NavLink href="/data" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                <span class="command-nav-icon">D</span><span><strong>Datos</strong><small>Frescura y fuentes disponibles</small></span>
+            </NavLink>
+            <NavLink href="/settings" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                <span class="command-nav-icon">A</span><span><strong>Ajustes</strong><small>Jugador principal y preferencias</small></span>
+            </NavLink>
+        </div>
+        <button class="command-mobile-more-backdrop" type="button" @onclick="CloseMobileMore" aria-label="Cerrar menú"></button>
+    }
+
     <nav class="command-mobile-nav" aria-label="Navegación móvil">
         <NavLink href="/" Match="NavLinkMatch.All"><span>⌂</span><small>Inicio</small></NavLink>
         @if (Session.AllyCode is long mobileAllyCode)
         {
-            <NavLink href="@($"/player/{mobileAllyCode}")"><span>R</span><small>Roster</small></NavLink>
-            <NavLink href="@($"/gac/{mobileAllyCode}/planner")"><span>G</span><small>GAC</small></NavLink>
-            <NavLink href="@($"/conquest/{mobileAllyCode}")"><span>C</span><small>Conquista</small></NavLink>
+            <NavLink href="@($"/player/{mobileAllyCode}")" Match="NavLinkMatch.All"><span>R</span><small>Roster</small></NavLink>
+            <NavLink href="@($"/gac/{mobileAllyCode}")" Match="NavLinkMatch.All"><span>G</span><small>GAC</small></NavLink>
+            <NavLink href="@($"/conquest/{mobileAllyCode}")" Match="NavLinkMatch.All"><span>C</span><small>Conquista</small></NavLink>
         }
+        else
+        {
+            <span class="command-mobile-nav-disabled"><span>R</span><small>Roster</small></span>
+            <span class="command-mobile-nav-disabled"><span>G</span><small>GAC</small></span>
+            <span class="command-mobile-nav-disabled"><span>C</span><small>Conquista</small></span>
+        }
+        <button class="command-mobile-more-trigger @(MobileMoreActive ? "active" : string.Empty)" type="button" @onclick="ToggleMobileMore" aria-expanded="@_showMobileMore">
+            <span>•••</span><small>Más</small>
+        </button>
     </nav>
 </div>
 
 @code {
     private bool contextRestored;
+    private bool _showMobileMore;
+
+    private bool MobileMoreActive
+    {
+        get
+        {
+            string path = new Uri(Navigation.Uri).AbsolutePath;
+            return path.Equals("/data", StringComparison.OrdinalIgnoreCase) ||
+                   path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
+                   path.EndsWith("/planner", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -117,9 +186,11 @@
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
+        _showMobileMore = false;
         long? routeAllyCode = TryGetRouteAllyCode(args.Location);
         if (routeAllyCode is not long allyCode || Session.AllyCode == allyCode)
         {
+            _ = InvokeAsync(StateHasChanged);
             return;
         }
 
@@ -143,6 +214,10 @@
 
         await PlayerContext.RestoreAsync();
     }
+
+    private void ToggleMobileMore() => _showMobileMore = !_showMobileMore;
+
+    private void CloseMobileMore() => _showMobileMore = false;
 
     private static long? TryGetRouteAllyCode(string location)
     {
