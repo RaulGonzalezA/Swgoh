@@ -1,0 +1,229 @@
+name: GAC Matchup Probe
+run-name: GAC Matchup Probe · ally ${{ inputs.ally_code || '476825771' }} · bracket ${{ inputs.bracket_index || '4178' }}
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/gac-matchup-probe.yml
+  workflow_dispatch:
+    inputs:
+      ally_code:
+        description: SWGOH ally code to diagnose
+        required: true
+        default: '476825771'
+        type: string
+      bracket_index:
+        description: Known active GAC bracket index
+        required: true
+        default: '4178'
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
+  SWGOH_TEST_BRACKET_INDEX: ${{ inputs.bracket_index || '4178' }}
+
+jobs:
+  probe:
+    name: Capture current matchup metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start Comlink
+        run: |
+          set -euo pipefail
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-gac-matchup-probe \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+
+          for attempt in {1..60}; do
+            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs comlink || true
+          exit 1
+
+      - name: Capture known bracket response
+        env:
+          COMLINK_URL: http://127.0.0.1:3000
+        run: |
+          set -euo pipefail
+          mkdir -p gac-matchup-probe
+
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.error
+          import urllib.request
+
+          base_url = os.environ["COMLINK_URL"].rstrip("/")
+          ally_code = os.environ["SWGOH_TEST_ALLY_CODE"]
+          bracket_index = int(os.environ["SWGOH_TEST_BRACKET_INDEX"])
+          output = pathlib.Path("gac-matchup-probe")
+
+          def post(path, payload, retries=5):
+              for attempt in range(retries):
+                  request = urllib.request.Request(
+                      f"{base_url}/{path}",
+                      data=json.dumps(payload).encode("utf-8"),
+                      headers={"Content-Type": "application/json"},
+                      method="POST",
+                  )
+                  try:
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          raw = response.read().decode("utf-8")
+                          return response.status, raw, json.loads(raw) if raw else {}
+                  except urllib.error.HTTPError as error:
+                      raw = error.read().decode("utf-8")
+                      try:
+                          parsed = json.loads(raw) if raw else {}
+                      except json.JSONDecodeError:
+                          parsed = {"raw": raw}
+                      if error.code == 400 and parsed.get("message") == "Rate exceeded!" and attempt + 1 < retries:
+                          time.sleep(0.25 * (2 ** attempt))
+                          continue
+                      return error.code, raw, parsed
+              raise RuntimeError("retry loop exhausted")
+
+          player_status, _, player = post(
+              "playerArena",
+              {"payload": {"allyCode": ally_code, "playerDetailsOnly": True}, "enums": False},
+          )
+          events_status, _, events = post("getEvents", {"payload": {}, "enums": False})
+          if player_status != 200 or events_status != 200:
+              raise SystemExit(f"Unable to load live context: player={player_status}, events={events_status}")
+
+          rating = player.get("playerRating") or {}
+          rank_status = rating.get("playerRankStatus") or {}
+          league = str(rank_status.get("leagueId") or "KYBER").lower()
+          player_id = player.get("playerId") or player.get("id")
+
+          now_ms = int(time.time() * 1000)
+          active = None
+          for event in events.get("gameEvent") or []:
+              if not isinstance(event, dict) or str(event.get("type")) != "10":
+                  continue
+              for instance in event.get("instance") or []:
+                  if not isinstance(instance, dict):
+                      continue
+                  try:
+                      start_ms = int(instance.get("startTime") or 0)
+                      end_ms = int(instance.get("endTime") or 0)
+                  except (TypeError, ValueError):
+                      continue
+                  if start_ms <= now_ms <= end_ms:
+                      active = (event.get("id"), instance.get("id"))
+                      break
+              if active:
+                  break
+
+          if not active or not active[0] or active[1] is None:
+              raise SystemExit("No active GAC instance found")
+
+          event_instance_id = f"{active[0]}:{active[1]}"
+          group_id = f"{event_instance_id}:{league}:{bracket_index}"
+          status, raw, parsed = post(
+              "getLeaderboard",
+              {
+                  "payload": {
+                      "leaderboardType": 4,
+                      "eventInstanceId": event_instance_id,
+                      "groupId": group_id,
+                  },
+                  "enums": False,
+              },
+          )
+
+          (output / "bracket-raw.json").write_text(raw + "\n", encoding="utf-8")
+          (output / "context.json").write_text(
+              json.dumps({
+                  "allyCode": ally_code,
+                  "playerId": player_id,
+                  "eventInstanceId": event_instance_id,
+                  "groupId": group_id,
+                  "status": status,
+              }, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          def flatten_players(value):
+              result = []
+              if isinstance(value, dict):
+                  root_players = value.get("player")
+                  if isinstance(root_players, list):
+                      result.extend(root_players)
+                  for leaderboard in value.get("leaderboard") or []:
+                      if isinstance(leaderboard, dict) and isinstance(leaderboard.get("player"), list):
+                          result.extend(leaderboard["player"])
+              return result
+
+          def interesting_fields(value, prefix=""):
+              found = {}
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      path = f"{prefix}.{key}" if prefix else key
+                      lowered = key.lower()
+                      if any(token in lowered for token in ("opponent", "match", "round", "status", "rank", "score", "result")):
+                          found[path] = child
+                      found.update(interesting_fields(child, path))
+              elif isinstance(value, list):
+                  for index, child in enumerate(value):
+                      found.update(interesting_fields(child, f"{prefix}[{index}]"))
+              return found
+
+          players = flatten_players(parsed)
+          compact_players = []
+          for index, participant in enumerate(players):
+              if not isinstance(participant, dict):
+                  continue
+              compact_players.append({
+                  "index": index,
+                  "id": participant.get("id") or participant.get("playerId"),
+                  "name": participant.get("name"),
+                  "keys": list(participant.keys()),
+                  "interesting": interesting_fields(participant),
+              })
+
+          summary = {
+              "status": status,
+              "groupId": group_id,
+              "rootKeys": list(parsed.keys()) if isinstance(parsed, dict) else None,
+              "playerCount": len(players),
+              "selfIndex": next((p["index"] for p in compact_players if p["id"] == player_id), None),
+              "players": compact_players,
+              "responseInteresting": interesting_fields(parsed),
+          }
+          (output / "summary.json").write_text(
+              json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, ensure_ascii=False))
+          if status != 200:
+              raise SystemExit(f"Known bracket request failed with {status}")
+          PY
+
+      - name: Upload matchup probe artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gac-matchup-probe-${{ github.run_number }}
+          path: gac-matchup-probe/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
