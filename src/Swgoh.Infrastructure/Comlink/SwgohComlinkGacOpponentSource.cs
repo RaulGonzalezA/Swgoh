@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -12,9 +13,11 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
     internal const string HttpClientName = "SwgohComlinkGac";
 
     private const int BracketSize = 8;
-    private const int BracketBatchSize = 32;
+    private const int BracketBatchSize = 8;
     private const int RankSearchRadius = 512;
     private const int MaxBracketIndex = 8191;
+    private const int RateLimitRetryCount = 5;
+    private static readonly TimeSpan BracketBatchDelay = TimeSpan.FromMilliseconds(125);
     private static readonly TimeSpan PositiveCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan NegativeCacheDuration = TimeSpan.FromMinutes(1);
 
@@ -292,6 +295,10 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
             }
 
             pending.Clear();
+            if (index < end)
+            {
+                await Task.Delay(BracketBatchDelay, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return null;
@@ -348,36 +355,97 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         };
 
         HttpClient client = httpClientFactory.CreateClient(HttpClientName);
-        using HttpResponseMessage httpResponse = await client.PostAsJsonAsync(
-            "getLeaderboard",
-            request,
-            cancellationToken).ConfigureAwait(false);
-        if (httpResponse.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        for (int attempt = 0; attempt <= RateLimitRetryCount; attempt++)
         {
-            return null;
+            using HttpResponseMessage httpResponse = await client.PostAsJsonAsync(
+                "getLeaderboard",
+                request,
+                cancellationToken).ConfigureAwait(false);
+            string responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            if (httpResponse.StatusCode == HttpStatusCode.BadRequest)
+            {
+                if (IsRateLimited(responseBody))
+                {
+                    if (attempt == RateLimitRetryCount)
+                    {
+                        throw new HttpRequestException(
+                            $"Comlink rate limit persisted while reading GAC bracket '{bracketId}'.",
+                            inner: null,
+                            httpResponse.StatusCode);
+                    }
+
+                    await Task.Delay(GetRateLimitDelay(attempt, bracketIndex), cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                return null;
+            }
+
+            httpResponse.EnsureSuccessStatusCode();
+            using JsonDocument response = JsonDocument.Parse(responseBody);
+            if (!TryGetLeaderboardPlayers(response.RootElement, out JsonElement playersElement))
+            {
+                return null;
+            }
+
+            Participant[] players =
+            [
+                .. playersElement.EnumerateArray()
+                    .Select(ReadParticipant)
+                    .Where(value => value is not null)
+                    .Select(value => value!)
+            ];
+            return players.Length == 0 ? null : new BracketData(bracketId, players);
         }
 
-        httpResponse.EnsureSuccessStatusCode();
-        await using Stream stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await JsonDocument.ParseAsync(
-            stream,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        throw new InvalidOperationException("The Comlink GAC bracket retry loop completed unexpectedly.");
+    }
 
-        if (!TryGetProperty(response.RootElement, "player", out JsonElement playersElement) ||
-            playersElement.ValueKind != JsonValueKind.Array ||
-            playersElement.GetArrayLength() == 0)
+    private static bool IsRateLimited(string responseBody) =>
+        responseBody.Contains("Rate exceeded", StringComparison.OrdinalIgnoreCase);
+
+    private static TimeSpan GetRateLimitDelay(int attempt, int bracketIndex)
+    {
+        double exponentialDelayMs = Math.Min(2_000, 150 * (1 << attempt));
+        int jitterMs = (bracketIndex % BracketBatchSize) * 20;
+        return TimeSpan.FromMilliseconds(exponentialDelayMs + jitterMs);
+    }
+
+    private static bool TryGetLeaderboardPlayers(JsonElement root, out JsonElement players)
+    {
+        if (TryGetProperty(root, "player", out players) &&
+            players.ValueKind == JsonValueKind.Array &&
+            players.GetArrayLength() > 0)
         {
-            return null;
+            return true;
         }
 
-        Participant[] players =
-        [
-            .. playersElement.EnumerateArray()
-                .Select(ReadParticipant)
-                .Where(value => value is not null)
-                .Select(value => value!)
-        ];
-        return players.Length == 0 ? null : new BracketData(bracketId, players);
+        if (TryGetProperty(root, "leaderboard", out JsonElement leaderboards))
+        {
+            if (leaderboards.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement leaderboard in leaderboards.EnumerateArray())
+                {
+                    if (TryGetProperty(leaderboard, "player", out players) &&
+                        players.ValueKind == JsonValueKind.Array &&
+                        players.GetArrayLength() > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            else if (leaderboards.ValueKind == JsonValueKind.Object &&
+                     TryGetProperty(leaderboards, "player", out players) &&
+                     players.ValueKind == JsonValueKind.Array &&
+                     players.GetArrayLength() > 0)
+            {
+                return true;
+            }
+        }
+
+        players = default;
+        return false;
     }
 
     private static Participant? ResolveOpponent(
