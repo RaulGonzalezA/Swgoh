@@ -70,7 +70,11 @@ public sealed class PlayerRosterServiceTests
 
         PlayerRosterPage? factionResult = await service.GetAsync(
             476_825_771,
-            new PlayerRosterQuery(Search: "Galactic Republic", OrderBy: PlayerRosterSortField.Name, Direction: PlayerRosterSortDirection.Ascending),
+            new PlayerRosterQuery(
+                Search: "Galactic Republic",
+                Type: PlayerRosterUnitType.Character,
+                OrderBy: PlayerRosterSortField.Name,
+                Direction: PlayerRosterSortDirection.Ascending),
             TestContext.Current.CancellationToken);
         PlayerRosterUnit factionUnit = Assert.Single(Assert.IsType<PlayerRosterPage>(factionResult).Items);
         Assert.Equal("CHAR_ALPHA", factionUnit.DefinitionId);
