@@ -47,6 +47,11 @@ internal sealed class ConquestService(
         ArgumentNullException.ThrowIfNull(input);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.EventId);
         ConquestFeat[] feats = [.. input.Feats.Select(ToDomain)];
+        ConquestUnitStamina[] stamina =
+        [
+            .. (input.Stamina ?? [])
+                .Select(value => ConquestUnitStamina.Create(value.DefinitionId, value.CurrentPercent))
+        ];
         string id = ConquestPlan.BuildId(allyCode, input.EventId);
         ConquestPlan? existing = await repository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
 
@@ -59,11 +64,21 @@ internal sealed class ConquestService(
                 input.Name,
                 input.Difficulty,
                 feats,
-                clock.UtcNow);
+                clock.UtcNow,
+                input.StaminaCostPerBattle,
+                input.ReserveFloorPercent,
+                stamina);
         }
         else
         {
-            existing.Replace(input.Name, input.Difficulty, feats, clock.UtcNow);
+            existing.Replace(
+                input.Name,
+                input.Difficulty,
+                feats,
+                input.StaminaCostPerBattle,
+                input.ReserveFloorPercent,
+                stamina,
+                clock.UtcNow);
             plan = existing;
         }
 
@@ -89,13 +104,13 @@ internal sealed class ConquestService(
         PlayerProfile? player = await playerTask.ConfigureAwait(false);
         if (player is null)
         {
-            return new ConquestOptimizationResult(allyCode, plan.EventId, 0, 0, [], []);
+            return EmptyResult(plan, pendingFeats: 0, candidateCharacters: 0);
         }
 
         ConquestFeat[] pending = [.. plan.Feats.Where(feat => !feat.IsComplete)];
         if (pending.Length == 0)
         {
-            return new ConquestOptimizationResult(allyCode, plan.EventId, 0, 0, [], []);
+            return EmptyResult(plan, pendingFeats: 0, candidateCharacters: 0);
         }
 
         GameDataCatalog catalog = await catalogTask.ConfigureAwait(false);
@@ -103,7 +118,7 @@ internal sealed class ConquestService(
         [
             .. player.Roster
                 .Where(unit => !unit.IsShip)
-                .Select(unit => ToCandidate(unit, catalog, pending))
+                .Select(unit => ToCandidate(unit, catalog, pending, plan))
                 .Where(candidate => candidate is not null)
                 .Select(candidate => candidate!)
         ];
@@ -114,6 +129,8 @@ internal sealed class ConquestService(
                 plan.EventId,
                 pending.Length,
                 0,
+                plan.StaminaCostPerBattle,
+                plan.ReserveFloorPercent,
                 [],
                 [.. pending.Select(feat => feat.Id)]);
         }
@@ -122,13 +139,15 @@ internal sealed class ConquestService(
         [
             .. allCharacters
                 .OrderByDescending(candidate => candidate.FeatWeight)
+                .ThenByDescending(candidate => candidate.View.CurrentStamina)
                 .ThenByDescending(candidate => candidate.Unit.GalacticPower)
                 .Take(CandidatePoolSize)
         ];
         CandidateUnit[] tacticalFillers =
         [
             .. allCharacters
-                .OrderByDescending(candidate => candidate.Unit.GalacticPower)
+                .OrderByDescending(candidate => candidate.View.CurrentStamina)
+                .ThenByDescending(candidate => candidate.Unit.GalacticPower)
                 .Take(10)
         ];
         CandidateUnit[] pool =
@@ -140,14 +159,14 @@ internal sealed class ConquestService(
                 .Take(CandidatePoolSize)
         ];
 
-        List<TeamCandidate> teams = BuildTeams(pool, pending);
+        List<TeamCandidate> teams = BuildTeams(pool, pending, plan.ReserveFloorPercent);
         ConquestTeamRecommendation[] recommendations =
         [
             .. teams
                 .OrderByDescending(team => team.FeatEfficiency)
                 .ThenByDescending(team => team.Score)
                 .Take(RecommendationCount)
-                .Select((team, index) => ToRecommendation(team, index + 1))
+                .Select((team, index) => ToRecommendation(team, index + 1, plan.ReserveFloorPercent))
         ];
         HashSet<Guid> covered = recommendations
             .SelectMany(recommendation => recommendation.AdvancesFeats)
@@ -159,19 +178,36 @@ internal sealed class ConquestService(
             plan.EventId,
             pending.Length,
             pool.Length,
+            plan.StaminaCostPerBattle,
+            plan.ReserveFloorPercent,
             recommendations,
             [.. pending.Where(feat => !covered.Contains(feat.Id)).Select(feat => feat.Id)]);
     }
 
+    private static ConquestOptimizationResult EmptyResult(
+        ConquestPlan plan,
+        int pendingFeats,
+        int candidateCharacters) => new(
+            plan.AllyCode,
+            plan.EventId,
+            pendingFeats,
+            candidateCharacters,
+            plan.StaminaCostPerBattle,
+            plan.ReserveFloorPercent,
+            [],
+            []);
+
     private static List<TeamCandidate> BuildTeams(
         IReadOnlyCollection<CandidateUnit> pool,
-        IReadOnlyCollection<ConquestFeat> pending)
+        IReadOnlyCollection<ConquestFeat> pending,
+        int reserveFloorPercent)
     {
         var teams = new Dictionary<string, TeamCandidate>(StringComparer.Ordinal);
         CandidateUnit[] seeds =
         [
             .. pool
                 .OrderByDescending(candidate => candidate.FeatWeight)
+                .ThenByDescending(candidate => candidate.View.CurrentStamina)
                 .ThenByDescending(candidate => candidate.Unit.GalacticPower)
                 .Take(SeedCount)
         ];
@@ -189,7 +225,7 @@ internal sealed class ConquestService(
                     .Select(candidate => new
                     {
                         Candidate = candidate,
-                        Evaluation = EvaluateTeam([.. selected, candidate], pending)
+                        Evaluation = EvaluateTeam([.. selected, candidate], pending, reserveFloorPercent)
                     })
                     .OrderByDescending(value => value.Evaluation.FeatEfficiency)
                     .ThenByDescending(value => value.Evaluation.Score)
@@ -205,17 +241,20 @@ internal sealed class ConquestService(
 
             if (selected.Count == TeamSize)
             {
-                AddTeam(teams, EvaluateTeam(selected, pending));
+                AddTeam(teams, EvaluateTeam(selected, pending, reserveFloorPercent));
             }
         }
 
-        CandidateUnit[] strongest =
+        CandidateUnit[] strongestRested =
         [
-            .. pool.OrderByDescending(candidate => candidate.Unit.GalacticPower).Take(TeamSize)
+            .. pool
+                .OrderByDescending(candidate => candidate.View.CurrentStamina)
+                .ThenByDescending(candidate => candidate.Unit.GalacticPower)
+                .Take(TeamSize)
         ];
-        if (strongest.Length == TeamSize)
+        if (strongestRested.Length == TeamSize)
         {
-            AddTeam(teams, EvaluateTeam(strongest, pending));
+            AddTeam(teams, EvaluateTeam(strongestRested, pending, reserveFloorPercent));
         }
 
         return [.. teams.Values.Where(team => team.Contributions.Count > 0)];
@@ -234,7 +273,8 @@ internal sealed class ConquestService(
 
     private static TeamCandidate EvaluateTeam(
         IReadOnlyCollection<CandidateUnit> team,
-        IReadOnlyCollection<ConquestFeat> pending)
+        IReadOnlyCollection<ConquestFeat> pending,
+        int reserveFloorPercent)
     {
         ConquestFeatContribution[] contributions =
         [
@@ -247,13 +287,45 @@ internal sealed class ConquestService(
         long totalGp = team.Sum(candidate => candidate.Unit.GalacticPower);
         decimal? averageSpeed = AverageNullable(team.Select(candidate => candidate.Unit.Stats?.Speed));
         decimal relicDepth = team.Average(candidate => (decimal)candidate.Unit.RelicTier);
-        decimal tactical = Math.Min(14m, totalGp / 30_000m) + Math.Min(6m, relicDepth * 0.75m);
+        decimal averageStamina = Math.Round(team.Average(candidate => (decimal)candidate.View.CurrentStamina), 1);
+        decimal postBattleAverageStamina = Math.Round(
+            team.Average(candidate => (decimal)candidate.View.ExpectedPostBattleStamina),
+            1);
+        int reserveRiskUnits = team.Count(candidate => candidate.View.BelowReserveAfterBattle);
+        decimal staminaOpportunityCost = Math.Round(
+            team.Sum(candidate => StaminaOpportunityCost(candidate.View, reserveFloorPercent)),
+            1);
+        decimal readiness = 0.55m + (0.45m * (averageStamina / 100m));
+        decimal tacticalBase = Math.Min(14m, totalGp / 30_000m) + Math.Min(6m, relicDepth * 0.75m);
+        decimal tactical = tacticalBase * readiness;
         decimal score = Math.Round(Math.Clamp(
-            (featEfficiency * 4m) + (contributions.Length * 5m) + tactical,
+            (featEfficiency * 4m) + (contributions.Length * 5m) + tactical - staminaOpportunityCost,
             0m,
             100m), 1);
 
-        return new TeamCandidate(team, contributions, score, featEfficiency, totalGp, averageSpeed);
+        return new TeamCandidate(
+            team,
+            contributions,
+            score,
+            featEfficiency,
+            totalGp,
+            averageSpeed,
+            averageStamina,
+            postBattleAverageStamina,
+            staminaOpportunityCost,
+            reserveRiskUnits);
+    }
+
+    private static decimal StaminaOpportunityCost(
+        ConquestOptimizationUnit unit,
+        int reserveFloorPercent)
+    {
+        decimal depletionPenalty = (100m - unit.CurrentStamina) / 25m;
+        decimal reservePenalty = unit.ExpectedPostBattleStamina < reserveFloorPercent
+            ? 2m + ((reserveFloorPercent - unit.ExpectedPostBattleStamina) / 10m * 1.5m)
+            : 0m;
+        decimal criticalPenalty = unit.ExpectedPostBattleStamina == 0 ? 4m : 0m;
+        return depletionPenalty + reservePenalty + criticalPenalty;
     }
 
     private static ConquestFeatContribution? Contribution(
@@ -282,13 +354,21 @@ internal sealed class ConquestService(
     private static CandidateUnit? ToCandidate(
         RosterUnit unit,
         GameDataCatalog catalog,
-        IReadOnlyCollection<ConquestFeat> pending)
+        IReadOnlyCollection<ConquestFeat> pending,
+        ConquestPlan plan)
     {
         if (!catalog.Units.TryGetValue(unit.DefinitionId, out GameUnitDefinition? definition) || definition.IsShip)
         {
             return null;
         }
 
+        int currentStamina = plan.GetCurrentStamina(unit.DefinitionId);
+        if (currentStamina == 0)
+        {
+            return null;
+        }
+
+        int expectedPostBattleStamina = Math.Max(0, currentStamina - plan.StaminaCostPerBattle);
         var view = new ConquestOptimizationUnit(
             unit.DefinitionId,
             definition.Name,
@@ -296,11 +376,15 @@ internal sealed class ConquestService(
             unit.RelicTier,
             unit.GalacticPower,
             unit.Stats?.Speed,
-            definition.Factions);
-        decimal weight = pending
+            definition.Factions,
+            currentStamina,
+            expectedPostBattleStamina,
+            expectedPostBattleStamina < plan.ReserveFloorPercent);
+        decimal baseWeight = pending
             .Where(feat => Matches(unit.DefinitionId, definition.Factions, feat.Rule))
             .Sum(feat => feat.Points / (decimal)Math.Max(1, feat.Remaining));
-        return new CandidateUnit(unit, view, weight);
+        decimal readinessWeight = 0.65m + (0.35m * currentStamina / 100m);
+        return new CandidateUnit(unit, view, baseWeight * readinessWeight);
     }
 
     private static bool Matches(CandidateUnit candidate, ConquestFeatRule rule) =>
@@ -329,18 +413,28 @@ internal sealed class ConquestService(
         return known.Length == 0 ? null : Math.Round(known.Average(), 1);
     }
 
-    private static ConquestTeamRecommendation ToRecommendation(TeamCandidate team, int rank)
+    private static ConquestTeamRecommendation ToRecommendation(
+        TeamCandidate team,
+        int rank,
+        int reserveFloorPercent)
     {
         string featNames = string.Join(", ", team.Contributions.Select(item => item.FeatName));
+        string staminaNote = team.ReserveRiskUnits > 0
+            ? $" Stamina media {team.AverageStamina:0}% → {team.PostBattleAverageStamina:0}%; {team.ReserveRiskUnits} unidad(es) quedarían por debajo de la reserva del {reserveFloorPercent}%."
+            : $" Stamina media {team.AverageStamina:0}% → {team.PostBattleAverageStamina:0}%.";
         return new ConquestTeamRecommendation(
             rank,
             team.Score,
             team.FeatEfficiency,
             team.TeamGalacticPower,
             team.AverageSpeed,
+            team.AverageStamina,
+            team.PostBattleAverageStamina,
+            team.StaminaOpportunityCost,
+            team.ReserveRiskUnits,
             [.. team.Units.Select(candidate => candidate.View)],
             team.Contributions,
-            $"Avanza {team.Contributions.Count} hazaña(s) en la misma batalla: {featNames}.");
+            $"Avanza {team.Contributions.Count} hazaña(s) en la misma batalla: {featNames}.{staminaNote}");
     }
 
     private static ConquestFeat ToDomain(SaveConquestFeat input) => ConquestFeat.Create(
@@ -386,6 +480,9 @@ internal sealed class ConquestService(
             feats.Length,
             feats.Where(feat => feat.IsComplete).Sum(feat => feat.Points),
             feats.Where(feat => !feat.IsComplete).Sum(feat => feat.Points),
+            plan.StaminaCostPerBattle,
+            plan.ReserveFloorPercent,
+            plan.Stamina,
             plan.UpdatedAtUtc);
     }
 
@@ -400,5 +497,9 @@ internal sealed class ConquestService(
         decimal Score,
         decimal FeatEfficiency,
         long TeamGalacticPower,
-        decimal? AverageSpeed);
+        decimal? AverageSpeed,
+        decimal AverageStamina,
+        decimal PostBattleAverageStamina,
+        decimal StaminaOpportunityCost,
+        int ReserveRiskUnits);
 }
