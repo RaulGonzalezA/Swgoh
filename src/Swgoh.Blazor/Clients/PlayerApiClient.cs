@@ -91,7 +91,11 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         int Level,
         long GalacticPower,
         DateTimeOffset UpdatedAtUtc,
-        int RosterCount);
+        int RosterCount,
+        IReadOnlyCollection<PlayerDatacronViewModel>? Datacrons = null)
+    {
+        public IReadOnlyCollection<PlayerDatacronViewModel> AvailableDatacrons => Datacrons ?? [];
+    }
 
     public sealed record PlayerRosterAnalysisViewModel(
         long AllyCode,
@@ -134,5 +138,44 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         long GalacticPower,
         bool IsShip,
         int ZetaCount,
-        int OmicronCount);
+        int OmicronCount,
+        RosterUnitStatsViewModel? Stats = null,
+        RosterModSummaryViewModel? Mods = null);
+
+    public sealed record RosterUnitStatsViewModel(
+        decimal? Health,
+        decimal? Protection,
+        decimal? Speed,
+        decimal? PhysicalDamage,
+        decimal? SpecialDamage,
+        decimal? Armor,
+        decimal? Resistance,
+        decimal? Potency,
+        decimal? Tenacity,
+        decimal? CriticalDamage);
+
+    public sealed record RosterModSummaryViewModel(
+        int EquippedCount,
+        int SixDotCount,
+        int SpeedSetModCount,
+        int SpeedPrimaryCount,
+        decimal? SpeedBonus,
+        bool IsComplete);
+
+    public sealed record PlayerDatacronViewModel(
+        string Id,
+        string SetId,
+        string TemplateId,
+        int Tier,
+        bool Locked,
+        int HighestRequiredRelicTier,
+        bool HasAbilityAffix,
+        IReadOnlyCollection<PlayerDatacronAffixViewModel> Affixes);
+
+    public sealed record PlayerDatacronAffixViewModel(
+        string? AbilityId,
+        int? StatType,
+        long? StatValue,
+        int? RequiredRelicTier,
+        IReadOnlyCollection<string> Tags);
 }
