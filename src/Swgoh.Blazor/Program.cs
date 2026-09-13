@@ -11,6 +11,7 @@ builder.Services.AddHttpClient<GacPlannerApiClient>(client => client.BaseAddress
 builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddScoped<PlayerSessionState>();
 builder.Services.AddScoped<PlayerPreferenceService>();
+builder.Services.AddScoped<PlayerContextService>();
 
 WebApplication app = builder.Build();
 if (!app.Environment.IsDevelopment())
