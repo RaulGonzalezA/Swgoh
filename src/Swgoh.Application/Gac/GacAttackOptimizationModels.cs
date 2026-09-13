@@ -28,7 +28,12 @@ public sealed record GacAttackOptimizationRecommendation(
     decimal? DefenseAverageSpeed = null,
     decimal? TeamModSpeedBonus = null,
     decimal? DefenseModSpeedBonus = null,
-    string DatacronStatus = "NotRequired");
+    string DatacronStatus = "NotRequired",
+    decimal BaseStrategicCost = 0m,
+    decimal OpportunityCost = 0m,
+    int StrategicAlternatives = 0,
+    int FutureDefensesAtRisk = 0,
+    string StrategicRationale = "");
 
 public sealed record GacAttackOptimizationResult(
     GacAttackOptimizationMode Mode,
