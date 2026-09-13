@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacRulesService, GacRulesService>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();
         services.AddScoped<IOpponentScoutingService, OpponentScoutingService>();
+        services.AddScoped<ICurrentGacScoutingService, CurrentGacScoutingService>();
         return services;
     }
 }
