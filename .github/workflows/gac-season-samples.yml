@@ -1,0 +1,71 @@
+name: GAC Season Samples
+
+on:
+  push:
+    branches: [ diagnostics/gac-player-context-v2 ]
+    paths:
+      - .github/workflows/gac-season-samples.yml
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start Comlink
+        run: |
+          docker run -d --name comlink -p 3000:3000 -e APP_NAME=gac-season-samples -e PORT=3000 ghcr.io/swgoh-utils/swgoh-comlink:latest
+          for i in {1..60}; do curl -sf http://127.0.0.1:3000/ >/dev/null && exit 0; sleep 2; done
+          exit 1
+      - name: Sample brackets
+        run: |
+          mkdir -p gac-season-samples
+          python3 - <<'PY'
+          import json, pathlib, urllib.request, urllib.error, time
+          BASE='http://127.0.0.1:3000'
+          def post(path,payload):
+            data=json.dumps(payload).encode()
+            for attempt in range(5):
+              req=urllib.request.Request(f'{BASE}/{path}',data=data,headers={'Content-Type':'application/json'},method='POST')
+              try:
+                with urllib.request.urlopen(req,timeout=30) as r:
+                  raw=r.read().decode(); return r.status,json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as e:
+                raw=e.read().decode()
+                try: body=json.loads(raw) if raw else {}
+                except: body={'raw':raw}
+                if e.code==400 and 'rate exceeded' in str(body.get('message','')).lower() and attempt<4:
+                  time.sleep(.5*(attempt+1)); continue
+                return e.code,body
+          _,player=post('player',{'payload':{'allyCode':'476825771'},'enums':False})
+          season=(player.get('seasonStatus') or [])[-1]
+          eid=season['eventInstanceId']; league=str(season['league'])
+          result={'season':season,'samples':[]}
+          for token in [league.upper(),league.lower()]:
+            for idx in [0,1,2,5,10,50,100,250,500,738,750,1000,1500,2000]:
+              gid=f'{eid}:{token}:{idx}'
+              status,body=post('getLeaderboard',{'payload':{'leaderboardType':4,'eventInstanceId':eid,'groupId':gid},'enums':False})
+              nested=[]
+              for board in body.get('leaderboard') or []:
+                if isinstance(board,dict) and isinstance(board.get('player'),list): nested.extend(board['player'])
+              root=body.get('player') if isinstance(body,dict) else None
+              players=root if isinstance(root,list) and root else nested
+              result['samples'].append({'groupId':gid,'status':status,'rootPlayerCount':len(root) if isinstance(root,list) else None,'nestedPlayerCount':len(nested),'players':[{'id':p.get('id'),'name':p.get('name')} for p in players[:8] if isinstance(p,dict)],'message':body.get('message') if isinstance(body,dict) else None})
+              time.sleep(.1)
+          pathlib.Path('gac-season-samples/result.json').write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n')
+          print(json.dumps(result,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gac-season-samples
+          path: gac-season-samples/
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
