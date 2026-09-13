@@ -39,7 +39,9 @@ public sealed class SwgohGameDataCatalogClientTests
         Assert.Equal("Clone Captain", character.Name);
         Assert.Equal("tex.charui_character", character.ThumbnailName);
         Assert.Contains("Galactic Republic", character.Factions);
+        Assert.DoesNotContain("Internal Test", character.Factions);
         Assert.Contains("affiliation_republic", character.Tags);
+        Assert.Contains("affiliation_internal_test", character.Tags);
         Assert.Contains("role_support", character.Tags);
 
         Assert.True(first.Units["SHIP"].IsShip);
@@ -77,7 +79,8 @@ public sealed class SwgohGameDataCatalogClientTests
                           "UNIT_CHARACTER_NAME":"Clone Captain",
                           "UNIT_SHIP_NAME":"Republic Fighter",
                           "CATEGORY_GALACTICREPUBLIC_DESC":"Galactic Republic",
-                          "CATEGORY_SUPPORT_DESC":"Support"
+                          "CATEGORY_SUPPORT_DESC":"Support",
+                          "CATEGORY_INTERNAL_TEST_DESC":"Internal Test"
                         }
                         """)
                 });
@@ -92,7 +95,7 @@ public sealed class SwgohGameDataCatalogClientTests
                         "combatType":1,
                         "nameKey":"UNIT_CHARACTER_NAME",
                         "thumbnailName":"tex.charui_character",
-                        "categoryId":["affiliation_republic","role_support"]
+                        "categoryId":["affiliation_republic","affiliation_internal_test","role_support"]
                       },
                       {
                         "baseId":"SHIP",
@@ -106,6 +109,7 @@ public sealed class SwgohGameDataCatalogClientTests
                 "/category.json" => """
                     {"data":[
                       {"id":"affiliation_republic","descKey":"CATEGORY_GALACTICREPUBLIC_DESC","visible":true},
+                      {"id":"affiliation_internal_test","descKey":"CATEGORY_INTERNAL_TEST_DESC","visible":false},
                       {"id":"role_support","descKey":"CATEGORY_SUPPORT_DESC","visible":true},
                       {"id":"shipclass_fighter","descKey":"CATEGORY_FIGHTER_DESC","visible":false}
                     ]}
