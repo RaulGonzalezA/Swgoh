@@ -13,6 +13,13 @@ internal sealed class PlayerSnapshotMongoRepository(IMongoDbRepository<PlayerSna
     internal const string CollectionName = "playerSnapshots";
     internal const string AllyCodeCapturedAtIndexName = "ix_player_snapshots_ally_code_captured_at";
 
+    public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        PlayerSnapshotDocument? document = await repository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        return document is not null;
+    }
+
     public Task UpsertAsync(PlayerSnapshot snapshot, CancellationToken cancellationToken = default) =>
         repository.UpsertAsync(ToDocument(snapshot), cancellationToken);
 
