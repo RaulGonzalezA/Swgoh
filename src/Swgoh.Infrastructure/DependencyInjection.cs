@@ -55,7 +55,7 @@ public static class DependencyInjection
 
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
-        string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "ENG_US";
+        string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
         services.AddHttpClient(SwgohGameDataCatalogClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(gameDataBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
