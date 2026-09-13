@@ -10,7 +10,7 @@ public sealed class GacPersonalLearningContextTests
     [InlineData(1, 1, 0.1, 0.3)]
     [InlineData(8, 8, 3.9, 4.1)]
     [InlineData(8, 0, -4.1, -3.9)]
-    public void Evaluate_ExactHistory_IsBayesianAndBounded(int uses, int wins, decimal min, decimal max)
+    public void Evaluate_ExactHistory_IsBayesianAndBounded(int uses, int wins, double min, double max)
     {
         GacTeamPresetDetails preset = Preset(["A", "B", "C"]);
         GacVisibleDefenseDetails defense = Defense(["X", "Y", "Z"]);
@@ -20,7 +20,7 @@ public sealed class GacPersonalLearningContextTests
 
         Assert.Equal("Exact", signal.Scope);
         Assert.Equal(uses, signal.Samples);
-        Assert.InRange(signal.Adjustment, min, max);
+        Assert.InRange(signal.Adjustment, (decimal)min, (decimal)max);
     }
 
     [Fact]
