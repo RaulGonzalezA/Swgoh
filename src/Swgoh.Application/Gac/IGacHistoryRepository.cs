@@ -13,4 +13,9 @@ public interface IGacHistoryRepository
         GacFormat? format,
         int maxRounds,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyCollection<GacHistoricalRound>> GetRecentAsync(
+        GacFormat format,
+        int maxRounds,
+        CancellationToken cancellationToken = default);
 }
