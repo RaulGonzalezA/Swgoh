@@ -41,7 +41,12 @@ internal sealed class GacPersonalLearningContext
             string.Equals(item.MatchupKey, exactKey, StringComparison.Ordinal));
         if (exact is not null && exact.Uses > 0)
         {
-            return BuildSignal(exact.Uses, exact.Wins, exactMatch: true);
+            return BuildSignal(
+                exact.Uses,
+                exact.Wins,
+                exact.OneShotRate,
+                exact.AverageBanners,
+                exactMatch: true);
         }
 
         string attackerLeader = preset.Squad.Leader.DefinitionId;
@@ -67,10 +72,22 @@ internal sealed class GacPersonalLearningContext
             return GacPersonalLearningSignal.None;
         }
 
-        return BuildSignal(samples, leaderPair.Sum(item => item.Wins), exactMatch: false);
+        int wins = leaderPair.Sum(item => item.Wins);
+        decimal? oneShotRate = WeightedAverage(
+            leaderPair.Where(item => item.OneShotRate is not null)
+                .Select(item => (item.OneShotRate!.Value, item.Uses)));
+        decimal? averageBanners = WeightedAverage(
+            leaderPair.Where(item => item.AverageBanners is not null && item.Wins > 0)
+                .Select(item => (item.AverageBanners!.Value, item.Wins)));
+        return BuildSignal(samples, wins, oneShotRate, averageBanners, exactMatch: false);
     }
 
-    private static GacPersonalLearningSignal BuildSignal(int samples, int wins, bool exactMatch)
+    private static GacPersonalLearningSignal BuildSignal(
+        int samples,
+        int wins,
+        decimal? oneShotRate,
+        decimal? averageBanners,
+        bool exactMatch)
     {
         int failures = samples - wins;
         decimal posterior;
@@ -96,7 +113,21 @@ internal sealed class GacPersonalLearningContext
         decimal winRate = wins / (decimal)samples;
         decimal roundedAdjustment = Math.Round(adjustment, 1);
         string label = exactMatch ? "Tu histórico exacto" : "Tu tendencia por líderes";
-        string summary = $"{label}: {wins}/{samples} victorias ({winRate:P0}); ajuste {roundedAdjustment:+0.#;-0.#;0}.";
+        var details = new List<string>
+        {
+            $"{wins}/{samples} victorias ({winRate:P0})"
+        };
+        if (oneShotRate is decimal oneShot)
+        {
+            details.Add($"1-shot {oneShot:P0}");
+        }
+
+        if (averageBanners is decimal banners)
+        {
+            details.Add($"{banners:0.#} banners medios");
+        }
+
+        string summary = $"{label}: {string.Join(", ", details)}; ajuste {roundedAdjustment:+0.#;-0.#;0}.";
 
         return new GacPersonalLearningSignal(
             roundedAdjustment,
@@ -104,7 +135,18 @@ internal sealed class GacPersonalLearningContext
             wins,
             failures,
             Math.Round(winRate, 3),
+            oneShotRate is null ? null : Math.Round(oneShotRate.Value, 3),
+            averageBanners is null ? null : Math.Round(averageBanners.Value, 1),
             scope,
             summary);
+    }
+
+    private static decimal? WeightedAverage(IEnumerable<(decimal Value, int Weight)> values)
+    {
+        (decimal Value, int Weight)[] items = [.. values.Where(item => item.Weight > 0)];
+        int totalWeight = items.Sum(item => item.Weight);
+        return totalWeight == 0
+            ? null
+            : items.Sum(item => item.Value * item.Weight) / totalWeight;
     }
 }
