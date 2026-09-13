@@ -30,6 +30,8 @@ internal sealed class ConquestService(
     private const int CandidatePoolSize = 30;
     private const int SeedCount = 18;
     private const int RecommendationCount = 8;
+    private const decimal DiskFeatSynergyBonus = 1.5m;
+    private const decimal MaximumDiskScoreBonus = 20m;
 
     public async Task<ConquestPlanDetails?> GetCurrentAsync(
         long allyCode,
@@ -52,8 +54,11 @@ internal sealed class ConquestService(
             .. (input.Stamina ?? [])
                 .Select(value => ConquestUnitStamina.Create(value.DefinitionId, value.CurrentPercent))
         ];
+        ConquestDataDisk[] dataDisks = [.. (input.DataDisks ?? []).Select(ToDomain)];
+        ConquestDiskLoadout[] diskLoadouts = [.. (input.DiskLoadouts ?? []).Select(ToDomain)];
         string id = ConquestPlan.BuildId(allyCode, input.EventId);
         ConquestPlan? existing = await repository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        DateTimeOffset now = clock.UtcNow;
 
         ConquestPlan plan;
         if (existing is null)
@@ -64,7 +69,7 @@ internal sealed class ConquestService(
                 input.Name,
                 input.Difficulty,
                 feats,
-                clock.UtcNow,
+                now,
                 input.StaminaCostPerBattle,
                 input.ReserveFloorPercent,
                 stamina);
@@ -78,10 +83,11 @@ internal sealed class ConquestService(
                 input.StaminaCostPerBattle,
                 input.ReserveFloorPercent,
                 stamina,
-                clock.UtcNow);
+                now);
             plan = existing;
         }
 
+        plan.ReplaceDataDisks(input.DiskCapacityLimit, dataDisks, diskLoadouts, now);
         await repository.UpsertAsync(plan, cancellationToken).ConfigureAwait(false);
         return ToDetails(plan);
     }
@@ -131,6 +137,7 @@ internal sealed class ConquestService(
                 0,
                 plan.StaminaCostPerBattle,
                 plan.ReserveFloorPercent,
+                plan.DiskCapacityLimit,
                 [],
                 [.. pending.Select(feat => feat.Id)]);
         }
@@ -159,7 +166,7 @@ internal sealed class ConquestService(
                 .Take(CandidatePoolSize)
         ];
 
-        List<TeamCandidate> teams = BuildTeams(pool, pending, plan.ReserveFloorPercent);
+        List<TeamCandidate> teams = BuildTeams(pool, pending, plan);
         ConquestTeamRecommendation[] recommendations =
         [
             .. teams
@@ -180,6 +187,7 @@ internal sealed class ConquestService(
             pool.Length,
             plan.StaminaCostPerBattle,
             plan.ReserveFloorPercent,
+            plan.DiskCapacityLimit,
             recommendations,
             [.. pending.Where(feat => !covered.Contains(feat.Id)).Select(feat => feat.Id)]);
     }
@@ -194,13 +202,14 @@ internal sealed class ConquestService(
             candidateCharacters,
             plan.StaminaCostPerBattle,
             plan.ReserveFloorPercent,
+            plan.DiskCapacityLimit,
             [],
             []);
 
     private static List<TeamCandidate> BuildTeams(
         IReadOnlyCollection<CandidateUnit> pool,
         IReadOnlyCollection<ConquestFeat> pending,
-        int reserveFloorPercent)
+        ConquestPlan plan)
     {
         var teams = new Dictionary<string, TeamCandidate>(StringComparer.Ordinal);
         CandidateUnit[] seeds =
@@ -225,7 +234,7 @@ internal sealed class ConquestService(
                     .Select(candidate => new
                     {
                         Candidate = candidate,
-                        Evaluation = EvaluateTeam([.. selected, candidate], pending, reserveFloorPercent)
+                        Evaluation = EvaluateTeam([.. selected, candidate], pending, plan)
                     })
                     .OrderByDescending(value => value.Evaluation.FeatEfficiency)
                     .ThenByDescending(value => value.Evaluation.Score)
@@ -241,7 +250,7 @@ internal sealed class ConquestService(
 
             if (selected.Count == TeamSize)
             {
-                AddTeam(teams, EvaluateTeam(selected, pending, reserveFloorPercent));
+                AddTeam(teams, EvaluateTeam(selected, pending, plan));
             }
         }
 
@@ -254,7 +263,7 @@ internal sealed class ConquestService(
         ];
         if (strongestRested.Length == TeamSize)
         {
-            AddTeam(teams, EvaluateTeam(strongestRested, pending, reserveFloorPercent));
+            AddTeam(teams, EvaluateTeam(strongestRested, pending, plan));
         }
 
         return [.. teams.Values.Where(team => team.Contributions.Count > 0)];
@@ -274,7 +283,7 @@ internal sealed class ConquestService(
     private static TeamCandidate EvaluateTeam(
         IReadOnlyCollection<CandidateUnit> team,
         IReadOnlyCollection<ConquestFeat> pending,
-        int reserveFloorPercent)
+        ConquestPlan plan)
     {
         ConquestFeatContribution[] contributions =
         [
@@ -293,13 +302,19 @@ internal sealed class ConquestService(
             1);
         int reserveRiskUnits = team.Count(candidate => candidate.View.BelowReserveAfterBattle);
         decimal staminaOpportunityCost = Math.Round(
-            team.Sum(candidate => StaminaOpportunityCost(candidate.View, reserveFloorPercent)),
+            team.Sum(candidate => StaminaOpportunityCost(candidate.View, plan.ReserveFloorPercent)),
             1);
+        ConquestDiskRecommendation? diskLoadout = BestDiskLoadout(team, contributions, plan);
+        decimal diskScoreBonus = Math.Min(MaximumDiskScoreBonus, diskLoadout?.PlannerBonus ?? 0m);
         decimal readiness = 0.55m + (0.45m * (averageStamina / 100m));
         decimal tacticalBase = Math.Min(14m, totalGp / 30_000m) + Math.Min(6m, relicDepth * 0.75m);
         decimal tactical = tacticalBase * readiness;
         decimal score = Math.Round(Math.Clamp(
-            (featEfficiency * 4m) + (contributions.Length * 5m) + tactical - staminaOpportunityCost,
+            (featEfficiency * 4m) +
+            (contributions.Length * 5m) +
+            tactical +
+            diskScoreBonus -
+            staminaOpportunityCost,
             0m,
             100m), 1);
 
@@ -313,7 +328,75 @@ internal sealed class ConquestService(
             averageStamina,
             postBattleAverageStamina,
             staminaOpportunityCost,
-            reserveRiskUnits);
+            reserveRiskUnits,
+            diskLoadout);
+    }
+
+    private static ConquestDiskRecommendation? BestDiskLoadout(
+        IReadOnlyCollection<CandidateUnit> team,
+        IReadOnlyCollection<ConquestFeatContribution> contributions,
+        ConquestPlan plan)
+    {
+        if (plan.DiskLoadouts.Count == 0 || plan.DataDisks.Count == 0)
+        {
+            return null;
+        }
+
+        Dictionary<Guid, ConquestDataDisk> disksById = plan.DataDisks.ToDictionary(disk => disk.Id);
+        HashSet<Guid> contributionFeatIds = contributions.Select(value => value.FeatId).ToHashSet();
+
+        return plan.DiskLoadouts
+            .Select(loadout =>
+            {
+                ConquestDataDisk[] loadoutDisks =
+                [
+                    .. loadout.DiskIds
+                        .Where(disksById.ContainsKey)
+                        .Select(id => disksById[id])
+                ];
+                ConquestDataDisk[] applicable =
+                [
+                    .. loadoutDisks.Where(disk => DiskAppliesToTeam(disk, team))
+                ];
+                Guid[] matchedFeatIds =
+                [
+                    .. applicable
+                        .SelectMany(disk => disk.SupportedFeatIds)
+                        .Where(contributionFeatIds.Contains)
+                        .Distinct()
+                ];
+                decimal bonus = Math.Round(
+                    applicable.Sum(disk => disk.PlannerBonus) +
+                    (matchedFeatIds.Length * DiskFeatSynergyBonus),
+                    1);
+                return new ConquestDiskRecommendation(
+                    loadout.Id,
+                    loadout.Name,
+                    loadoutDisks.Sum(disk => disk.CapacityCost),
+                    plan.DiskCapacityLimit,
+                    bonus,
+                    loadoutDisks,
+                    matchedFeatIds);
+            })
+            .OrderByDescending(value => value.PlannerBonus)
+            .ThenBy(value => value.CapacityUsed)
+            .FirstOrDefault();
+    }
+
+    private static bool DiskAppliesToTeam(
+        ConquestDataDisk disk,
+        IReadOnlyCollection<CandidateUnit> team)
+    {
+        int matching = disk.Target.Type switch
+        {
+            ConquestDataDiskTargetType.AnyTeam => team.Count,
+            ConquestDataDiskTargetType.Faction => team.Count(candidate => candidate.View.Factions.Any(faction =>
+                string.Equals(faction, disk.Target.Faction, StringComparison.OrdinalIgnoreCase))),
+            ConquestDataDiskTargetType.SpecificUnits => team.Count(candidate => disk.Target.UnitDefinitionIds.Any(id =>
+                string.Equals(id, candidate.Unit.DefinitionId, StringComparison.OrdinalIgnoreCase))),
+            _ => 0
+        };
+        return matching >= disk.Target.MinimumMatchingUnits;
     }
 
     private static decimal StaminaOpportunityCost(
@@ -422,6 +505,9 @@ internal sealed class ConquestService(
         string staminaNote = team.ReserveRiskUnits > 0
             ? $" Stamina media {team.AverageStamina:0}% → {team.PostBattleAverageStamina:0}%; {team.ReserveRiskUnits} unidad(es) quedarían por debajo de la reserva del {reserveFloorPercent}%."
             : $" Stamina media {team.AverageStamina:0}% → {team.PostBattleAverageStamina:0}%.";
+        string diskNote = team.DiskLoadout is null
+            ? string.Empty
+            : $" Preset de discos recomendado: {team.DiskLoadout.LoadoutName} ({team.DiskLoadout.CapacityUsed}/{team.DiskLoadout.CapacityLimit}, bonus planificador {team.DiskLoadout.PlannerBonus:0.#}).";
         return new ConquestTeamRecommendation(
             rank,
             team.Score,
@@ -432,9 +518,10 @@ internal sealed class ConquestService(
             team.PostBattleAverageStamina,
             team.StaminaOpportunityCost,
             team.ReserveRiskUnits,
+            team.DiskLoadout,
             [.. team.Units.Select(candidate => candidate.View)],
             team.Contributions,
-            $"Avanza {team.Contributions.Count} hazaña(s) en la misma batalla: {featNames}.{staminaNote}");
+            $"Avanza {team.Contributions.Count} hazaña(s) en la misma batalla: {featNames}.{staminaNote}{diskNote}");
     }
 
     private static ConquestFeat ToDomain(SaveConquestFeat input) => ConquestFeat.Create(
@@ -451,6 +538,24 @@ internal sealed class ConquestService(
             input.Faction,
             input.UnitDefinitionIds,
             input.MinimumMatchingUnits));
+
+    private static ConquestDataDisk ToDomain(SaveConquestDataDisk input) => ConquestDataDisk.Create(
+        input.Id ?? Guid.NewGuid(),
+        input.Name,
+        input.CapacityCost,
+        input.PlannerBonus,
+        ConquestDataDiskTarget.Create(
+            input.TargetType,
+            input.Faction,
+            input.UnitDefinitionIds,
+            input.MinimumMatchingUnits),
+        input.SupportedFeatIds,
+        input.Notes);
+
+    private static ConquestDiskLoadout ToDomain(SaveConquestDiskLoadout input) => ConquestDiskLoadout.Create(
+        input.Id ?? Guid.NewGuid(),
+        input.Name,
+        input.DiskIds);
 
     private static ConquestPlanDetails ToDetails(ConquestPlan plan)
     {
@@ -483,6 +588,9 @@ internal sealed class ConquestService(
             plan.StaminaCostPerBattle,
             plan.ReserveFloorPercent,
             plan.Stamina,
+            plan.DiskCapacityLimit,
+            plan.DataDisks,
+            plan.DiskLoadouts,
             plan.UpdatedAtUtc);
     }
 
@@ -501,5 +609,6 @@ internal sealed class ConquestService(
         decimal AverageStamina,
         decimal PostBattleAverageStamina,
         decimal StaminaOpportunityCost,
-        int ReserveRiskUnits);
+        int ReserveRiskUnits,
+        ConquestDiskRecommendation? DiskLoadout);
 }

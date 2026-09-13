@@ -110,6 +110,7 @@ public partial class Conquest
         roster.Clear();
         feats.Clear();
         stamina.Clear();
+        ResetDiskState();
         StaminaCostPerBattle = DefaultStaminaCostPerBattle;
         ReserveFloorPercent = DefaultReserveFloorPercent;
 
@@ -216,6 +217,7 @@ public partial class Conquest
     protected void RemoveFeat(Guid id)
     {
         feats.RemoveAll(feat => feat.Id == id);
+        OnFeatRemoved(id);
         Optimization = null;
     }
 
@@ -229,7 +231,7 @@ public partial class Conquest
         }
         catch (HttpRequestException)
         {
-            Error = "No se ha podido guardar la Conquista. Revisa los objetivos, progreso, stamina y requisitos de las hazañas.";
+            Error = "No se ha podido guardar la Conquista. Revisa los objetivos, progreso, stamina, discos y requisitos de las hazañas.";
         }
         finally
         {
@@ -324,7 +326,10 @@ public partial class Conquest
             Math.Clamp(ReserveFloorPercent, 0, 100),
             [
                 .. stamina.Select(value => new ConquestApiClient.SaveUnitStaminaRequest(value.Key, value.Value))
-            ]);
+            ],
+            Math.Clamp(DiskCapacityLimit, 1, 100),
+            BuildDataDiskSaveRequests(),
+            BuildDiskLoadoutSaveRequests());
         ConquestApiClient.PlanViewModel plan = await ConquestClient.SaveCurrentAsync(AllyCode, request);
         MapPlan(plan);
         Optimization = null;
@@ -359,6 +364,7 @@ public partial class Conquest
             UnitDefinitionIds = feat.UnitDefinitionIds,
             MinimumMatchingUnits = feat.MinimumMatchingUnits
         }));
+        MapDataDiskPlan(plan);
     }
 
     private async Task<IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel>> LoadEntireRosterAsync()

@@ -84,34 +84,86 @@ internal sealed class ConquestPlanMongoRepository(
                 CurrentPercent = value.CurrentPercent
             })
         ],
+        DiskCapacityLimit = plan.DiskCapacityLimit,
+        DataDisks =
+        [
+            .. plan.DataDisks.Select(disk => new ConquestDataDiskDocument
+            {
+                Id = disk.Id.ToString("D"),
+                Name = disk.Name,
+                CapacityCost = disk.CapacityCost,
+                PlannerBonus = disk.PlannerBonus,
+                Target = new ConquestDataDiskTargetDocument
+                {
+                    Type = (int)disk.Target.Type,
+                    Faction = disk.Target.Faction,
+                    UnitDefinitionIds = [.. disk.Target.UnitDefinitionIds],
+                    MinimumMatchingUnits = disk.Target.MinimumMatchingUnits
+                },
+                SupportedFeatIds = [.. disk.SupportedFeatIds.Select(id => id.ToString("D"))],
+                Notes = disk.Notes
+            })
+        ],
+        DiskLoadouts =
+        [
+            .. plan.DiskLoadouts.Select(loadout => new ConquestDiskLoadoutDocument
+            {
+                Id = loadout.Id.ToString("D"),
+                Name = loadout.Name,
+                DiskIds = [.. loadout.DiskIds.Select(id => id.ToString("D"))]
+            })
+        ],
         CreatedAtUtc = plan.CreatedAtUtc,
         UpdatedAtUtc = plan.UpdatedAtUtc
     };
 
-    private static ConquestPlan ToDomain(ConquestPlanDocument document) => ConquestPlan.Restore(
-        document.AllyCode,
-        document.EventId,
-        document.Name,
-        (ConquestDifficulty)document.Difficulty,
-        document.Feats.Select(feat => ConquestFeat.Create(
-            Guid.ParseExact(feat.Id, "D"),
-            feat.Name,
-            (ConquestFeatScope)feat.Scope,
-            feat.Sector,
-            feat.Points,
-            feat.Target,
-            feat.Progress,
-            feat.ExpectedProgressPerBattle,
-            ConquestFeatRule.Create(
-                (ConquestFeatRuleType)feat.Rule.Type,
-                feat.Rule.Faction,
-                feat.Rule.UnitDefinitionIds,
-                feat.Rule.MinimumMatchingUnits))),
-        document.CreatedAtUtc,
-        document.UpdatedAtUtc,
-        document.StaminaCostPerBattle ?? ConquestPlan.DefaultStaminaCostPerBattle,
-        document.ReserveFloorPercent ?? ConquestPlan.DefaultReserveFloorPercent,
-        document.Stamina.Select(value => ConquestUnitStamina.Create(
-            value.DefinitionId,
-            value.CurrentPercent)));
+    private static ConquestPlan ToDomain(ConquestPlanDocument document)
+    {
+        ConquestPlan plan = ConquestPlan.Restore(
+            document.AllyCode,
+            document.EventId,
+            document.Name,
+            (ConquestDifficulty)document.Difficulty,
+            document.Feats.Select(feat => ConquestFeat.Create(
+                Guid.ParseExact(feat.Id, "D"),
+                feat.Name,
+                (ConquestFeatScope)feat.Scope,
+                feat.Sector,
+                feat.Points,
+                feat.Target,
+                feat.Progress,
+                feat.ExpectedProgressPerBattle,
+                ConquestFeatRule.Create(
+                    (ConquestFeatRuleType)feat.Rule.Type,
+                    feat.Rule.Faction,
+                    feat.Rule.UnitDefinitionIds,
+                    feat.Rule.MinimumMatchingUnits))),
+            document.CreatedAtUtc,
+            document.UpdatedAtUtc,
+            document.StaminaCostPerBattle ?? ConquestPlan.DefaultStaminaCostPerBattle,
+            document.ReserveFloorPercent ?? ConquestPlan.DefaultReserveFloorPercent,
+            document.Stamina.Select(value => ConquestUnitStamina.Create(
+                value.DefinitionId,
+                value.CurrentPercent)));
+
+        plan.RestoreDataDisks(
+            document.DiskCapacityLimit ?? ConquestPlan.DefaultDiskCapacityLimit,
+            document.DataDisks.Select(disk => ConquestDataDisk.Create(
+                Guid.ParseExact(disk.Id, "D"),
+                disk.Name,
+                disk.CapacityCost,
+                disk.PlannerBonus,
+                ConquestDataDiskTarget.Create(
+                    (ConquestDataDiskTargetType)disk.Target.Type,
+                    disk.Target.Faction,
+                    disk.Target.UnitDefinitionIds,
+                    disk.Target.MinimumMatchingUnits),
+                disk.SupportedFeatIds.Select(id => Guid.ParseExact(id, "D")),
+                disk.Notes)),
+            document.DiskLoadouts.Select(loadout => ConquestDiskLoadout.Create(
+                Guid.ParseExact(loadout.Id, "D"),
+                loadout.Name,
+                loadout.DiskIds.Select(id => Guid.ParseExact(id, "D")))));
+        return plan;
+    }
 }

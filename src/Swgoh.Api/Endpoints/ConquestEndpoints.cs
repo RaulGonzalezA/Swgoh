@@ -18,9 +18,9 @@ internal static class ConquestEndpoints
         group.MapGet("/current", GetCurrentAsync)
             .WithSummary("Get the current Conquest plan and feat progress");
         group.MapPut("/current", SaveCurrentAsync)
-            .WithSummary("Save the current Conquest event, feats and stamina state");
+            .WithSummary("Save the current Conquest event, feats, stamina and data disks");
         group.MapPost("/current/optimize", OptimizeCurrentAsync)
-            .WithSummary("Recommend stamina-aware teams that advance multiple pending Conquest feats");
+            .WithSummary("Recommend stamina-aware teams and data disk loadouts for pending Conquest feats");
 
         return endpoints;
     }
@@ -59,7 +59,13 @@ internal static class ConquestEndpoints
                 request.ReserveFloorPercent ?? ConquestPlan.DefaultReserveFloorPercent,
                 [.. (request.Stamina ?? []).Select(value => new SaveConquestUnitStamina(
                     value.DefinitionId,
-                    value.CurrentPercent))]);
+                    value.CurrentPercent))],
+                request.DiskCapacityLimit ?? ConquestPlan.DefaultDiskCapacityLimit,
+                [.. (request.DataDisks ?? []).Select(ToInput)],
+                [.. (request.DiskLoadouts ?? []).Select(value => new SaveConquestDiskLoadout(
+                    value.Id,
+                    value.Name,
+                    value.DiskIds ?? []))]);
             ConquestPlanDetails plan = await service.SaveAsync(allyCode, input, cancellationToken);
             return Results.Ok(PlanResponse.From(plan));
         }
@@ -99,6 +105,18 @@ internal static class ConquestEndpoints
         request.UnitDefinitionIds ?? [],
         request.MinimumMatchingUnits);
 
+    private static SaveConquestDataDisk ToInput(DataDiskRequest request) => new(
+        request.Id,
+        request.Name,
+        request.CapacityCost,
+        request.PlannerBonus,
+        ParseDiskTargetType(request.TargetType),
+        request.Faction,
+        request.UnitDefinitionIds ?? [],
+        request.MinimumMatchingUnits,
+        request.SupportedFeatIds ?? [],
+        request.Notes);
+
     private static ConquestDifficulty ParseDifficulty(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
@@ -123,6 +141,14 @@ internal static class ConquestEndpoints
             : throw new ArgumentException("RuleType must be AnyCharacter, Faction or SpecificUnits.", nameof(value));
     }
 
+    private static ConquestDataDiskTargetType ParseDiskTargetType(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        return Enum.TryParse(value.Trim(), ignoreCase: true, out ConquestDataDiskTargetType parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : throw new ArgumentException("TargetType must be AnyTeam, Faction or SpecificUnits.", nameof(value));
+    }
+
     private static IResult Validation(ArgumentException exception) => Results.ValidationProblem(
         new Dictionary<string, string[]> { ["conquest"] = [exception.Message] });
 
@@ -133,9 +159,29 @@ internal static class ConquestEndpoints
         IReadOnlyCollection<FeatRequest>? Feats,
         int? StaminaCostPerBattle = null,
         int? ReserveFloorPercent = null,
-        IReadOnlyCollection<UnitStaminaRequest>? Stamina = null);
+        IReadOnlyCollection<UnitStaminaRequest>? Stamina = null,
+        int? DiskCapacityLimit = null,
+        IReadOnlyCollection<DataDiskRequest>? DataDisks = null,
+        IReadOnlyCollection<DiskLoadoutRequest>? DiskLoadouts = null);
 
     internal sealed record UnitStaminaRequest(string DefinitionId, int CurrentPercent);
+
+    internal sealed record DataDiskRequest(
+        Guid? Id,
+        string Name,
+        int CapacityCost,
+        decimal PlannerBonus,
+        string TargetType,
+        string? Faction,
+        IReadOnlyCollection<string>? UnitDefinitionIds,
+        int MinimumMatchingUnits,
+        IReadOnlyCollection<Guid>? SupportedFeatIds,
+        string? Notes);
+
+    internal sealed record DiskLoadoutRequest(
+        Guid? Id,
+        string Name,
+        IReadOnlyCollection<Guid>? DiskIds);
 
     internal sealed record FeatRequest(
         Guid? Id,
@@ -165,6 +211,9 @@ internal static class ConquestEndpoints
         int StaminaCostPerBattle,
         int ReserveFloorPercent,
         IReadOnlyCollection<UnitStaminaResponse> Stamina,
+        int DiskCapacityLimit,
+        IReadOnlyCollection<DataDiskResponse> DataDisks,
+        IReadOnlyCollection<DiskLoadoutResponse> DiskLoadouts,
         DateTimeOffset UpdatedAtUtc)
     {
         public static PlanResponse From(ConquestPlanDetails plan) => new(
@@ -181,6 +230,9 @@ internal static class ConquestEndpoints
             plan.StaminaCostPerBattle,
             plan.ReserveFloorPercent,
             [.. plan.Stamina.Select(UnitStaminaResponse.From)],
+            plan.DiskCapacityLimit,
+            [.. plan.DataDisks.Select(DataDiskResponse.From)],
+            [.. plan.DiskLoadouts.Select(DiskLoadoutResponse.From)],
             plan.UpdatedAtUtc);
     }
 
@@ -189,6 +241,42 @@ internal static class ConquestEndpoints
         public static UnitStaminaResponse From(ConquestUnitStamina value) => new(
             value.DefinitionId,
             value.CurrentPercent);
+    }
+
+    internal sealed record DataDiskResponse(
+        Guid Id,
+        string Name,
+        int CapacityCost,
+        decimal PlannerBonus,
+        string TargetType,
+        string? Faction,
+        IReadOnlyCollection<string> UnitDefinitionIds,
+        int MinimumMatchingUnits,
+        IReadOnlyCollection<Guid> SupportedFeatIds,
+        string? Notes)
+    {
+        public static DataDiskResponse From(ConquestDataDisk disk) => new(
+            disk.Id,
+            disk.Name,
+            disk.CapacityCost,
+            disk.PlannerBonus,
+            disk.Target.Type.ToString(),
+            disk.Target.Faction,
+            disk.Target.UnitDefinitionIds,
+            disk.Target.MinimumMatchingUnits,
+            disk.SupportedFeatIds,
+            disk.Notes);
+    }
+
+    internal sealed record DiskLoadoutResponse(
+        Guid Id,
+        string Name,
+        IReadOnlyCollection<Guid> DiskIds)
+    {
+        public static DiskLoadoutResponse From(ConquestDiskLoadout loadout) => new(
+            loadout.Id,
+            loadout.Name,
+            loadout.DiskIds);
     }
 
     internal sealed record FeatResponse(
@@ -231,6 +319,7 @@ internal static class ConquestEndpoints
         int CandidateCharacters,
         int StaminaCostPerBattle,
         int ReserveFloorPercent,
+        int DiskCapacityLimit,
         IReadOnlyCollection<TeamResponse> Recommendations,
         IReadOnlyCollection<Guid> UncoveredFeatIds)
     {
@@ -241,6 +330,7 @@ internal static class ConquestEndpoints
             result.CandidateCharacters,
             result.StaminaCostPerBattle,
             result.ReserveFloorPercent,
+            result.DiskCapacityLimit,
             [.. result.Recommendations.Select(TeamResponse.From)],
             result.UncoveredFeatIds);
     }
@@ -255,6 +345,7 @@ internal static class ConquestEndpoints
         decimal ExpectedPostBattleAverageStamina,
         decimal StaminaOpportunityCost,
         int ReserveRiskUnits,
+        DiskRecommendationResponse? DiskLoadout,
         IReadOnlyCollection<UnitResponse> Team,
         IReadOnlyCollection<ContributionResponse> AdvancesFeats,
         string Rationale)
@@ -269,9 +360,29 @@ internal static class ConquestEndpoints
             recommendation.ExpectedPostBattleAverageStamina,
             recommendation.StaminaOpportunityCost,
             recommendation.ReserveRiskUnits,
+            recommendation.DiskLoadout is null ? null : DiskRecommendationResponse.From(recommendation.DiskLoadout),
             [.. recommendation.Team.Select(UnitResponse.From)],
             [.. recommendation.AdvancesFeats.Select(ContributionResponse.From)],
             recommendation.Rationale);
+    }
+
+    internal sealed record DiskRecommendationResponse(
+        Guid LoadoutId,
+        string LoadoutName,
+        int CapacityUsed,
+        int CapacityLimit,
+        decimal PlannerBonus,
+        IReadOnlyCollection<DataDiskResponse> Disks,
+        IReadOnlyCollection<Guid> MatchedFeatIds)
+    {
+        public static DiskRecommendationResponse From(ConquestDiskRecommendation recommendation) => new(
+            recommendation.LoadoutId,
+            recommendation.LoadoutName,
+            recommendation.CapacityUsed,
+            recommendation.CapacityLimit,
+            recommendation.PlannerBonus,
+            [.. recommendation.Disks.Select(DataDiskResponse.From)],
+            recommendation.MatchedFeatIds);
     }
 
     internal sealed record UnitResponse(

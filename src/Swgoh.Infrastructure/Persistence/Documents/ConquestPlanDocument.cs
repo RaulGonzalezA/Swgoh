@@ -11,6 +11,9 @@ internal sealed class ConquestPlanDocument
     public int? StaminaCostPerBattle { get; set; }
     public int? ReserveFloorPercent { get; set; }
     public List<ConquestUnitStaminaDocument> Stamina { get; set; } = [];
+    public int? DiskCapacityLimit { get; set; }
+    public List<ConquestDataDiskDocument> DataDisks { get; set; } = [];
+    public List<ConquestDiskLoadoutDocument> DiskLoadouts { get; set; } = [];
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }
@@ -40,4 +43,30 @@ internal sealed class ConquestUnitStaminaDocument
 {
     public string DefinitionId { get; set; } = string.Empty;
     public int CurrentPercent { get; set; }
+}
+
+internal sealed class ConquestDataDiskDocument
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int CapacityCost { get; set; }
+    public decimal PlannerBonus { get; set; }
+    public ConquestDataDiskTargetDocument Target { get; set; } = new();
+    public List<string> SupportedFeatIds { get; set; } = [];
+    public string? Notes { get; set; }
+}
+
+internal sealed class ConquestDataDiskTargetDocument
+{
+    public int Type { get; set; }
+    public string? Faction { get; set; }
+    public List<string> UnitDefinitionIds { get; set; } = [];
+    public int MinimumMatchingUnits { get; set; }
+}
+
+internal sealed class ConquestDiskLoadoutDocument
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public List<string> DiskIds { get; set; } = [];
 }
