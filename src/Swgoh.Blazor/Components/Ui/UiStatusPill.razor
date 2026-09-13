@@ -1,0 +1,21 @@
+<span class="ui-status-pill ui-status-pill-@Tone @Class">
+    @if (ShowDot)
+    {
+        <span class="ui-status-dot" aria-hidden="true"></span>
+    }
+    @Label
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Tone { get; set; } = "neutral";
+
+    [Parameter]
+    public bool ShowDot { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+}
