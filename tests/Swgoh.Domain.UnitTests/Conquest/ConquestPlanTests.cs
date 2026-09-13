@@ -61,4 +61,32 @@ public sealed class ConquestPlanTests
             ["A", "B"],
             minimumMatchingUnits: 3));
     }
+
+    [Fact]
+    public void Create_StaminaState_UsesConfiguredAndDefaultValues()
+    {
+        DateTimeOffset now = new(2026, 9, 13, 18, 0, 0, TimeSpan.Zero);
+        ConquestPlan plan = ConquestPlan.Create(
+            123_456_789,
+            "event",
+            "Conquista",
+            ConquestDifficulty.Hard,
+            [],
+            now,
+            staminaCostPerBattle: 10,
+            reserveFloorPercent: 40,
+            stamina: [ConquestUnitStamina.Create("LOW", 30)]);
+
+        Assert.Equal(30, plan.GetCurrentStamina("LOW"));
+        Assert.Equal(100, plan.GetCurrentStamina("UNTRACKED"));
+        Assert.Equal(10, plan.StaminaCostPerBattle);
+        Assert.Equal(40, plan.ReserveFloorPercent);
+    }
+
+    [Fact]
+    public void Create_StaminaRejectsValuesOutsidePercentRange()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ConquestUnitStamina.Create("UNIT", 101));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ConquestUnitStamina.Create("UNIT", -1));
+    }
 }
