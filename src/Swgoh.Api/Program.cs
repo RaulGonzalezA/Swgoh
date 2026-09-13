@@ -93,6 +93,7 @@ app.UseExceptionHandler();
 app.UseRateLimiter();
 app.MapDefaultEndpoints();
 app.MapPlayerEndpoints();
+app.MapSquadEndpoints();
 app.MapOpenApi().WithDocumentPerVersion();
 app.MapScalarApiReference("/scalar", options =>
 {
