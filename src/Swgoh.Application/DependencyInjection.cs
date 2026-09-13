@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
+using Swgoh.Application.Gac;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
 
@@ -17,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<IPlayerRosterService, PlayerRosterService>();
         services.AddScoped<IGalacticLegendProgressService, GalacticLegendProgressService>();
         services.AddScoped<ISquadService, SquadService>();
+        services.AddSingleton<IGacRulesService, GacRulesService>();
         return services;
     }
 }
