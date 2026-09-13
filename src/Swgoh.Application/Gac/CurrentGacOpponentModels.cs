@@ -99,16 +99,16 @@ public sealed record GacBattleAttackReserve(
 public sealed record GacBattleCounterSuggestion(
     GacBattleUnit Threat,
     IReadOnlyCollection<GacBattleUnit> CandidateAnchors,
-    IReadOnlyCollection<GacBattleUnit> RecommendedTeam,
     string Confidence,
     string Source,
     string Rationale,
     bool RequiresDatacronVerification,
-    int? Uses,
-    decimal? WinRate,
-    decimal? OneShotRate,
-    decimal? AverageBanners,
-    int? PlayersObserved);
+    IReadOnlyCollection<GacBattleUnit>? RecommendedTeam = null,
+    int? Uses = null,
+    decimal? WinRate = null,
+    decimal? OneShotRate = null,
+    decimal? AverageBanners = null,
+    int? PlayersObserved = null);
 
 public sealed record CurrentGacBattlePlan(
     GacBattleRosterComparison Comparison,
