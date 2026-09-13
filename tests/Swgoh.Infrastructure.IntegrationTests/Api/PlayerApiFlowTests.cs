@@ -23,7 +23,7 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
     private const long AllyCode = 476_825_771;
 
     [Fact]
-    public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesAnalysisAndHistory()
+    public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesRosterAnalysisAndHistory()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         using var connectionStringScope = new EnvironmentVariableScope(
@@ -53,6 +53,23 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         Assert.Equal(HttpStatusCode.OK, playerResponse.StatusCode);
         Assert.Equal("player-id", persisted.RootElement.GetProperty("playerId").GetString());
         Assert.Equal(2, persisted.RootElement.GetProperty("roster").GetArrayLength());
+
+        using HttpResponseMessage rosterResponse = await client.GetAsync(
+            $"/api/v1/players/{AllyCode}/roster?type=Character&minRarity=7&minRelic=8&hasZeta=true&orderBy=GalacticPower&direction=Descending&page=1&pageSize=1",
+            cancellationToken);
+        using JsonDocument roster = await ReadJsonAsync(rosterResponse, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, rosterResponse.StatusCode);
+        Assert.Equal(1, roster.RootElement.GetProperty("total").GetInt32());
+        Assert.Equal(1, roster.RootElement.GetProperty("page").GetInt32());
+        Assert.Equal(1, roster.RootElement.GetProperty("pageSize").GetInt32());
+        Assert.Equal(1, roster.RootElement.GetProperty("totalPages").GetInt32());
+        JsonElement rosterUnit = Assert.Single(roster.RootElement.GetProperty("items").EnumerateArray().ToArray());
+        Assert.Equal("CHARACTER", rosterUnit.GetProperty("definitionId").GetString());
+        Assert.Equal(60_000, rosterUnit.GetProperty("galacticPower").GetInt64());
+        Assert.False(rosterUnit.GetProperty("isShip").GetBoolean());
+        Assert.Equal(2, rosterUnit.GetProperty("zetaCount").GetInt32());
+        Assert.Equal(1, rosterUnit.GetProperty("omicronCount").GetInt32());
 
         using HttpResponseMessage analysisResponse = await client.GetAsync(
             $"/api/v1/players/{AllyCode}/analysis",
