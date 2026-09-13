@@ -4,28 +4,20 @@ namespace Swgoh.Application.Gac;
 
 internal sealed class GacPersonalLearningContext
 {
-    private const int MaxAgeDays = 180;
-    private readonly IReadOnlyCollection<GacPersonalRoundOutcome> rounds;
-    private readonly DateTimeOffset now;
+    private readonly IReadOnlyCollection<GacPersonalMatchupStatistics> statistics;
 
-    private GacPersonalLearningContext(
-        IReadOnlyCollection<GacPersonalRoundOutcome> rounds,
-        DateTimeOffset now)
+    private GacPersonalLearningContext(IReadOnlyCollection<GacPersonalMatchupStatistics> statistics)
     {
-        this.rounds = rounds;
-        this.now = now;
+        this.statistics = statistics;
     }
 
-    public static GacPersonalLearningContext Empty { get; } = new([], DateTimeOffset.MinValue);
+    public static GacPersonalLearningContext Empty { get; } = new([]);
 
     public static GacPersonalLearningContext From(
-        IReadOnlyCollection<GacPersonalRoundOutcome> rounds,
-        DateTimeOffset now)
+        IReadOnlyCollection<GacPersonalMatchupStatistics> statistics)
     {
-        ArgumentNullException.ThrowIfNull(rounds);
-        return new GacPersonalLearningContext(
-            [.. rounds.Where(round => now - round.UpdatedAtUtc <= TimeSpan.FromDays(MaxAgeDays))],
-            now);
+        ArgumentNullException.ThrowIfNull(statistics);
+        return new GacPersonalLearningContext(statistics);
     }
 
     public GacPersonalLearningSignal Evaluate(
@@ -35,55 +27,51 @@ internal sealed class GacPersonalLearningContext
         ArgumentNullException.ThrowIfNull(defense);
         ArgumentNullException.ThrowIfNull(preset);
 
-        if (rounds.Count == 0 || defense.Squad.IsFleet != preset.Squad.IsFleet)
+        if (statistics.Count == 0 || defense.Squad.IsFleet != preset.Squad.IsFleet)
         {
             return GacPersonalLearningSignal.None;
         }
 
-        string defenseSignature = Signature(defense.Squad);
-        string attackSignature = Signature(preset.Squad);
-        GacPersonalAttackOutcome[] exact =
-        [
-            .. rounds
-                .Where(round => round.Format == preset.Format)
-                .SelectMany(round => round.Attacks)
-                .Where(outcome =>
-                    Signature(outcome.DefenseSquad) == defenseSignature &&
-                    Signature(outcome.AttackSquad) == attackSignature)
-        ];
-        if (exact.Length > 0)
+        string exactKey = GacPersonalBattleObservation.BuildMatchupKey(
+            preset.Format,
+            preset.Squad.IsFleet,
+            preset.Squad.AllUnits.Select(unit => unit.DefinitionId),
+            defense.Squad.AllUnits.Select(unit => unit.DefinitionId));
+        GacPersonalMatchupStatistics? exact = statistics.FirstOrDefault(item =>
+            string.Equals(item.MatchupKey, exactKey, StringComparison.Ordinal));
+        if (exact is not null && exact.Uses > 0)
         {
-            return BuildSignal(exact, exactMatch: true);
+            return BuildSignal(exact.Uses, exact.Wins, exactMatch: true);
         }
 
-        GacPersonalAttackOutcome[] leaderPair =
+        string attackerLeader = preset.Squad.Leader.DefinitionId;
+        string defenderLeader = defense.Squad.Leader.DefinitionId;
+        GacPersonalMatchupStatistics[] leaderPair =
         [
-            .. rounds
-                .Where(round => round.Format == preset.Format)
-                .SelectMany(round => round.Attacks)
-                .Where(outcome =>
-                    string.Equals(
-                        outcome.DefenseSquad.LeaderDefinitionId,
-                        defense.Squad.Leader.DefinitionId,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(
-                        outcome.AttackSquad.LeaderDefinitionId,
-                        preset.Squad.Leader.DefinitionId,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    outcome.DefenseSquad.IsFleet == defense.Squad.IsFleet &&
-                    outcome.AttackSquad.IsFleet == preset.Squad.IsFleet)
+            .. statistics.Where(item =>
+                item.IsFleet == preset.Squad.IsFleet &&
+                item.AttackerDefinitionIds.Count > 0 &&
+                item.DefenderDefinitionIds.Count > 0 &&
+                string.Equals(
+                    item.AttackerDefinitionIds.First(),
+                    attackerLeader,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    item.DefenderDefinitionIds.First(),
+                    defenderLeader,
+                    StringComparison.OrdinalIgnoreCase))
         ];
-        return leaderPair.Length >= 3
-            ? BuildSignal(leaderPair, exactMatch: false)
-            : GacPersonalLearningSignal.None;
+        int samples = leaderPair.Sum(item => item.Uses);
+        if (samples < 3)
+        {
+            return GacPersonalLearningSignal.None;
+        }
+
+        return BuildSignal(samples, leaderPair.Sum(item => item.Wins), exactMatch: false);
     }
 
-    private GacPersonalLearningSignal BuildSignal(
-        IReadOnlyCollection<GacPersonalAttackOutcome> outcomes,
-        bool exactMatch)
+    private static GacPersonalLearningSignal BuildSignal(int samples, int wins, bool exactMatch)
     {
-        int samples = outcomes.Count;
-        int wins = outcomes.Count(outcome => outcome.Status == GacAttackPlanStatus.Won);
         int failures = samples - wins;
         decimal posterior;
         decimal reliability;
@@ -105,7 +93,7 @@ internal sealed class GacPersonalLearningContext
             scope = "LeaderPair";
         }
 
-        decimal winRate = samples == 0 ? 0m : wins / (decimal)samples;
+        decimal winRate = wins / (decimal)samples;
         decimal roundedAdjustment = Math.Round(adjustment, 1);
         string label = exactMatch ? "Tu histórico exacto" : "Tu tendencia por líderes";
         string summary = $"{label}: {wins}/{samples} victorias ({winRate:P0}); ajuste {roundedAdjustment:+0.#;-0.#;0}.";
@@ -118,29 +106,5 @@ internal sealed class GacPersonalLearningContext
             Math.Round(winRate, 3),
             scope,
             summary);
-    }
-
-    private static string Signature(GacPlannerSquadDetails squad) =>
-        Signature(
-            squad.Leader.DefinitionId,
-            squad.Members.Select(unit => unit.DefinitionId),
-            squad.IsFleet);
-
-    private static string Signature(GacPlannerSquad squad) =>
-        Signature(squad.LeaderDefinitionId, squad.MemberDefinitionIds, squad.IsFleet);
-
-    private static string Signature(
-        string leaderDefinitionId,
-        IEnumerable<string> memberDefinitionIds,
-        bool isFleet)
-    {
-        string[] units =
-        [
-            .. new[] { leaderDefinitionId }
-                .Concat(memberDefinitionIds)
-                .Select(id => id.Trim().ToUpperInvariant())
-                .OrderBy(id => id, StringComparer.Ordinal)
-        ];
-        return $"{(isFleet ? "F" : "C")}:{string.Join('|', units)}";
     }
 }
