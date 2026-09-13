@@ -49,7 +49,71 @@ public sealed record CurrentOpponentRosterScouting(
     IReadOnlyCollection<PlayerRosterUnit> TopShips,
     IReadOnlyCollection<PlayerRosterUnit> OmicronCharacters);
 
+public sealed record GacBattleUnit(
+    string DefinitionId,
+    string Name,
+    long GalacticPower,
+    int RelicTier,
+    int ZetaCount,
+    int OmicronCount,
+    bool IsShip,
+    bool IsGalacticLegend);
+
+public sealed record GacBattleRosterComparison(
+    long PlayerGalacticPower,
+    long OpponentGalacticPower,
+    long GalacticPowerDelta,
+    int PlayerGalacticLegends,
+    int OpponentGalacticLegends,
+    int PlayerOmicronCharacters,
+    int OpponentOmicronCharacters,
+    int PlayerRelic7Plus,
+    int OpponentRelic7Plus,
+    int PlayerRelic9Plus,
+    int OpponentRelic9Plus);
+
+public sealed record GacBattleThreat(
+    GacBattleUnit Unit,
+    int Score,
+    string Priority,
+    string Category,
+    string Reason);
+
+public sealed record GacBattleDefensePrediction(
+    string LeaderName,
+    string LeaderDefinitionId,
+    IReadOnlyCollection<string> MemberNames,
+    bool IsFleet,
+    decimal? Probability,
+    string Confidence,
+    string Source,
+    string? SquadDefinitionName,
+    string? VariantName);
+
+public sealed record GacBattleAttackReserve(
+    GacBattleUnit Unit,
+    string Role,
+    string Priority,
+    string Reason);
+
+public sealed record GacBattleCounterSuggestion(
+    GacBattleUnit Threat,
+    IReadOnlyCollection<GacBattleUnit> CandidateAnchors,
+    string Confidence,
+    string Source,
+    string Rationale,
+    bool RequiresDatacronVerification);
+
+public sealed record CurrentGacBattlePlan(
+    GacBattleRosterComparison Comparison,
+    IReadOnlyCollection<GacBattleThreat> Threats,
+    IReadOnlyCollection<GacBattleDefensePrediction> DefensePredictions,
+    IReadOnlyCollection<GacBattleAttackReserve> AttackReserves,
+    IReadOnlyCollection<GacBattleCounterSuggestion> CounterSuggestions,
+    IReadOnlyCollection<string> Warnings);
+
 public sealed record CurrentGacScoutingResult(
     CurrentGacOpponentLookup Lookup,
     OpponentScoutingReport? Scouting,
-    CurrentOpponentRosterScouting? RosterScouting);
+    CurrentOpponentRosterScouting? RosterScouting,
+    CurrentGacBattlePlan? BattlePlan);
