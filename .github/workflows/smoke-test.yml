@@ -154,6 +154,8 @@ jobs:
           curl --fail-with-body --silent --show-error "${api_root}/scalar" --output smoke-results/scalar.html
           jq -e '.paths | length > 0' smoke-results/openapi-v1.json > /dev/null
           jq -e '.paths | has("/api/v1/players/{allyCode}/roster")' smoke-results/openapi-v1.json > /dev/null
+          jq -e '.paths | has("/api/v1/squads")' smoke-results/openapi-v1.json > /dev/null
+          jq -e '.paths | has("/api/v1/squads/{id}")' smoke-results/openapi-v1.json > /dev/null
 
           curl --fail-with-body --silent --show-error --request POST "${base_url}/refresh" --output smoke-results/refresh.json
 
@@ -171,6 +173,42 @@ jobs:
           curl --fail-with-body --silent --show-error "${base_url}/history?limit=5" --output smoke-results/history.json
           curl --fail-with-body --silent --show-error "${base_url}/gl-progress" --output smoke-results/gl-progress.json
 
+          mapfile -t character_ids < <(jq -r '[.roster[] | select(.isShip == false)][0:5][].definitionId' smoke-results/player.json)
+          test "${#character_ids[@]}" -eq 5
+          jq -n \
+            --arg leader "${character_ids[0]}" \
+            --arg member1 "${character_ids[1]}" \
+            --arg member2 "${character_ids[2]}" \
+            --arg member3 "${character_ids[3]}" \
+            --arg member4 "${character_ids[4]}" \
+            '{
+              name: "Smoke 5v5",
+              format: "5v5",
+              use: "Flexible",
+              tags: ["smoke", "gac"],
+              variants: [{
+                key: "default",
+                name: "Principal",
+                leaderDefinitionId: $leader,
+                memberDefinitionIds: [$member1, $member2, $member3, $member4]
+              }]
+            }' > smoke-results/squad-request.json
+
+          curl --fail-with-body --silent --show-error \
+            --request POST "${api_root}/api/v1/squads" \
+            --header 'Content-Type: application/json' \
+            --data @smoke-results/squad-request.json \
+            --output smoke-results/squad.json
+          squad_id=$(jq -r '.id' smoke-results/squad.json)
+          test -n "${squad_id}"
+          test "${squad_id}" != "null"
+          curl --fail-with-body --silent --show-error \
+            "${api_root}/api/v1/squads/${squad_id}" \
+            --output smoke-results/squad-get.json
+          curl --fail-with-body --silent --show-error \
+            "${api_root}/api/v1/squads?format=5v5&use=Flexible&tag=smoke&search=Smoke&limit=10" \
+            --output smoke-results/squad-search.json
+
           jq -e '.name | length > 0' smoke-results/player.json > /dev/null
           jq -e '.rosterCount > 0' smoke-results/player.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
@@ -184,11 +222,21 @@ jobs:
           jq -e '.omicrons > 0' smoke-results/analysis.json > /dev/null
           jq -e 'type == "array" and length > 0' smoke-results/history.json > /dev/null
           jq -e 'type == "array"' smoke-results/gl-progress.json > /dev/null
+          jq -e '.format == "5v5" and .use == "Flexible" and (.tags | index("smoke")) != null' smoke-results/squad.json > /dev/null
+          jq -e '.variants | length == 1 and .[0].leader.name | type == "string" and length > 0' smoke-results/squad.json > /dev/null
+          jq -e '.variants[0].members | length == 4' smoke-results/squad.json > /dev/null
+          jq -e '.id == input.id' smoke-results/squad-get.json smoke-results/squad.json > /dev/null
+          jq -e 'type == "array" and length == 1 and .[0].id == $id' --arg id "${squad_id}" smoke-results/squad-search.json > /dev/null
+
+          curl --fail-with-body --silent --show-error \
+            --request DELETE "${api_root}/api/v1/squads/${squad_id}" \
+            --output /dev/null
 
           jq '{name, level, galacticPower, rosterCount, guildName, updatedAtUtc}' smoke-results/player.json
           jq '{total, page, pageSize, totalPages, first: .items[0] | {definitionId, name, thumbnailName, factions, tags, galacticPower, relicTier, zetaCount, omicronCount}}' smoke-results/roster.json
           jq '{galacticPower, characterGalacticPower, shipGalacticPower, characterCount, shipCount, relicCharacters, relic7Plus, relic8Plus, relic9Plus, relic10, zetas, omicrons}' smoke-results/analysis.json
           jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
+          jq '{id, name, format, use, tags, leader: .variants[0].leader.name, members: [.variants[0].members[].name]}' smoke-results/squad.json
 
       - name: Upload live smoke responses
         if: always()
