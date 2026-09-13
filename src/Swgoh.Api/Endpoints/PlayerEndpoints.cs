@@ -158,7 +158,8 @@ internal static class PlayerEndpoints
         long GalacticPower,
         DateTimeOffset UpdatedAtUtc,
         int RosterCount,
-        IReadOnlyCollection<RosterUnitResponse> Roster)
+        IReadOnlyCollection<RosterUnitResponse> Roster,
+        IReadOnlyCollection<PlayerDatacronResponse> Datacrons)
     {
         public static PlayerResponse From(PlayerProfile player) => new(
             player.AllyCode,
@@ -170,7 +171,8 @@ internal static class PlayerEndpoints
             player.GalacticPower,
             player.UpdatedAtUtc,
             player.Roster.Count,
-            [.. player.Roster.Select(RosterUnitResponse.From)]);
+            [.. player.Roster.Select(RosterUnitResponse.From)],
+            [.. player.Datacrons.Select(PlayerDatacronResponse.From)]);
     }
 
     internal sealed record RosterPageResponse(
@@ -208,7 +210,9 @@ internal static class PlayerEndpoints
         long GalacticPower,
         bool IsShip,
         int ZetaCount,
-        int OmicronCount)
+        int OmicronCount,
+        RosterUnitStatsResponse? Stats,
+        RosterModSummaryResponse? Mods)
     {
         public static EnrichedRosterUnitResponse From(PlayerRosterUnit unit) => new(
             unit.Id,
@@ -226,7 +230,9 @@ internal static class PlayerEndpoints
             unit.GalacticPower,
             unit.IsShip,
             unit.ZetaCount,
-            unit.OmicronCount);
+            unit.OmicronCount,
+            RosterUnitStatsResponse.From(unit.Stats),
+            RosterModSummaryResponse.From(unit.Mods));
     }
 
     internal sealed record RosterUnitResponse(
@@ -240,7 +246,9 @@ internal static class PlayerEndpoints
         long GalacticPower,
         bool IsShip,
         int ZetaCount,
-        int OmicronCount)
+        int OmicronCount,
+        RosterUnitStatsResponse? Stats,
+        RosterModSummaryResponse? Mods)
     {
         public static RosterUnitResponse From(RosterUnit unit) => new(
             unit.Id,
@@ -253,6 +261,90 @@ internal static class PlayerEndpoints
             unit.GalacticPower,
             unit.IsShip,
             unit.ZetaCount,
-            unit.OmicronCount);
+            unit.OmicronCount,
+            RosterUnitStatsResponse.From(unit.Stats),
+            RosterModSummaryResponse.From(unit.Mods));
+    }
+
+    internal sealed record RosterUnitStatsResponse(
+        decimal? Health,
+        decimal? Protection,
+        decimal? Speed,
+        decimal? PhysicalDamage,
+        decimal? SpecialDamage,
+        decimal? Armor,
+        decimal? Resistance,
+        decimal? Potency,
+        decimal? Tenacity,
+        decimal? CriticalDamage)
+    {
+        public static RosterUnitStatsResponse? From(RosterUnitStats? stats) => stats is null
+            ? null
+            : new RosterUnitStatsResponse(
+                stats.Health,
+                stats.Protection,
+                stats.Speed,
+                stats.PhysicalDamage,
+                stats.SpecialDamage,
+                stats.Armor,
+                stats.Resistance,
+                stats.Potency,
+                stats.Tenacity,
+                stats.CriticalDamage);
+    }
+
+    internal sealed record RosterModSummaryResponse(
+        int EquippedCount,
+        int SixDotCount,
+        int SpeedSetModCount,
+        int SpeedPrimaryCount,
+        decimal? SpeedBonus,
+        bool IsComplete)
+    {
+        public static RosterModSummaryResponse? From(RosterModSummary? mods) => mods is null
+            ? null
+            : new RosterModSummaryResponse(
+                mods.EquippedCount,
+                mods.SixDotCount,
+                mods.SpeedSetModCount,
+                mods.SpeedPrimaryCount,
+                mods.SpeedBonus,
+                mods.IsComplete);
+    }
+
+    internal sealed record PlayerDatacronResponse(
+        string Id,
+        string SetId,
+        string TemplateId,
+        int Tier,
+        bool Locked,
+        int HighestRequiredRelicTier,
+        bool HasAbilityAffix,
+        IReadOnlyCollection<PlayerDatacronAffixResponse> Affixes)
+    {
+        public static PlayerDatacronResponse From(PlayerDatacron datacron) => new(
+            datacron.Id,
+            datacron.SetId,
+            datacron.TemplateId,
+            datacron.Tier,
+            datacron.Locked,
+            datacron.HighestRequiredRelicTier,
+            datacron.HasAbilityAffix,
+            [.. datacron.Affixes.Select(PlayerDatacronAffixResponse.From)]);
+    }
+
+    internal sealed record PlayerDatacronAffixResponse(
+        string? AbilityId,
+        int? StatType,
+        long? StatValue,
+        int? RequiredRelicTier,
+        IReadOnlyCollection<string> Tags)
+    {
+        public static PlayerDatacronAffixResponse From(PlayerDatacronAffix affix) => new(
+            affix.AbilityId,
+            affix.StatType,
+            affix.StatValue,
+            affix.RequiredRelicTier,
+            affix.Tags);
     }
 }
