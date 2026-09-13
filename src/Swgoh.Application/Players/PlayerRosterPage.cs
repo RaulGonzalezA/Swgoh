@@ -1,5 +1,3 @@
-using Swgoh.Domain.Players;
-
 namespace Swgoh.Application.Players;
 
 public sealed record PlayerRosterPage(
@@ -9,4 +7,4 @@ public sealed record PlayerRosterPage(
     int Page,
     int PageSize,
     int TotalPages,
-    IReadOnlyCollection<RosterUnit> Items);
+    IReadOnlyCollection<PlayerRosterUnit> Items);
