@@ -1,0 +1,69 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using Swgoh.Blazor.State
+@inject PlayerSessionState Session
+@inject PlayerPreferenceService Preferences
+@inject NavigationManager Navigation
+
+<PageTitle>Ajustes · SWGOH Assistant</PageTitle>
+
+<section class="command-page">
+    <header class="command-page-heading">
+        <div>
+            <span class="section-kicker">Ajustes</span>
+            <h1>Preferencias del asistente</h1>
+            <p>Gestiona el jugador principal y el contexto que se restaura automáticamente al volver a la aplicación.</p>
+        </div>
+    </header>
+
+    <div class="command-secondary-grid settings-grid">
+        <article class="command-panel">
+            <div class="command-panel-heading compact">
+                <div><span class="section-kicker">Jugador principal</span><h2>@(Session.PlayerName ?? "Sin jugador")</h2></div>
+            </div>
+            @if (Session.AllyCode is long allyCode)
+            {
+                <div class="command-data-list">
+                    <div><span>Ally Code</span><strong>#@FormatAllyCode(allyCode)</strong></div>
+                    <div><span>Persistencia</span><strong>Activa en este navegador</strong></div>
+                </div>
+                <p class="settings-copy">Este jugador se restaura al abrir la web y alimenta la navegación de Roster, GAC, Planner y Conquista.</p>
+                <div class="settings-actions">
+                    <a class="secondary-button" href="/">Cambiar jugador</a>
+                    <button class="ghost-button" type="button" @onclick="ForgetPlayerAsync">Olvidar jugador</button>
+                </div>
+            }
+            else
+            {
+                <div class="command-panel-empty">No hay un jugador principal configurado.</div>
+                <a class="command-secondary-link" href="/">Seleccionar jugador →</a>
+            }
+        </article>
+
+        <article class="command-panel">
+            <div class="command-panel-heading compact">
+                <div><span class="section-kicker">Almacenamiento</span><h2>Qué guardamos localmente</h2></div>
+            </div>
+            <div class="settings-info-list">
+                <div><strong>Jugador activo</strong><span>Solo el Ally Code principal.</span></div>
+                <div><strong>Datos del juego</strong><span>Siguen viniendo de la API y MongoDB.</span></div>
+                <div><strong>Planes GAC / Conquista</strong><span>No se duplican en localStorage.</span></div>
+            </div>
+        </article>
+    </div>
+</section>
+
+@code {
+    private async Task ForgetPlayerAsync()
+    {
+        await Preferences.ClearAsync();
+        Session.Clear();
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+
+    private static string FormatAllyCode(long allyCode)
+    {
+        string value = allyCode.ToString("000000000");
+        return $"{value[..3]}-{value[3..6]}-{value[6..]}";
+    }
+}
