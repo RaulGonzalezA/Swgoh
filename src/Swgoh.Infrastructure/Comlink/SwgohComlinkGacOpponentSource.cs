@@ -336,19 +336,32 @@ internal sealed class SwgohComlinkGacOpponentSource(IHttpClientFactory httpClien
         CancellationToken cancellationToken)
     {
         string bracketId = $"{eventInstanceId}:{leagueToken}:{bracketIndex}";
-        using JsonDocument response = await PostAsync(
-            "getLeaderboard",
-            new
+        var request = new
+        {
+            payload = new
             {
-                payload = new
-                {
-                    leaderboardType = 4,
-                    eventInstanceId,
-                    groupId = bracketId
-                },
-                enums = false
+                leaderboardType = 4,
+                eventInstanceId,
+                groupId = bracketId
             },
+            enums = false
+        };
+
+        HttpClient client = httpClientFactory.CreateClient(HttpClientName);
+        using HttpResponseMessage httpResponse = await client.PostAsJsonAsync(
+            "getLeaderboard",
+            request,
             cancellationToken).ConfigureAwait(false);
+        if (httpResponse.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            return null;
+        }
+
+        httpResponse.EnsureSuccessStatusCode();
+        await using Stream stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (!TryGetProperty(response.RootElement, "player", out JsonElement playersElement) ||
             playersElement.ValueKind != JsonValueKind.Array ||
