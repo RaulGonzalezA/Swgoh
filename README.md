@@ -36,10 +36,55 @@ The public HTTP API uses URL-segment versioning. Version 1 is exposed under `/ap
 - `POST /api/v1/squads` creates a squad definition; `PUT /api/v1/squads/{id}` updates it and `DELETE /api/v1/squads/{id}` removes it.
 - `GET /api/v1/gac/defense-requirements?league=Kyber&format=5v5` returns the number of squad and fleet defenses required for a GAC league/format.
 - `GET /api/v1/gac/defense-requirements/transition?fromLeague=Aurodium&toLeague=Kyber&format=5v5` compares two leagues and reports defense deltas plus the additional slots introduced by a promotion.
+- `POST /api/v1/gac/opponents/{allyCode}/history` imports one or more normalized historical GAC rounds. Imports are idempotent per opponent, season, event, round and format, and every unit is validated against current Game Data before persistence.
+- `GET /api/v1/gac/opponents/{allyCode}/history?format=5v5&maxRounds=30` returns persisted opponent rounds newest first. The format filter is optional and `maxRounds` is clamped between 1 and 200.
+- `GET /api/v1/gac/opponents/{allyCode}/scouting?format=5v5&targetLeague=Kyber&maxRounds=30` analyzes the opponent's historical behavior for a specific format and optionally projects it into another league.
 
 Squad definitions are character-only GAC team archetypes. A definition groups one or more complete variants under the same name, format and intended use. A 3v3 variant always contains one leader plus two unique members; a 5v5 variant contains one leader plus four unique members. Unit IDs are validated against current Game Data and API responses enrich leaders/members with localized names, thumbnails and factions. Definitions are persisted in MongoDB so they can later be reused by opponent scouting and GAC recommendation features.
 
 GAC defense requirements are modeled as game rules rather than player persistence. The current requirements are Carbonite 3/3 squads for 5v5/3v3 with 1 fleet, Bronzium 5/7 with 1 fleet, Chromium 7/10 with 2 fleets, Aurodium 9/13 with 2 fleets and Kyber 11/15 with 3 fleets. League transitions expose positive defense deltas so opponent scouting can lower prediction confidence for newly required slots after a promotion.
+
+### Historical GAC opponent scouting
+
+Historical GAC data is deliberately modeled independently from any external website. The import contract records season/event/round, format, league, start time, full-clear result, defensive placements, holds, offense battles, banners, attempts and optional attack timestamps. Character and fleet DefinitionIds are canonicalized and validated through Game Data before the round is stored in MongoDB.
+
+The scout separates 3v3 and 5v5 and reports repeated defensive compositions, placement rate, zones, average holds, hold rate, repeated counters, win rate, one-shot rate, banners, average attempts, full-clear rate and average delay before the first attack. Character defenses are matched exactly against persisted `SquadDefinition` variants, so reports can expose the saved archetype/variant name instead of only raw unit IDs. Unit names are localized through the current Game Data catalog.
+
+Predicted defenses are ranked from the opponent's observed placement frequency and capped by the target league's required squad/fleet slots. When the target league requires more defenses than the latest observed league, the report exposes those additional slots as unobserved instead of fabricating a team prediction. Confidence is sample-size-aware (`Low`, `Medium`, `High`).
+
+The backend does not automate scraping of third-party GAC-history pages. Historical rounds can be imported manually or by a future authorized provider adapter through the normalized Application contract, without changing Domain, Mongo persistence or the scouting algorithm.
+
+Example import shape:
+
+```json
+{
+  "rounds": [
+    {
+      "season": 82,
+      "eventNumber": 1,
+      "roundNumber": 1,
+      "format": "5v5",
+      "league": "Aurodium",
+      "startedAtUtc": "2026-08-12T18:00:00Z",
+      "fullClear": true,
+      "source": "manual",
+      "defenses": [
+        {
+          "zone": "front-top",
+          "squad": {
+            "leaderDefinitionId": "LEADER",
+            "memberDefinitionIds": ["A", "B", "C", "D"],
+            "isFleet": false
+          },
+          "holds": 2,
+          "defeated": true
+        }
+      ],
+      "offenseBattles": []
+    }
+  ]
+}
+```
 
 ### API hardening
 
@@ -74,7 +119,7 @@ Game Data, category metadata and localization are cached in-process for six hour
 GitHub Actions uses two separate workflows:
 
 - `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
-- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, GAC defense rules and league transitions, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis, Galactic Legend progress and the squad definition flow.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, GAC defense rules and league transitions, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis, Galactic Legend progress, squad definitions and a synthetic historical GAC import/opponent-scout flow.
 
 A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
 
