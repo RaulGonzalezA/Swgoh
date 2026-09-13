@@ -1,0 +1,211 @@
+@if (IsOpen)
+{
+    <div class="unit-detail-backdrop" @onclick="HandleCloseAsync">
+        <aside class="unit-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="unit-detail-title" @onclick:stopPropagation>
+            <div class="unit-detail-topbar">
+                <div>
+                    <span class="eyebrow">@Eyebrow</span>
+                    <small>@((Unit?.IsShip ?? Summary?.IsShip ?? false) ? "Nave" : "Personaje")</small>
+                </div>
+                <button type="button" class="unit-detail-close" aria-label="Cerrar detalle" @onclick="HandleCloseAsync">×</button>
+            </div>
+
+            <div class="unit-detail-hero">
+                <div class="unit-detail-portrait-shell @((Unit?.IsShip ?? Summary?.IsShip ?? false) ? "unit-detail-portrait-ship" : string.Empty)">
+                    <span class="unit-detail-portrait-fallback" aria-hidden="true">@Initial(Name)</span>
+                    @if (PortraitUrl is not null)
+                    {
+                        <img class="unit-detail-portrait"
+                             src="@PortraitUrl"
+                             alt="Retrato de @Name"
+                             loading="eager"
+                             decoding="async"
+                             referrerpolicy="no-referrer"
+                             onerror="this.style.display='none'" />
+                    }
+                </div>
+                <div class="unit-detail-identity">
+                    <h2 id="unit-detail-title">@Name</h2>
+                    <span>@DefinitionId</span>
+                    @if (Unit is not null)
+                    {
+                        <div class="unit-detail-stars" aria-label="@Unit.Rarity estrellas">@RarityLabel(Unit.Rarity)</div>
+                    }
+                    else if (Summary?.IsGalacticLegend == true)
+                    {
+                        <span class="unit-detail-gl">Leyenda galáctica</span>
+                    }
+                </div>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="unit-detail-loading"><span class="spinner"></span> Cargando ficha completa…</div>
+            }
+
+            <section class="unit-detail-section">
+                <div class="unit-detail-section-heading">
+                    <span class="section-kicker">Progreso</span>
+                    <h3>Estado actual</h3>
+                </div>
+                <div class="unit-detail-stats">
+                    <div><span>GP</span><strong>@GalacticPower.ToString("N0")</strong></div>
+                    <div><span>Progreso</span><strong>@ProgressLabel</strong></div>
+                    @if (Unit is not null)
+                    {
+                        <div><span>Nivel</span><strong>@Unit.Level</strong></div>
+                        <div><span>Estrellas</span><strong>@Unit.Rarity/7</strong></div>
+                        @if (!Unit.IsShip)
+                        {
+                            <div><span>Mods</span><strong>@Unit.EquippedModCount/6</strong></div>
+                        }
+                    }
+                    <div><span>Zetas</span><strong>@ZetaCount</strong></div>
+                    <div><span>Omicrons</span><strong>@OmicronCount</strong></div>
+                </div>
+            </section>
+
+            @if (Unit is not null && Unit.Factions.Count > 0)
+            {
+                <section class="unit-detail-section">
+                    <div class="unit-detail-section-heading">
+                        <span class="section-kicker">Sinergias</span>
+                        <h3>Facciones</h3>
+                    </div>
+                    <div class="unit-detail-factions">
+                        @foreach (string faction in Unit.Factions)
+                        {
+                            <span>@faction</span>
+                        }
+                    </div>
+                </section>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(ContextTitle) || TacticalNotes.Count > 0)
+            {
+                <section class="unit-detail-section unit-detail-tactical">
+                    <div class="unit-detail-section-heading">
+                        <span class="section-kicker">Contexto táctico</span>
+                        <h3>@(string.IsNullOrWhiteSpace(ContextTitle) ? "Gran Arena" : ContextTitle)</h3>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Context))
+                    {
+                        <p class="unit-detail-context">@Context</p>
+                    }
+                    @if (TacticalNotes.Count > 0)
+                    {
+                        <div class="unit-detail-notes">
+                            @foreach (string note in TacticalNotes)
+                            {
+                                <div><span>→</span><p>@note</p></div>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+
+            <div class="unit-detail-actions">
+                @if (RosterAllyCode is not null)
+                {
+                    <a class="ghost-button button-link" href="@($"/player/{RosterAllyCode.Value}")">Abrir roster</a>
+                }
+                @if (GacAllyCode is not null)
+                {
+                    <a class="secondary-button button-link" href="@($"/gac/{GacAllyCode.Value}")">Ir a War Room</a>
+                }
+            </div>
+        </aside>
+    </div>
+}
+
+@code {
+    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+
+    [Parameter]
+    public PlayerApiClient.RosterUnitViewModel? Unit { get; set; }
+
+    [Parameter]
+    public GacApiClient.BattleUnitViewModel? Summary { get; set; }
+
+    [Parameter]
+    public string Eyebrow { get; set; } = "Ficha de unidad";
+
+    [Parameter]
+    public string? ContextTitle { get; set; }
+
+    [Parameter]
+    public string? Context { get; set; }
+
+    [Parameter]
+    public IReadOnlyCollection<string> TacticalNotes { get; set; } = [];
+
+    [Parameter]
+    public long? RosterAllyCode { get; set; }
+
+    [Parameter]
+    public long? GacAllyCode { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private bool IsOpen => Unit is not null || Summary is not null;
+
+    private string Name => Unit?.Name ?? Summary?.Name ?? "Unidad";
+
+    private string DefinitionId => Unit?.DefinitionId ?? Summary?.DefinitionId ?? "—";
+
+    private long GalacticPower => Unit?.GalacticPower ?? Summary?.GalacticPower ?? 0;
+
+    private int ZetaCount => Unit?.ZetaCount ?? Summary?.ZetaCount ?? 0;
+
+    private int OmicronCount => Unit?.OmicronCount ?? Summary?.OmicronCount ?? 0;
+
+    private string ProgressLabel
+    {
+        get
+        {
+            if (Unit is not null)
+            {
+                return Unit.IsShip
+                    ? $"{Unit.Rarity}★"
+                    : Unit.RelicTier > 0 ? $"R{Unit.RelicTier}" : $"G{Unit.GearTier}";
+            }
+
+            if (Summary is null)
+            {
+                return "—";
+            }
+
+            return Summary.IsShip ? "Nave" : $"R{Summary.RelicTier}";
+        }
+    }
+
+    private string? PortraitUrl => GetPortraitUrl(Unit?.ThumbnailName);
+
+    private async Task HandleCloseAsync() => await OnClose.InvokeAsync();
+
+    private static string? GetPortraitUrl(string? thumbnailName)
+    {
+        if (string.IsNullOrWhiteSpace(thumbnailName))
+        {
+            return null;
+        }
+
+        string assetName = thumbnailName.Trim();
+        if (!assetName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            assetName += ".png";
+        }
+
+        return AssetBaseUrl + Uri.EscapeDataString(assetName);
+    }
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
+        ? "?"
+        : char.ToUpperInvariant(name.Trim()[0]).ToString();
+
+    private static string RarityLabel(int rarity) => new('★', Math.Clamp(rarity, 0, 7));
+}
