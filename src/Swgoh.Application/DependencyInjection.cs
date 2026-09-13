@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IOpponentScoutingService, OpponentScoutingService>();
         services.AddScoped<ICurrentGacScoutingService, CurrentGacScoutingService>();
         services.AddScoped<IGacPlannerService, GacPlannerService>();
+        services.AddScoped<IGacAttackPlanOptimizerService, GacAttackPlanOptimizerService>();
         return services;
     }
 }
