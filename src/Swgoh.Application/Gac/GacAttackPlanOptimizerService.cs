@@ -69,8 +69,8 @@ internal sealed class GacAttackPlanOptimizerService(
                 .DefaultIfEmpty(0)
                 .Max() + 1;
             string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
-                $"coste {recommendation.StrategicCost:0.#}; ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0}; " +
-                $"datacron {recommendation.DatacronStatus}.";
+                $"coste {recommendation.StrategicCost:0.#} (reserva {recommendation.OpportunityCost:0.#}); " +
+                $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0}; datacron {recommendation.DatacronStatus}.";
             retainedAttacks.Add(GacAttackAssignment.Create(
                 Guid.NewGuid(),
                 recommendation.DefenseId,
@@ -134,19 +134,40 @@ internal sealed class GacAttackPlanOptimizerService(
                 group => group.Select(TeamPower).DefaultIfEmpty(0m).Max());
         Dictionary<Guid, GacPlannerCounterHint> hints = state.Plan.CounterHints.ToDictionary(hint => hint.DefenseId);
 
+        PreliminaryCandidate[] preliminaryCandidates =
+        [
+            .. targets.SelectMany(defense =>
+                attackPresets
+                    .Where(preset => preset.Squad.IsFleet == defense.Squad.IsFleet)
+                    .Select(preset => BuildPreliminaryCandidate(
+                        defense,
+                        preset,
+                        hints.GetValueOrDefault(defense.Id),
+                        maxTeamPowerByType.GetValueOrDefault(defense.Squad.IsFleet),
+                        tacticalContext)))
+        ];
+        IReadOnlyDictionary<GacStrategicCandidateKey, GacOpportunityAssessment> opportunityAssessments =
+            GacStrategicOpportunityEvaluator.Evaluate(
+                [
+                    .. preliminaryCandidates.Select(candidate => new GacStrategicCandidateSnapshot(
+                        candidate.Defense.Id,
+                        candidate.Preset.Id,
+                        candidate.ScoreBeforeOpportunity,
+                        candidate.UnitDefinitionIds))
+                ]);
+
         DefenseChoice[] choices =
         [
             .. targets.Select(defense => new DefenseChoice(
                 defense,
                 [
-                    .. attackPresets
-                        .Where(preset => preset.Squad.IsFleet == defense.Squad.IsFleet)
-                        .Select(preset => BuildCandidate(
-                            defense,
-                            preset,
-                            hints.GetValueOrDefault(defense.Id),
-                            maxTeamPowerByType.GetValueOrDefault(defense.Squad.IsFleet),
-                            tacticalContext))
+                    .. preliminaryCandidates
+                        .Where(candidate => candidate.Defense.Id == defense.Id)
+                        .Select(candidate => FinalizeCandidate(
+                            candidate,
+                            opportunityAssessments.GetValueOrDefault(
+                                new GacStrategicCandidateKey(candidate.Defense.Id, candidate.Preset.Id))
+                            ?? GacOpportunityAssessment.None))
                         .Where(candidate => candidate is not null)
                         .Select(candidate => candidate!)
                         .OrderByDescending(candidate => candidate.Score)
@@ -260,7 +281,7 @@ internal sealed class GacAttackPlanOptimizerService(
                 attack.Status == GacAttackPlanStatus.Planned);
     }
 
-    private static Candidate? BuildCandidate(
+    private static PreliminaryCandidate BuildPreliminaryCandidate(
         GacVisibleDefenseDetails defense,
         GacTeamPresetDetails preset,
         GacPlannerCounterHint? hint,
@@ -271,17 +292,15 @@ internal sealed class GacAttackPlanOptimizerService(
         decimal defensePower = SquadPower(defense.Squad);
         (decimal matchScore, string evidence, string confidence, string rationale) =
             ScoreMatch(defense, preset, hint, teamPower, defensePower);
-        decimal strategicCost = CalculateStrategicCost(preset, teamPower, defensePower, maxTeamPower);
+        decimal baseStrategicCost = CalculateBaseStrategicCost(preset, teamPower, defensePower, maxTeamPower);
         GacTacticalEvaluation tactical = tacticalContext.Evaluate(
             defense,
             preset,
             hint?.RequiresDatacronVerification == true);
-        decimal score = Math.Clamp(matchScore - strategicCost + tactical.Adjustment, 0m, 100m);
-        if (score < 25m)
-        {
-            return null;
-        }
-
+        decimal scoreBeforeOpportunity = Math.Clamp(
+            matchScore - baseStrategicCost + tactical.Adjustment,
+            0m,
+            100m);
         string adjustedConfidence = tactical.DatacronStatus == "NoCandidate"
             ? DowngradeConfidence(confidence)
             : confidence;
@@ -289,11 +308,11 @@ internal sealed class GacAttackPlanOptimizerService(
             ? rationale
             : $"{rationale} {tactical.Summary}";
 
-        return new Candidate(
+        return new PreliminaryCandidate(
             defense,
             preset,
-            score,
-            strategicCost,
+            scoreBeforeOpportunity,
+            baseStrategicCost,
             evidence,
             adjustedConfidence,
             tacticalRationale,
@@ -308,6 +327,52 @@ internal sealed class GacAttackPlanOptimizerService(
             tactical.DefenseModSpeedBonus,
             tactical.DatacronStatus,
             [.. preset.Squad.AllUnits.Select(unit => unit.DefinitionId)]);
+    }
+
+    private static Candidate? FinalizeCandidate(
+        PreliminaryCandidate preliminary,
+        GacOpportunityAssessment opportunity)
+    {
+        decimal strategicCost = Math.Round(
+            Math.Clamp(preliminary.BaseStrategicCost + opportunity.OpportunityCost, 0m, 35m),
+            1);
+        decimal score = Math.Clamp(
+            preliminary.ScoreBeforeOpportunity - opportunity.OpportunityCost,
+            0m,
+            100m);
+        if (score < 25m)
+        {
+            return null;
+        }
+
+        string rationale = opportunity.OpportunityCost > 0m || opportunity.FutureDefensesAtRisk > 0
+            ? $"{preliminary.Rationale} {opportunity.Summary}"
+            : preliminary.Rationale;
+
+        return new Candidate(
+            preliminary.Defense,
+            preliminary.Preset,
+            score,
+            strategicCost,
+            preliminary.BaseStrategicCost,
+            opportunity.OpportunityCost,
+            opportunity.AlternativesHere,
+            opportunity.FutureDefensesAtRisk,
+            opportunity.Summary,
+            preliminary.Evidence,
+            preliminary.Confidence,
+            rationale,
+            preliminary.WinRate,
+            preliminary.OneShotRate,
+            preliminary.AverageBanners,
+            preliminary.Uses,
+            preliminary.TacticalAdjustment,
+            preliminary.TeamAverageSpeed,
+            preliminary.DefenseAverageSpeed,
+            preliminary.TeamModSpeedBonus,
+            preliminary.DefenseModSpeedBonus,
+            preliminary.DatacronStatus,
+            preliminary.UnitDefinitionIds);
     }
 
     private static (decimal Score, string Evidence, string Confidence, string Rationale) ScoreMatch(
@@ -412,7 +477,7 @@ internal sealed class GacAttackPlanOptimizerService(
         return Math.Clamp(score, 0m, 98m);
     }
 
-    private static decimal CalculateStrategicCost(
+    private static decimal CalculateBaseStrategicCost(
         GacTeamPresetDetails preset,
         decimal teamPower,
         decimal defensePower,
@@ -522,7 +587,12 @@ internal sealed class GacAttackPlanOptimizerService(
         candidate.DefenseAverageSpeed,
         candidate.TeamModSpeedBonus,
         candidate.DefenseModSpeedBonus,
-        candidate.DatacronStatus);
+        candidate.DatacronStatus,
+        candidate.BaseStrategicCost,
+        candidate.OpportunityCost,
+        candidate.StrategicAlternatives,
+        candidate.FutureDefensesAtRisk,
+        candidate.StrategicRationale);
 
     private static bool HasHistoricalEvidence(GacPlannerCounterHint hint) =>
         hint.WinRate is not null || hint.Uses is > 0 ||
@@ -568,11 +638,36 @@ internal sealed class GacAttackPlanOptimizerService(
         Recommendations: [],
         SearchLimitReached: false);
 
+    private sealed record PreliminaryCandidate(
+        GacVisibleDefenseDetails Defense,
+        GacTeamPresetDetails Preset,
+        decimal ScoreBeforeOpportunity,
+        decimal BaseStrategicCost,
+        string Evidence,
+        string Confidence,
+        string Rationale,
+        decimal? WinRate,
+        decimal? OneShotRate,
+        decimal? AverageBanners,
+        int? Uses,
+        decimal TacticalAdjustment,
+        decimal? TeamAverageSpeed,
+        decimal? DefenseAverageSpeed,
+        decimal? TeamModSpeedBonus,
+        decimal? DefenseModSpeedBonus,
+        string DatacronStatus,
+        IReadOnlyCollection<string> UnitDefinitionIds);
+
     private sealed record Candidate(
         GacVisibleDefenseDetails Defense,
         GacTeamPresetDetails Preset,
         decimal Score,
         decimal StrategicCost,
+        decimal BaseStrategicCost,
+        decimal OpportunityCost,
+        int StrategicAlternatives,
+        int FutureDefensesAtRisk,
+        string StrategicRationale,
         string Evidence,
         string Confidence,
         string Rationale,
