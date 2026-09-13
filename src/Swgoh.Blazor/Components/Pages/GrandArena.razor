@@ -17,6 +17,14 @@
     </div>
 </div>
 
+@if (_player is not null)
+{
+    <nav class="player-subnav" aria-label="Secciones del jugador">
+        <a href="@($"/player/{AllyCode}")">Roster</a>
+        <a class="active" href="@($"/gac/{AllyCode}")">Gran Arena</a>
+    </nav>
+}
+
 @if (_loading)
 {
     <div class="loading-panel gac-loading">
@@ -78,6 +86,28 @@ else
         </div>
     </section>
 
+    @if (scouting.Scouting is not null)
+    {
+        <section class="scouting-strip" aria-label="Histórico del rival">
+            <div>
+                <span>Rondas analizadas</span>
+                <strong>@scouting.Scouting.RoundsAnalyzed</strong>
+            </div>
+            <div>
+                <span>Temporadas</span>
+                <strong>@scouting.Scouting.SeasonsAnalyzed</strong>
+            </div>
+            <div>
+                <span>Full clear</span>
+                <strong>@(scouting.Scouting.FullClearRate is null ? "—" : Percent(scouting.Scouting.FullClearRate.Value))</strong>
+            </div>
+            <div>
+                <span>Primer ataque</span>
+                <strong>@FormatDelay(scouting.Scouting.AverageFirstAttackDelayMinutes)</strong>
+            </div>
+        </section>
+    }
+
     @if (plan is not null)
     {
         <div class="comparison-grid">
@@ -134,9 +164,16 @@ else
                             <div class="threat-body">
                                 <div class="threat-title">
                                     <strong>@threat.Unit.Name</strong>
-                                    <span class="priority-pill priority-@threat.Priority.ToLowerInvariant()">@threat.Priority</span>
+                                    <span class="priority-pill priority-@threat.Priority.ToLowerInvariant()">@FriendlyPriority(threat.Priority)</span>
                                 </div>
-                                <span>@threat.Unit.GalacticPower.ToString("N0") GP · R@threat.Unit.RelicTier</span>
+                                <span>@threat.Unit.GalacticPower.ToString("N0") GP · @UnitProgress(threat.Unit)</span>
+                                <div class="threat-tags">
+                                    <span>@FriendlyCategory(threat.Category)</span>
+                                    @if (threat.Unit.OmicronCount > 0)
+                                    {
+                                        <span>@threat.Unit.OmicronCount O</span>
+                                    }
+                                </div>
                                 <p>@threat.Reason</p>
                             </div>
                         </article>
@@ -156,7 +193,7 @@ else
                         <article class="prediction-card">
                             <div>
                                 <strong>@prediction.LeaderName</strong>
-                                <span>@(prediction.IsFleet ? "Flota" : "Escuadrón") · @prediction.Confidence</span>
+                                <span>@(prediction.IsFleet ? "Flota" : "Escuadrón") · @FriendlyConfidence(prediction.Confidence)</span>
                             </div>
                             @if (prediction.Probability is not null)
                             {
@@ -169,11 +206,46 @@ else
                             {
                                 <p>@string.Join(" · ", prediction.MemberNames)</p>
                             }
+                            <small class="prediction-source">@FriendlyDefenseSource(prediction.Source)</small>
                         </article>
                     }
                 </div>
             </section>
         </div>
+
+        <section class="dashboard-section reserves-section">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">No comprometer demasiado pronto</span>
+                    <h2>Reservas de ataque</h2>
+                </div>
+                <span class="count-badge">@plan.AttackReserves.Count</span>
+            </div>
+
+            @if (plan.AttackReserves.Count == 0)
+            {
+                <div class="inline-empty">No hay reservas prioritarias calculadas para este enfrentamiento.</div>
+            }
+            else
+            {
+                <div class="reserve-grid">
+                    @foreach (GacApiClient.AttackReserveViewModel reserve in plan.AttackReserves.Take(12))
+                    {
+                        <article class="reserve-card">
+                            <div class="reserve-avatar @(reserve.Unit.IsShip ? "ship-avatar" : string.Empty)">@Initial(reserve.Unit.Name)</div>
+                            <div class="reserve-main">
+                                <div class="reserve-title">
+                                    <strong>@reserve.Unit.Name</strong>
+                                    <span class="priority-pill priority-@reserve.Priority.ToLowerInvariant()">@FriendlyPriority(reserve.Priority)</span>
+                                </div>
+                                <span>@FriendlyRole(reserve.Role) · @reserve.Unit.GalacticPower.ToString("N0") GP · @UnitProgress(reserve.Unit)</span>
+                                <p>@reserve.Reason</p>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
 
         <section class="dashboard-section counters-section">
             <div class="section-heading">
@@ -190,32 +262,50 @@ else
                 <div class="counter-grid">
                     @foreach (GacApiClient.CounterSuggestionViewModel counter in plan.CounterSuggestions.Take(10))
                     {
-                        <article class="counter-card">
+                        bool observed = counter.RecommendedTeam is { Count: > 0 } && counter.Uses is not null;
+                        <article class="counter-card @(observed ? "counter-card-observed" : string.Empty)">
                             <div class="counter-target">
                                 <span>Contra</span>
                                 <strong>@counter.Threat.Name</strong>
-                                <small>@counter.Confidence · @FriendlySource(counter.Source)</small>
+                                <div class="counter-badges">
+                                    <span class="confidence-badge confidence-@counter.Confidence.ToLowerInvariant()">@FriendlyConfidence(counter.Confidence)</span>
+                                    <span class="source-badge">@FriendlySource(counter.Source)</span>
+                                </div>
                             </div>
                             <div class="counter-arrow" aria-hidden="true">→</div>
                             <div class="counter-team">
                                 @if (counter.RecommendedTeam is { Count: > 0 })
                                 {
+                                    <span class="counter-team-label">Equipo observado disponible en tu roster</span>
                                     <strong>@string.Join(" · ", counter.RecommendedTeam.Select(unit => unit.Name))</strong>
                                 }
                                 else
                                 {
+                                    <span class="counter-team-label">Anclas sugeridas</span>
                                     <strong>@string.Join(" · ", counter.CandidateAnchors.Select(unit => unit.Name))</strong>
                                 }
                                 <p>@counter.Rationale</p>
+                                @if (counter.RequiresDatacronVerification)
+                                {
+                                    <span class="datacron-note">Verificar datacron y mods antes de atacar</span>
+                                }
                             </div>
-                            <div class="counter-stats">
+                            <div class="counter-stats counter-stats-v2">
                                 @if (counter.WinRate is not null)
                                 {
                                     <div><strong>@Percent(counter.WinRate.Value)</strong><span>victorias</span></div>
                                 }
+                                @if (counter.OneShotRate is not null)
+                                {
+                                    <div><strong>@Percent(counter.OneShotRate.Value)</strong><span>one-shot</span></div>
+                                }
                                 @if (counter.Uses is not null)
                                 {
                                     <div><strong>@counter.Uses</strong><span>muestras</span></div>
+                                }
+                                @if (counter.PlayersObserved is not null)
+                                {
+                                    <div><strong>@counter.PlayersObserved</strong><span>jugadores</span></div>
                                 }
                                 @if (counter.AverageBanners is not null)
                                 {
@@ -270,6 +360,22 @@ else
         return $"{Math.Clamp(normalized, 0, 100):0.#}%";
     }
 
+    private static string FormatDelay(decimal? minutes)
+    {
+        if (minutes is null)
+        {
+            return "—";
+        }
+
+        decimal value = Math.Max(0, minutes.Value);
+        if (value < 60)
+        {
+            return $"{value:0} min";
+        }
+
+        return $"{value / 60:0.#} h";
+    }
+
     private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
         ? "?"
         : char.ToUpperInvariant(name.Trim()[0]).ToString();
@@ -285,12 +391,60 @@ else
         ? $"+{CompactNumber(value)}"
         : $"-{CompactNumber(Math.Abs(value))}";
 
+    private static string UnitProgress(GacApiClient.BattleUnitViewModel unit) =>
+        unit.IsShip ? "7★" : $"R{unit.RelicTier}";
+
     private static string FriendlySource(string source) => source switch
     {
+        "GlobalHistoricalCounterData" => "Histórico global",
+        "HistoricalCounterPattern" => "Histórico del rival",
         "ObservedCounterStatistics" => "Histórico observado",
         "StoredGacHistory" => "Histórico GAC",
         "RosterStrengthHeuristic" => "Estimación por roster",
         _ => source
+    };
+
+    private static string FriendlyDefenseSource(string source) => source switch
+    {
+        "HistoricalPattern" => "Basado en defensas históricas",
+        "RosterThreatHeuristic" => "Estimación por fuerza del roster",
+        _ => source
+    };
+
+    private static string FriendlyConfidence(string confidence) => confidence switch
+    {
+        "High" => "Alta",
+        "Medium" => "Media",
+        "Low" => "Baja",
+        _ => confidence
+    };
+
+    private static string FriendlyPriority(string priority) => priority switch
+    {
+        "Critical" => "Crítica",
+        "High" => "Alta",
+        "Medium" => "Media",
+        "Watch" => "Vigilar",
+        "Low" => "Baja",
+        _ => priority
+    };
+
+    private static string FriendlyCategory(string category) => category switch
+    {
+        "GalacticLegend" => "Leyenda galáctica",
+        "Omicron" => "Omicron",
+        "Fleet" => "Flota",
+        "HighPower" => "Alto GP",
+        _ => category
+    };
+
+    private static string FriendlyRole(string role) => role switch
+    {
+        "GlAnswer" => "Respuesta GL",
+        "GacSpecialist" => "Especialista GAC",
+        "FleetAnchor" => "Ancla de flota",
+        "HighPowerFlex" => "Comodín de alto GP",
+        _ => role
     };
 
     private static string FormatAllyCode(long allyCode)

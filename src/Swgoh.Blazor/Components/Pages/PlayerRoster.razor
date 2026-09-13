@@ -4,7 +4,7 @@
 
 <PageTitle>@(_player is null ? "Roster" : $"{_player.Name} · Roster") · SWGOH Planner</PageTitle>
 
-<div class="page-heading-row">
+<div class="page-heading-row roster-heading">
     <div>
         <a class="back-link" href="/">← Dashboard</a>
         <span class="eyebrow">Roster explorer</span>
@@ -24,6 +24,14 @@
     }
 </div>
 
+@if (_player is not null)
+{
+    <nav class="player-subnav" aria-label="Secciones del jugador">
+        <a class="active" href="@($"/player/{AllyCode}")">Roster</a>
+        <a href="@($"/gac/{AllyCode}")">Gran Arena</a>
+    </nav>
+}
+
 @if (_loadingProfile)
 {
     <div class="loading-panel"><span class="spinner"></span> Cargando roster…</div>
@@ -41,11 +49,42 @@ else if (_player is null)
 }
 else
 {
-    <section class="roster-toolbar">
-        <form class="roster-filters" @onsubmit="LoadFirstPageAsync" @onsubmit:preventDefault>
-            <div class="filter-search">
-                <label class="sr-only" for="unitSearch">Buscar unidad</label>
-                <input id="unitSearch" placeholder="Buscar por nombre…" @bind="_search" />
+    @if (_analysis is not null)
+    {
+        <section class="roster-overview" aria-label="Resumen del roster">
+            <div>
+                <span>Personajes</span>
+                <strong>@_analysis.CharacterCount</strong>
+                <small>@CompactNumber(_analysis.CharacterGalacticPower) GP</small>
+            </div>
+            <div>
+                <span>Naves</span>
+                <strong>@_analysis.ShipCount</strong>
+                <small>@CompactNumber(_analysis.ShipGalacticPower) GP</small>
+            </div>
+            <div>
+                <span>Reliquias</span>
+                <strong>@_analysis.RelicCharacters</strong>
+                <small>@_analysis.Relic9Plus R9+ · @_analysis.Relic10 R10</small>
+            </div>
+            <div>
+                <span>Habilidades</span>
+                <strong>@_analysis.Omicrons O</strong>
+                <small>@_analysis.Zetas zetas</small>
+            </div>
+            <div>
+                <span>Mods completos</span>
+                <strong>@_analysis.FullyModdedCharacters</strong>
+                <small>@_analysis.UnmoddedCharacters sin mods</small>
+            </div>
+        </section>
+    }
+
+    <section class="roster-toolbar roster-toolbar-v2">
+        <form class="roster-filters roster-filters-v2" @onsubmit="LoadFirstPageAsync" @onsubmit:preventDefault>
+            <div class="filter-search filter-search-wide">
+                <label for="unitSearch">Buscar</label>
+                <input id="unitSearch" placeholder="Nombre de personaje o nave…" @bind="_search" />
             </div>
             <div class="filter-select">
                 <label for="unitType">Tipo</label>
@@ -55,13 +94,60 @@ else
                     <option value="Ship">Naves</option>
                 </select>
             </div>
-            <button class="secondary-button" type="submit" disabled="@_loadingRoster">Filtrar</button>
+            <div class="filter-select">
+                <label for="minRelic">Reliquia mínima</label>
+                <select id="minRelic" @bind="_minRelic">
+                    <option value="">Cualquiera</option>
+                    <option value="1">R1+</option>
+                    <option value="5">R5+</option>
+                    <option value="7">R7+</option>
+                    <option value="8">R8+</option>
+                    <option value="9">R9+</option>
+                    <option value="10">R10</option>
+                </select>
+            </div>
+            <div class="filter-select">
+                <label for="abilityFilter">Habilidad</label>
+                <select id="abilityFilter" @bind="_abilityFilter">
+                    <option value="All">Todas</option>
+                    <option value="Zeta">Con zeta</option>
+                    <option value="Omicron">Con omicron</option>
+                </select>
+            </div>
+            <div class="filter-select">
+                <label for="sortBy">Ordenar</label>
+                <select id="sortBy" @bind="_orderBy">
+                    <option value="GalacticPower">Poder galáctico</option>
+                    <option value="RelicTier">Reliquia</option>
+                    <option value="Rarity">Estrellas</option>
+                    <option value="GearTier">Gear</option>
+                    <option value="Name">Nombre</option>
+                </select>
+            </div>
+            <div class="filter-select filter-direction">
+                <label for="sortDirection">Dirección</label>
+                <select id="sortDirection" @bind="_direction">
+                    <option value="Descending">Mayor primero</option>
+                    <option value="Ascending">Menor primero</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button class="secondary-button" type="submit" disabled="@_loadingRoster">Aplicar</button>
+                @if (HasActiveFilters)
+                {
+                    <button class="ghost-button" type="button" @onclick="ResetFiltersAsync" disabled="@_loadingRoster">Limpiar</button>
+                }
+            </div>
         </form>
 
-        @if (_roster is not null)
-        {
-            <span class="result-count">@_roster.Total.ToString("N0") resultados</span>
-        }
+        <div class="roster-result-summary">
+            @if (_roster is not null)
+            {
+                <strong>@_roster.Total.ToString("N0")</strong>
+                <span>resultados</span>
+                <small>@ActiveFilterSummary</small>
+            }
+        </div>
     </section>
 
     @if (_loadingRoster)
@@ -73,19 +159,23 @@ else
         <div class="empty-state">
             <span class="empty-icon">⌕</span>
             <h2>Sin resultados</h2>
-            <p>Prueba con otro nombre o cambia el filtro de tipo.</p>
+            <p>No hay unidades que coincidan con estos filtros. Limpia alguno o prueba otra búsqueda.</p>
+            @if (HasActiveFilters)
+            {
+                <button class="secondary-button" type="button" @onclick="ResetFiltersAsync">Limpiar filtros</button>
+            }
         </div>
     }
     else
     {
-        <div class="roster-grid">
+        <div class="roster-grid roster-grid-v2">
             @foreach (PlayerApiClient.RosterUnitViewModel unit in _roster.Items)
             {
-                <article class="unit-card" @key="unit.Id">
+                <article class="unit-card unit-card-v2" @key="unit.Id">
                     <div class="unit-avatar @(unit.IsShip ? "ship-avatar" : string.Empty)">@Initial(unit.Name)</div>
                     <div class="unit-main">
                         <div class="unit-title-row">
-                            <h2>@unit.Name</h2>
+                            <h2 title="@unit.Name">@unit.Name</h2>
                             @if (unit.RelicTier > 0)
                             {
                                 <span class="relic-badge">R@unit.RelicTier</span>
@@ -96,8 +186,12 @@ else
                             }
                         </div>
                         <div class="unit-stars" aria-label="@unit.Rarity estrellas">@RarityLabel(unit.Rarity)</div>
-                        <div class="unit-meta">
-                            <span>@unit.GalacticPower.ToString("N0") GP</span>
+                        <div class="unit-meta unit-meta-v2">
+                            <span class="gp-value">@unit.GalacticPower.ToString("N0") GP</span>
+                            @if (!unit.IsShip)
+                            {
+                                <span class="mod-chip @(unit.EquippedModCount >= 6 ? "mod-chip-complete" : string.Empty)">@unit.EquippedModCount/6 mods</span>
+                            }
                             @if (unit.ZetaCount > 0)
                             {
                                 <span class="ability-chip">Z @unit.ZetaCount</span>
@@ -107,6 +201,19 @@ else
                                 <span class="ability-chip ability-chip-omi">O @unit.OmicronCount</span>
                             }
                         </div>
+                        @if (unit.Factions.Count > 0)
+                        {
+                            <div class="faction-row">
+                                @foreach (string faction in unit.Factions.Take(2))
+                                {
+                                    <span>@faction</span>
+                                }
+                                @if (unit.Factions.Count > 2)
+                                {
+                                    <span>+@(unit.Factions.Count - 2)</span>
+                                }
+                            </div>
+                        }
                     </div>
                 </article>
             }
@@ -129,10 +236,47 @@ else
     private PlayerApiClient.RosterPageViewModel? _roster;
     private string _search = string.Empty;
     private string _type = "All";
+    private string _minRelic = string.Empty;
+    private string _abilityFilter = "All";
+    private string _orderBy = "GalacticPower";
+    private string _direction = "Descending";
     private string? _error;
     private bool _loadingProfile = true;
     private bool _loadingRoster;
     private int _page = 1;
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_search) ||
+        _type != "All" ||
+        !string.IsNullOrWhiteSpace(_minRelic) ||
+        _abilityFilter != "All" ||
+        _orderBy != "GalacticPower" ||
+        _direction != "Descending";
+
+    private string ActiveFilterSummary
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (_type != "All")
+            {
+                parts.Add(_type == "Ship" ? "naves" : "personajes");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_minRelic))
+            {
+                parts.Add($"R{_minRelic}+");
+            }
+
+            if (_abilityFilter != "All")
+            {
+                parts.Add(_abilityFilter == "Zeta" ? "con zeta" : "con omicron");
+            }
+
+            parts.Add(SortLabel());
+            return string.Join(" · ", parts);
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -165,6 +309,18 @@ else
         await LoadRosterAsync();
     }
 
+    private async Task ResetFiltersAsync()
+    {
+        _search = string.Empty;
+        _type = "All";
+        _minRelic = string.Empty;
+        _abilityFilter = "All";
+        _orderBy = "GalacticPower";
+        _direction = "Descending";
+        _page = 1;
+        await LoadRosterAsync();
+    }
+
     private async Task PreviousPageAsync()
     {
         if (_page <= 1)
@@ -193,7 +349,19 @@ else
         _error = null;
         try
         {
-            _roster = await PlayerClient.GetRosterAsync(AllyCode, _page, 24, _search, _type);
+            bool? hasZeta = _abilityFilter == "Zeta" ? true : null;
+            bool? hasOmicron = _abilityFilter == "Omicron" ? true : null;
+            _roster = await PlayerClient.GetRosterAsync(
+                AllyCode,
+                page: _page,
+                pageSize: 24,
+                search: _search,
+                type: _type,
+                minRelic: ParseOptionalInt(_minRelic),
+                hasZeta: hasZeta,
+                hasOmicron: hasOmicron,
+                orderBy: _orderBy,
+                direction: _direction);
         }
         catch (HttpRequestException)
         {
@@ -205,11 +373,34 @@ else
         }
     }
 
+    private string SortLabel()
+    {
+        string field = _orderBy switch
+        {
+            "RelicTier" => "reliquia",
+            "Rarity" => "estrellas",
+            "GearTier" => "gear",
+            "Name" => "nombre",
+            _ => "GP"
+        };
+        return $"{field} {(_direction == "Ascending" ? "↑" : "↓")}";
+    }
+
+    private static int? ParseOptionalInt(string value) =>
+        int.TryParse(value, out int parsed) ? parsed : null;
+
     private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
         ? "?"
         : char.ToUpperInvariant(name.Trim()[0]).ToString();
 
     private static string RarityLabel(int rarity) => new('★', Math.Clamp(rarity, 0, 7));
+
+    private static string CompactNumber(long value) => value switch
+    {
+        >= 1_000_000 => $"{value / 1_000_000d:0.##}M",
+        >= 1_000 => $"{value / 1_000d:0.#}K",
+        _ => value.ToString("N0")
+    };
 
     private static string FormatAllyCode(long allyCode)
     {
