@@ -16,11 +16,16 @@ public sealed record SaveConquestFeat(
     IReadOnlyCollection<string> UnitDefinitionIds,
     int MinimumMatchingUnits);
 
+public sealed record SaveConquestUnitStamina(string DefinitionId, int CurrentPercent);
+
 public sealed record SaveConquestPlan(
     string EventId,
     string Name,
     ConquestDifficulty Difficulty,
-    IReadOnlyCollection<SaveConquestFeat> Feats);
+    IReadOnlyCollection<SaveConquestFeat> Feats,
+    int StaminaCostPerBattle = ConquestPlan.DefaultStaminaCostPerBattle,
+    int ReserveFloorPercent = ConquestPlan.DefaultReserveFloorPercent,
+    IReadOnlyCollection<SaveConquestUnitStamina>? Stamina = null);
 
 public sealed record ConquestFeatDetails(
     Guid Id,
@@ -46,6 +51,9 @@ public sealed record ConquestPlanDetails(
     int TotalFeats,
     int EarnedFeatPoints,
     int AvailableFeatPoints,
+    int StaminaCostPerBattle,
+    int ReserveFloorPercent,
+    IReadOnlyCollection<ConquestUnitStamina> Stamina,
     DateTimeOffset UpdatedAtUtc);
 
 public sealed record ConquestOptimizationUnit(
@@ -55,7 +63,10 @@ public sealed record ConquestOptimizationUnit(
     int RelicTier,
     long GalacticPower,
     decimal? Speed,
-    IReadOnlyCollection<string> Factions);
+    IReadOnlyCollection<string> Factions,
+    int CurrentStamina,
+    int ExpectedPostBattleStamina,
+    bool BelowReserveAfterBattle);
 
 public sealed record ConquestFeatContribution(
     Guid FeatId,
@@ -71,6 +82,10 @@ public sealed record ConquestTeamRecommendation(
     decimal FeatEfficiency,
     long TeamGalacticPower,
     decimal? AverageSpeed,
+    decimal AverageStamina,
+    decimal ExpectedPostBattleAverageStamina,
+    decimal StaminaOpportunityCost,
+    int ReserveRiskUnits,
     IReadOnlyCollection<ConquestOptimizationUnit> Team,
     IReadOnlyCollection<ConquestFeatContribution> AdvancesFeats,
     string Rationale);
@@ -80,5 +95,7 @@ public sealed record ConquestOptimizationResult(
     string EventId,
     int PendingFeats,
     int CandidateCharacters,
+    int StaminaCostPerBattle,
+    int ReserveFloorPercent,
     IReadOnlyCollection<ConquestTeamRecommendation> Recommendations,
     IReadOnlyCollection<Guid> UncoveredFeatIds);
