@@ -1,5 +1,6 @@
 using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
+using Swgoh.Domain.Players;
 
 namespace Swgoh.Application.Gac;
 
@@ -46,14 +47,19 @@ internal sealed class CurrentGacScoutingService(
             .ConfigureAwait(false);
         if (lookup.Status != CurrentGacOpponentStatus.Found || lookup.Opponent is null)
         {
-            return new CurrentGacScoutingResult(lookup, null, null);
+            return new CurrentGacScoutingResult(lookup, null, null, null);
         }
 
         CurrentGacOpponent opponent = lookup.Opponent;
-        var refreshedOpponent = await playerProfileService
+        PlayerProfile refreshedOpponent = await playerProfileService
             .RefreshFromGameAsync(opponent.OpponentAllyCode, cancellationToken)
             .ConfigureAwait(false);
-        PlayerRosterAnalysis analysis = PlayerRosterMetrics.Calculate(refreshedOpponent);
+        PlayerProfile refreshedPlayer = await playerProfileService
+            .RefreshFromGameAsync(allyCode, cancellationToken)
+            .ConfigureAwait(false);
+
+        PlayerRosterAnalysis opponentAnalysis = PlayerRosterMetrics.Calculate(refreshedOpponent);
+        PlayerRosterAnalysis playerAnalysis = PlayerRosterMetrics.Calculate(refreshedPlayer);
 
         Task<OpponentScoutingReport?> historicalScoutingTask = scoutingService.GetAsync(
             opponent.OpponentAllyCode,
@@ -61,48 +67,95 @@ internal sealed class CurrentGacScoutingService(
             opponent.League,
             Math.Clamp(maxRounds, 1, MaxRounds),
             cancellationToken);
-        Task<PlayerRosterPage?> charactersTask = playerRosterService.GetAsync(
+
+        Task<PlayerRosterPage?> opponentCharactersTask = LoadRosterAsync(
             opponent.OpponentAllyCode,
-            new PlayerRosterQuery(
-                PageSize: CharacterScoutLimit,
-                Type: PlayerRosterUnitType.Character,
-                OrderBy: PlayerRosterSortField.GalacticPower,
-                Direction: PlayerRosterSortDirection.Descending),
+            PlayerRosterUnitType.Character,
+            CharacterScoutLimit,
+            hasOmicron: null,
             cancellationToken);
-        Task<PlayerRosterPage?> shipsTask = playerRosterService.GetAsync(
+        Task<PlayerRosterPage?> opponentShipsTask = LoadRosterAsync(
             opponent.OpponentAllyCode,
-            new PlayerRosterQuery(
-                PageSize: ShipScoutLimit,
-                Type: PlayerRosterUnitType.Ship,
-                OrderBy: PlayerRosterSortField.GalacticPower,
-                Direction: PlayerRosterSortDirection.Descending),
+            PlayerRosterUnitType.Ship,
+            ShipScoutLimit,
+            hasOmicron: null,
             cancellationToken);
-        Task<PlayerRosterPage?> omicronsTask = playerRosterService.GetAsync(
+        Task<PlayerRosterPage?> opponentOmicronsTask = LoadRosterAsync(
             opponent.OpponentAllyCode,
-            new PlayerRosterQuery(
-                PageSize: OmicronScoutLimit,
-                Type: PlayerRosterUnitType.Character,
-                HasOmicron: true,
-                OrderBy: PlayerRosterSortField.GalacticPower,
-                Direction: PlayerRosterSortDirection.Descending),
+            PlayerRosterUnitType.Character,
+            OmicronScoutLimit,
+            hasOmicron: true,
             cancellationToken);
 
-        await Task.WhenAll(historicalScoutingTask, charactersTask, shipsTask, omicronsTask).ConfigureAwait(false);
+        Task<PlayerRosterPage?> playerCharactersTask = LoadRosterAsync(
+            allyCode,
+            PlayerRosterUnitType.Character,
+            CharacterScoutLimit,
+            hasOmicron: null,
+            cancellationToken);
+        Task<PlayerRosterPage?> playerShipsTask = LoadRosterAsync(
+            allyCode,
+            PlayerRosterUnitType.Ship,
+            ShipScoutLimit,
+            hasOmicron: null,
+            cancellationToken);
+        Task<PlayerRosterPage?> playerOmicronsTask = LoadRosterAsync(
+            allyCode,
+            PlayerRosterUnitType.Character,
+            OmicronScoutLimit,
+            hasOmicron: true,
+            cancellationToken);
+
+        await Task.WhenAll(
+            historicalScoutingTask,
+            opponentCharactersTask,
+            opponentShipsTask,
+            opponentOmicronsTask,
+            playerCharactersTask,
+            playerShipsTask,
+            playerOmicronsTask).ConfigureAwait(false);
 
         OpponentScoutingReport? historicalScouting = await historicalScoutingTask.ConfigureAwait(false);
-        PlayerRosterPage? characters = await charactersTask.ConfigureAwait(false);
-        PlayerRosterPage? ships = await shipsTask.ConfigureAwait(false);
-        PlayerRosterPage? omicrons = await omicronsTask.ConfigureAwait(false);
+        PlayerRosterPage? opponentCharacters = await opponentCharactersTask.ConfigureAwait(false);
+        PlayerRosterPage? opponentShips = await opponentShipsTask.ConfigureAwait(false);
+        PlayerRosterPage? opponentOmicrons = await opponentOmicronsTask.ConfigureAwait(false);
+        PlayerRosterPage? playerCharacters = await playerCharactersTask.ConfigureAwait(false);
+        PlayerRosterPage? playerShips = await playerShipsTask.ConfigureAwait(false);
+        PlayerRosterPage? playerOmicrons = await playerOmicronsTask.ConfigureAwait(false);
 
         CurrentOpponentRosterScouting rosterScouting = new(
-            analysis,
-            [.. (characters?.Items ?? []).Where(IsGalacticLegend)],
-            [.. (characters?.Items ?? []).Take(TopCharacterLimit)],
-            [.. (ships?.Items ?? []).Take(TopShipLimit)],
-            [.. (omicrons?.Items ?? [])]);
+            opponentAnalysis,
+            [.. (opponentCharacters?.Items ?? []).Where(IsGalacticLegend)],
+            [.. (opponentCharacters?.Items ?? []).Take(TopCharacterLimit)],
+            [.. (opponentShips?.Items ?? []).Take(TopShipLimit)],
+            [.. (opponentOmicrons?.Items ?? [])]);
 
-        return new CurrentGacScoutingResult(lookup, historicalScouting, rosterScouting);
+        CurrentGacBattlePlan battlePlan = CurrentGacBattlePlanBuilder.Build(
+            opponent,
+            playerAnalysis,
+            playerCharacters?.Items ?? [],
+            playerShips?.Items ?? [],
+            playerOmicrons?.Items ?? [],
+            rosterScouting,
+            historicalScouting);
+
+        return new CurrentGacScoutingResult(lookup, historicalScouting, rosterScouting, battlePlan);
     }
+
+    private Task<PlayerRosterPage?> LoadRosterAsync(
+        long allyCode,
+        PlayerRosterUnitType type,
+        int pageSize,
+        bool? hasOmicron,
+        CancellationToken cancellationToken) => playerRosterService.GetAsync(
+        allyCode,
+        new PlayerRosterQuery(
+            PageSize: pageSize,
+            Type: type,
+            HasOmicron: hasOmicron,
+            OrderBy: PlayerRosterSortField.GalacticPower,
+            Direction: PlayerRosterSortDirection.Descending),
+        cancellationToken);
 
     private static bool IsGalacticLegend(PlayerRosterUnit unit) =>
         unit.Tags.Any(tag => tag.Contains("galactic_legend", StringComparison.OrdinalIgnoreCase));
