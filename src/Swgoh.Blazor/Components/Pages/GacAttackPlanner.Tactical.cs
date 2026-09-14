@@ -59,7 +59,7 @@ public partial class GacAttackPlanner
             : "All";
     }
 
-    protected GacMatchupRiskAssessment TacticalAssessment(Guid defenseId)
+    private GacMatchupRiskAssessment TacticalAssessment(Guid defenseId)
     {
         GacPlannerApiClient.VisibleDefenseViewModel? details = FindVisibleDefense(defenseId);
         return GacMatchupRiskEvaluator.Evaluate(FindCounterHint(defenseId), details?.Defeated == true);
