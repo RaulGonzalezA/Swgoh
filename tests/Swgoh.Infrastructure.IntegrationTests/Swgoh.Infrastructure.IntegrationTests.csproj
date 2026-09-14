@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -15,6 +15,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Swgoh.Api\Swgoh.Api.csproj" />
+    <ProjectReference Include="..\..\src\Swgoh.Blazor\Swgoh.Blazor.csproj" Aliases="BlazorApp" />
+
     <ProjectReference Include="..\..\src\Swgoh.Infrastructure\Swgoh.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

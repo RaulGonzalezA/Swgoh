@@ -6,7 +6,7 @@ namespace Swgoh.Blazor.Components.Pages;
 
 public partial class GacAttackPlanner
 {
-    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+    private const string AssetBaseUrl = "https://game-assets.swgoh.gg/textures/";
 
     private readonly List<PlayerApiClient.RosterUnitViewModel> playerRoster = [];
     private readonly List<PlayerApiClient.RosterUnitViewModel> opponentRoster = [];

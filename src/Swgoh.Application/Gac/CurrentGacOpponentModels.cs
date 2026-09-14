@@ -9,7 +9,8 @@ public enum CurrentGacOpponentStatus
     NoActiveEvent = 2,
     PlayerNotJoined = 3,
     OpponentUnavailable = 4,
-    FormatUnavailable = 5
+    FormatUnavailable = 5,
+    Pending = 6
 }
 
 public sealed record CurrentGacOpponent(

@@ -284,9 +284,11 @@
                 return;
             }
 
-            _analysis = await PlayerClient.GetAnalysisAsync(AllyCode);
-            await LoadRosterAsync();
-            await LoadCurrentGacContextAsync();
+            _loadingProfile = false;
+            await InvokeAsync(StateHasChanged);
+            _ = LoadAnalysisAsync();
+            _ = LoadRosterAsync();
+            _ = LoadCurrentGacContextAsync();
         }
         catch (HttpRequestException)
         {
@@ -308,6 +310,22 @@
         catch (HttpRequestException)
         {
             _currentGacPlan = null;
+        }
+    }
+
+    private async Task LoadAnalysisAsync()
+    {
+        try
+        {
+            _analysis = await PlayerClient.GetAnalysisAsync(AllyCode);
+        }
+        catch (HttpRequestException)
+        {
+            _analysis = null;
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
         }
     }
 

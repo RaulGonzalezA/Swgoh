@@ -11,6 +11,17 @@ public sealed class PlayerContextService(
 {
     private readonly SemaphoreSlim gate = new(1, 1);
 
+    public async Task<bool> ConnectAsync(long allyCode, CancellationToken cancellationToken = default)
+    {
+        if (await ActivateAsync(allyCode, cancellationToken: cancellationToken))
+        {
+            return true;
+        }
+
+        await playerClient.RefreshAsync(allyCode, cancellationToken);
+        return await ActivateAsync(allyCode, cancellationToken: cancellationToken);
+    }
+
     public async Task<bool> RestoreAsync(CancellationToken cancellationToken = default)
     {
         if (session.AllyCode is not null)

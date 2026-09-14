@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Swgoh.Application.Gac;
 using Swgoh.Domain.Gac;
 using Swgoh.Infrastructure.Comlink;
@@ -22,7 +24,7 @@ public sealed class SwgohComlinkCurrentRoundOpponentSourceTests
         {
             BaseAddress = new Uri("http://comlink/")
         });
-        var bracketSource = new SwgohComlinkGacOpponentSource(factory);
+        var bracketSource = new SwgohComlinkGacOpponentSource(factory, NullLogger<SwgohComlinkGacOpponentSource>.Instance);
         var source = new SwgohComlinkCurrentRoundOpponentSource(bracketSource, factory);
 
         CurrentGacOpponentLookup lookup = await source.GetAsync(

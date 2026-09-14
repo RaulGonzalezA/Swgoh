@@ -6,7 +6,7 @@ namespace Swgoh.Blazor.Components.Pages;
 
 public partial class Conquest
 {
-    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+    private const string AssetBaseUrl = "https://game-assets.swgoh.gg/textures/";
     private const int DefaultStaminaCostPerBattle = 10;
     private const int DefaultReserveFloorPercent = 40;
     private const int DefaultEnergyCostPerBattle = 20;

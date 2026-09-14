@@ -9,10 +9,26 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         long allyCode,
         CancellationToken cancellationToken = default)
     {
-        using HttpResponseMessage response = await httpClient.GetAsync(
-            $"/api/v1/gac/players/{allyCode}/planner/current",
-            cancellationToken);
-        return await ReadPlannerResultAsync(response, cancellationToken);
+        for (int attempt = 0; attempt < 210; attempt++)
+        {
+            using HttpResponseMessage response = await httpClient.GetAsync(
+                $"/api/v1/gac/players/{allyCode}/planner/current", cancellationToken);
+            if (response.StatusCode is HttpStatusCode.Accepted or HttpStatusCode.Conflict)
+            {
+                var status = await response.Content.ReadFromJsonAsync<PlannerUnavailableViewModel>(cancellationToken);
+                if (status?.Status == "Pending")
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    continue;
+                }
+
+                return new PlannerResult(null, status?.Message ?? "No hay una ronda de Gran Arena disponible.");
+            }
+
+            return await ReadPlannerResultAsync(response, cancellationToken);
+        }
+
+        return new PlannerResult(null, "La búsqueda continúa en segundo plano. Puedes volver a consultar más tarde.");
     }
 
     public async Task<PlannerResult> SaveCurrentAsync(

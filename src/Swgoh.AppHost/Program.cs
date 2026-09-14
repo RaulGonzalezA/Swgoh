@@ -1,7 +1,11 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-var mongo = builder.AddMongoDB("mongodb").WithDataVolume();
-var database = mongo.AddDatabase("swgoh");
+var mongo = string.IsNullOrWhiteSpace(builder.Configuration["ConnectionStrings:swgoh"])
+    ? builder.AddMongoDB("mongodb").WithDataVolume()
+    : null;
+IResourceBuilder<IResourceWithConnectionString> database = mongo is null
+    ? builder.AddConnectionString("swgoh")
+    : mongo.AddDatabase("swgoh");
 
 var comlink = builder
     .AddContainer("comlink", "ghcr.io/swgoh-utils/swgoh-comlink", "latest")
@@ -21,9 +25,13 @@ var api = builder
     .WithReference(database)
     .WithEnvironment("Swgoh__Comlink__BaseUrl", "http://localhost:3000")
     .WithEnvironment("Swgoh__Stats__BaseUrl", "http://localhost:3223")
-    .WaitFor(database)
     .WaitFor(comlink)
     .WaitFor(stats);
+
+if (mongo is not null)
+{
+    api.WaitFor(mongo);
+}
 
 builder
     .AddProject<Projects.Swgoh_Blazor>("blazor")

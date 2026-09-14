@@ -167,6 +167,7 @@ internal static class GacPlannerEndpoints
         {
             CurrentGacOpponentStatus.NoActiveEvent or CurrentGacOpponentStatus.PlayerNotJoined =>
                 Results.NotFound(unavailable),
+            CurrentGacOpponentStatus.Pending => Results.Accepted(value: unavailable),
             CurrentGacOpponentStatus.OpponentUnavailable or CurrentGacOpponentStatus.FormatUnavailable =>
                 Results.Conflict(unavailable),
             _ => Results.Problem(statusCode: StatusCodes.Status502BadGateway)

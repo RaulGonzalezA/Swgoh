@@ -96,13 +96,17 @@ OpenAPI documents are generated per API version. The v1 document is available at
 
 ## Runtime dependencies
 
+GAC opponent discovery runs in a bounded in-memory background queue. Repeated requests for the same player and format reuse the pending lookup. The API returns `Pending` (HTTP 409) while the worker runs; the Blazor clients poll every two seconds and update the screen on completion. Leaving the page cancels polling, not the server job. Jobs have a six-minute deadline, and pending jobs are lost when the API restarts. Provider failures become an unavailable result rather than an unhandled HTTP failure.
+
 Aspire orchestrates the local development stack automatically:
 
-- MongoDB
+- MongoDB (an existing instance when `ConnectionStrings:swgoh` is configured; otherwise an Aspire container)
 - `ghcr.io/swgoh-utils/swgoh-comlink:latest`
 - `ghcr.io/swgoh-utils/swgoh-stats:latest`
 - `Swgoh.Api`
 - `Swgoh.Blazor`
+
+The AppHost `https` launch profile uses the existing local MongoDB at `localhost:27017`, with a separate `swgoh` database. Start that MongoDB before pressing F5. Override `ConnectionStrings__swgoh` in the launch profile for another server; store credentials in user secrets rather than this file. Existing Aspire MongoDB volumes are preserved and are not migrated to the external database.
 
 Outside Aspire, configure:
 

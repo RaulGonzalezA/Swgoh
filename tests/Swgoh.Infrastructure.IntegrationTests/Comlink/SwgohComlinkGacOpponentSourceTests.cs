@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Swgoh.Application.Gac;
 using Swgoh.Domain.Gac;
 using Swgoh.Infrastructure.Comlink;
@@ -12,6 +14,49 @@ namespace Swgoh.Infrastructure.IntegrationTests.Comlink;
 
 public sealed class SwgohComlinkGacOpponentSourceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetAsync_WhenProviderTimesOut_ReturnsUnavailableAndCachesResult(bool resilienceTimeout)
+    {
+        using var handler = new TimeoutHandler(resilienceTimeout);
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://comlink/") };
+        var source = new SwgohComlinkGacOpponentSource(new SingleClientFactory(client), NullLogger<SwgohComlinkGacOpponentSource>.Instance);
+
+        CurrentGacOpponentLookup result = await source.GetAsync(123456789, null, TestContext.Current.CancellationToken);
+        CurrentGacOpponentLookup cached = await source.GetAsync(123456789, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(CurrentGacOpponentStatus.OpponentUnavailable, result.Status);
+        Assert.Same(result, cached);
+        Assert.Equal(1, handler.Requests);
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenCallerCancels_PropagatesCancellation()
+    {
+        using var handler = new TimeoutHandler(false);
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://comlink/") };
+        var source = new SwgohComlinkGacOpponentSource(new SingleClientFactory(client), NullLogger<SwgohComlinkGacOpponentSource>.Instance);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => source.GetAsync(123456789, null, cancellation.Token));
+    }
+
+    private sealed class TimeoutHandler(bool resilienceTimeout) : HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromException<HttpResponseMessage>(resilienceTimeout
+                ? new Polly.Timeout.TimeoutRejectedException("Provider timeout")
+                : new TaskCanceledException("Provider timeout"));
+        }
+    }
+
     [Fact]
     public async Task GetAsync_WithNestedLeaderboardAndRateLimit_RetriesAndFindsOpponent()
     {
@@ -22,7 +67,7 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         {
             BaseAddress = new Uri("http://comlink/")
         });
-        var source = new SwgohComlinkGacOpponentSource(factory);
+        var source = new SwgohComlinkGacOpponentSource(factory, NullLogger<SwgohComlinkGacOpponentSource>.Instance);
 
         CurrentGacOpponentLookup lookup = await source.GetAsync(
             123456789,

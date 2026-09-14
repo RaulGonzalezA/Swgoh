@@ -24,10 +24,10 @@
             </Actions>
         </UiEmptyState>
     }
-    else if (_loading)
+    else if (_loadingProfile)
     {
         <UiLoadingState Title="Cargando estado de datos"
-                        Description="Consultando roster, Gran Arena y Conquista." />
+                        Description="Consultando el perfil activo." />
     }
     else
     {
@@ -51,13 +51,13 @@
 
             <UiCard Kicker="Gran Arena" Title="Plan actual">
                 <HeaderActions>
-                    <UiStatusPill Label="@FreshnessLabel(_planner?.Plan.UpdatedAtUtc)"
-                                  Tone="@FreshnessTone(_planner?.Plan.UpdatedAtUtc)"
+                    <UiStatusPill Label="@(_loadingGac ? "Buscando…" : FreshnessLabel(_planner?.Plan.UpdatedAtUtc))"
+                                  Tone="@(_loadingGac ? "accent" : FreshnessTone(_planner?.Plan.UpdatedAtUtc))"
                                   ShowDot="true" />
                 </HeaderActions>
                 <ChildContent>
                     <div class="command-data-list">
-                        <div><span>Estado</span><strong>@(_planner is null ? "No disponible" : "Disponible")</strong></div>
+                        <div><span>Estado</span><strong>@(_loadingGac ? "Buscando rival" : _planner is null ? "No disponible" : "Disponible")</strong></div>
                         <div><span>Última actualización</span><strong>@RelativeUpdated(_planner?.Plan.UpdatedAtUtc)</strong></div>
                         <div><span>Rival</span><strong>@(_planner?.Opponent.OpponentName ?? "—")</strong></div>
                         <div><span>Formato</span><strong>@(_planner?.Opponent.Format ?? "—")</strong></div>
@@ -68,13 +68,13 @@
 
             <UiCard Kicker="Conquista" Title="Plan actual">
                 <HeaderActions>
-                    <UiStatusPill Label="@FreshnessLabel(_conquest?.UpdatedAtUtc)"
-                                  Tone="@FreshnessTone(_conquest?.UpdatedAtUtc)"
+                    <UiStatusPill Label="@(_loadingConquest ? "Cargando…" : FreshnessLabel(_conquest?.UpdatedAtUtc))"
+                                  Tone="@(_loadingConquest ? "accent" : FreshnessTone(_conquest?.UpdatedAtUtc))"
                                   ShowDot="true" />
                 </HeaderActions>
                 <ChildContent>
                     <div class="command-data-list">
-                        <div><span>Estado</span><strong>@(_conquest is null ? "No disponible" : "Disponible")</strong></div>
+                        <div><span>Estado</span><strong>@(_loadingConquest ? "Cargando plan" : _conquest is null ? "No disponible" : "Disponible")</strong></div>
                         <div><span>Última actualización</span><strong>@RelativeUpdated(_conquest?.UpdatedAtUtc)</strong></div>
                         <div><span>Hazañas</span><strong>@(_conquest is null ? "—" : $"{_conquest.CompletedFeats}/{_conquest.TotalFeats}")</strong></div>
                         <div><span>Puntos</span><strong>@(_conquest is null ? "—" : _conquest.EarnedFeatPoints.ToString())</strong></div>
@@ -95,7 +95,9 @@
 </section>
 
 @code {
-    private bool _loading = true;
+    private bool _loadingProfile = true;
+    private bool _loadingGac;
+    private bool _loadingConquest;
     private string? _error;
     private long? _loadedAllyCode;
     private PlayerApiClient.PlayerViewModel? _player;
@@ -126,7 +128,7 @@
             _player = null;
             _planner = null;
             _conquest = null;
-            _loading = false;
+            _loadingProfile = false;
             return;
         }
 
@@ -135,27 +137,62 @@
             return;
         }
 
-        _loading = true;
+        _loadingProfile = true;
+        _loadingGac = false;
+        _loadingConquest = false;
         _error = null;
         try
         {
-            Task<PlayerApiClient.PlayerViewModel?> playerTask = PlayerClient.GetAsync(allyCode);
-            Task<GacPlannerApiClient.PlannerResult> plannerTask = PlannerClient.GetCurrentAsync(allyCode);
-            Task<ConquestApiClient.PlanViewModel?> conquestTask = ConquestClient.GetCurrentAsync(allyCode);
-            await Task.WhenAll(playerTask, plannerTask, conquestTask);
-
-            _player = await playerTask;
-            _planner = (await plannerTask).Planner;
-            _conquest = await conquestTask;
+            _player = await PlayerClient.GetAsync(allyCode);
             _loadedAllyCode = allyCode;
+            _loadingProfile = false;
+            _loadingGac = true;
+            _loadingConquest = true;
+            await InvokeAsync(StateHasChanged);
+            _ = LoadGacAsync(allyCode);
+            _ = LoadConquestAsync(allyCode);
         }
         catch (HttpRequestException)
         {
-            _error = "No se ha podido consultar el estado completo de los datos.";
+            _error = "No se ha podido consultar el perfil activo.";
         }
         finally
         {
-            _loading = false;
+            _loadingProfile = false;
+        }
+    }
+
+    private async Task LoadGacAsync(long allyCode)
+    {
+        try
+        {
+            _planner = (await PlannerClient.GetCurrentAsync(allyCode)).Planner;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido consultar Gran Arena.";
+        }
+        finally
+        {
+            _loadingGac = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadConquestAsync(long allyCode)
+    {
+        try
+        {
+            _conquest = await ConquestClient.GetCurrentAsync(allyCode);
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido consultar Conquista.";
+        }
+        finally
+        {
+            _loadingConquest = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

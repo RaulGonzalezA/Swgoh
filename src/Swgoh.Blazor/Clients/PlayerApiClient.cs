@@ -5,6 +5,13 @@ namespace Swgoh.Blazor.Clients;
 
 public sealed class PlayerApiClient(HttpClient httpClient)
 {
+    public async Task RefreshAsync(long allyCode, CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.PostAsync(
+            $"/api/v1/players/{allyCode}/refresh", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<PlayerViewModel?> GetAsync(long allyCode, CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response = await httpClient.GetAsync($"/api/v1/players/{allyCode}", cancellationToken);
