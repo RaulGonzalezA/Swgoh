@@ -86,11 +86,22 @@ public sealed class SwgohComlinkGacOpponentSourceTests
         Assert.Equal(currentEventInstance, opponent.EventInstanceId);
         Assert.EndsWith(":KYBER:9", opponent.BracketId, StringComparison.Ordinal);
         Assert.Equal(2, handler.PlayerArenaRequests);
-        Assert.InRange(handler.BracketRequests, 10, 50);
+        Assert.InRange(handler.BracketRequests, 8, 10);
         Assert.True(handler.BadRequestBracketResponses > 0);
         Assert.Equal(1, handler.RateLimitedResponses);
-        Assert.DoesNotContain(handler.GroupIds, groupId => groupId.EndsWith(":KYBER:0", StringComparison.Ordinal) && handler.GroupIds.Count == 1);
+        Assert.DoesNotContain(handler.GroupIds, groupId => groupId.EndsWith(":KYBER:0", StringComparison.Ordinal));
         Assert.All(handler.GroupIds, groupId => Assert.StartsWith(currentEventInstance, groupId, StringComparison.Ordinal));
+
+        int requestsAfterDiscovery = handler.BracketRequests;
+        CurrentGacOpponentLookup cachedBracketLookup = await source.GetAsync(
+            123456789,
+            GacFormat.ThreeVsThree,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(CurrentGacOpponentStatus.Found, cachedBracketLookup.Status);
+        Assert.Equal(requestsAfterDiscovery + 1, handler.BracketRequests);
+        Assert.EndsWith(":KYBER:9", handler.GroupIds.Last(), StringComparison.Ordinal);
+        Assert.Equal(4, handler.PlayerArenaRequests);
     }
 
     private sealed class SingleClientFactory(HttpClient client) : IHttpClientFactory
