@@ -36,7 +36,7 @@ internal sealed class GacBracketLocationMongoRepository(
         SortDefinition<GacBracketLocationDocument> sort = Builders<GacBracketLocationDocument>.Sort
             .Descending(document => document.FoundAtUtc);
         List<GacBracketLocationDocument> documents = await repository
-            .FindPageAsync(filter, skip: 0, take: 1, sort, cancellationToken)
+            .FindPageAsync(filter, skip: 0, limit: 1, sort, cancellationToken)
             .ConfigureAwait(false);
         return documents.Count == 0 ? null : ToDomain(documents[0]);
     }
