@@ -84,7 +84,8 @@ public sealed record GacAttackAssignmentDetails(
     GacTeamPresetDetails Team,
     int Attempt,
     GacAttackPlanStatus Status,
-    string? Notes);
+    string? Notes,
+    int? Banners = null);
 
 public sealed record GacPlannerConflict(
     string Code,
