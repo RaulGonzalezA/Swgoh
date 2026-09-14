@@ -88,6 +88,22 @@ public static class DependencyInjection
                         Name = GacHistoryMongoRepository.FormatStartedIndexName
                     }));
 
+        IndexKeysDefinition<GacBracketLocationDocument> gacBracketLocationIndexKeys =
+            Builders<GacBracketLocationDocument>.IndexKeys
+                .Ascending(location => location.AllyCode)
+                .Descending(location => location.FoundAtUtc);
+        services.AddMongoRepository<GacBracketLocationDocument, string>(
+            GacBracketLocationMongoRepository.CollectionName,
+            location => location.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    gacBracketLocationIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacBracketLocationMongoRepository.AllyCodeFoundAtIndexName
+                    }));
+
         IndexKeysDefinition<GacTeamPresetDocument> gacTeamPresetIndexKeys = Builders<GacTeamPresetDocument>.IndexKeys
             .Ascending(preset => preset.AllyCode)
             .Ascending(preset => preset.Format)
@@ -220,6 +236,7 @@ public static class DependencyInjection
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         services.AddSingleton<IConquestPlanRepository, ConquestPlanMongoRepository>();
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
+        services.AddSingleton<IGacBracketLocationRepository, GacBracketLocationMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
         services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
@@ -229,7 +246,8 @@ public static class DependencyInjection
         services.AddSingleton(provider => new BackgroundGacOpponentSource(
             provider.GetRequiredService<SwgohComlinkFastGacOpponentSource>(),
             provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BackgroundGacOpponentSource>>()));
-        services.AddSingleton<ICurrentGacOpponentSource>(provider => provider.GetRequiredService<BackgroundGacOpponentSource>());
+        services.AddSingleton<PersistedGacOpponentSource>();
+        services.AddSingleton<ICurrentGacOpponentSource>(provider => provider.GetRequiredService<PersistedGacOpponentSource>());
         services.AddHostedService(provider => provider.GetRequiredService<BackgroundGacOpponentSource>());
         return services;
     }
