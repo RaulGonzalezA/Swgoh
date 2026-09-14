@@ -4,6 +4,7 @@ using Swgoh.Blazor.Clients;
 
 namespace Swgoh.Blazor.Components.Pages;
 
+[StreamRendering]
 public partial class GrandArena
 {
     private readonly List<PlayerApiClient.RosterUnitViewModel> playerRoster = [];
@@ -29,16 +30,21 @@ public partial class GrandArena
     private long? _detailRosterAllyCode;
     private bool _detailLoading;
     private bool _loading = true;
+    private bool _scoutingLoading;
     private string? _error;
 
     private string HeaderDescription => _player is null
         ? "Analiza rival, riesgos, reservas y counters antes de fijar la ronda."
-        : $"{_player.Name} · #{FormatAllyCode(_player.AllyCode)} · decide qué conservar y cómo abrir el tablero.";
+        : _scoutingLoading
+            ? $"{_player.Name} · rival localizado · preparando roster, histórico y counters…"
+            : $"{_player.Name} · #{FormatAllyCode(_player.AllyCode)} · decide qué conservar y cómo abrir el tablero.";
 
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
+        _scoutingLoading = false;
         _error = null;
+        _result = null;
         CloseUnitDetails();
         playerRoster.Clear();
         opponentRoster.Clear();
@@ -52,10 +58,31 @@ public partial class GrandArena
                 return;
             }
 
-            _result = await GacClient.GetCurrentOpponentAsync(AllyCode);
-            if (_result.Scouting is not null)
+            GacApiClient.CurrentGacOpponentResult lookup = await GacClient.GetCurrentOpponentLookupAsync(AllyCode);
+            if (lookup.Opponent is null)
             {
-                await LoadVisualRostersAsync(_result.Scouting.Opponent.OpponentAllyCode);
+                _result = new GacApiClient.CurrentGacResult(null, lookup.Message);
+                return;
+            }
+
+            _result = new GacApiClient.CurrentGacResult(
+                new GacApiClient.CurrentGacScoutingViewModel(
+                    lookup.Opponent,
+                    Scouting: null,
+                    RosterScouting: null,
+                    BattlePlan: null,
+                    Warnings: []),
+                "Rival localizado. Preparando el scouting completo…");
+            _loading = false;
+            _scoutingLoading = true;
+            StateHasChanged();
+            await Task.Yield();
+
+            GacApiClient.CurrentGacResult scoutingResult = await GacClient.GetCurrentScoutingAsync(AllyCode);
+            if (scoutingResult.Scouting is not null)
+            {
+                _result = scoutingResult;
+                await LoadVisualRostersAsync(scoutingResult.Scouting.Opponent.OpponentAllyCode);
             }
         }
         catch (HttpRequestException)
@@ -64,6 +91,7 @@ public partial class GrandArena
         }
         finally
         {
+            _scoutingLoading = false;
             _loading = false;
         }
     }
