@@ -3,10 +3,10 @@ extern alias BlazorApp;
 using System.Net;
 using System.Net.Http.Json;
 
-using Microsoft.JSInterop;
-
 using BlazorApp::Swgoh.Blazor.Clients;
 using BlazorApp::Swgoh.Blazor.State;
+
+using Microsoft.JSInterop;
 
 using Xunit;
 
