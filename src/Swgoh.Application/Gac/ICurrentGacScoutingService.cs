@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
@@ -46,95 +47,155 @@ internal sealed class CurrentGacScoutingService(
             throw new ArgumentOutOfRangeException(nameof(formatOverride), formatOverride, "Unsupported GAC format.");
         }
 
-        CurrentGacOpponentLookup lookup = await opponentSource
-            .GetAsync(allyCode, formatOverride, cancellationToken)
-            .ConfigureAwait(false);
-        if (lookup.Status != CurrentGacOpponentStatus.Found || lookup.Opponent is null)
+        Stopwatch total = Stopwatch.StartNew();
+        CurrentGacOpponentStatus finalStatus = CurrentGacOpponentStatus.OpponentUnavailable;
+        string? telemetryFormat = formatOverride?.ToString();
+        int warningCount = 0;
+        using Activity? activity = GacTelemetry.ActivitySource.StartActivity("gac.scouting.pipeline", ActivityKind.Internal);
+        activity?.SetTag("gac.ally_code", allyCode);
+
+        try
         {
-            return new CurrentGacScoutingResult(lookup, null, null, null);
+            CurrentGacOpponentLookup lookup = await GacTelemetry.MeasurePhaseAsync(
+                "opponent_lookup",
+                () => opponentSource.GetAsync(allyCode, formatOverride, cancellationToken),
+                telemetryFormat).ConfigureAwait(false);
+            finalStatus = lookup.Status;
+            activity?.SetTag("gac.lookup_status", lookup.Status.ToString());
+
+            if (lookup.Status != CurrentGacOpponentStatus.Found || lookup.Opponent is null)
+            {
+                activity?.SetStatus(ActivityStatusCode.Ok);
+                return new CurrentGacScoutingResult(lookup, null, null, null);
+            }
+
+            CurrentGacOpponent opponent = lookup.Opponent;
+            telemetryFormat = opponent.Format.ToString();
+            activity?.SetTag("gac.format", telemetryFormat);
+            activity?.SetTag("gac.league", opponent.League.ToString());
+            activity?.SetTag("gac.round", opponent.RoundNumber);
+
+            int historyRoundLimit = Math.Clamp(maxRounds, 1, MaxRounds);
+            var warnings = new ConcurrentQueue<string>();
+
+            Task<GacHistorySyncResult?> historySyncTask = GacTelemetry.MeasurePhaseAsync(
+                "history_sync",
+                () => TryHistorySyncAsync(
+                    opponent,
+                    historyRoundLimit,
+                    warnings,
+                    cancellationToken),
+                telemetryFormat);
+            Task<OpponentScoutingReport?> historicalScoutingTask = GacTelemetry.MeasurePhaseAsync(
+                "historical_scouting",
+                () => TryHistoricalScoutingAfterSyncAsync(
+                    opponent,
+                    historyRoundLimit,
+                    historySyncTask,
+                    warnings,
+                    cancellationToken),
+                telemetryFormat);
+            Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = GacTelemetry.MeasurePhaseAsync(
+                "counter_statistics",
+                () => TryCounterStatisticsAsync(
+                    opponent.Format,
+                    warnings,
+                    cancellationToken),
+                telemetryFormat);
+            Task<PlayerRosterContext> opponentDataTask = RefreshAndSnapshotAsync(
+                opponent.OpponentAllyCode,
+                "opponent",
+                "rival",
+                telemetryFormat,
+                warnings,
+                cancellationToken);
+            Task<PlayerRosterContext> playerDataTask = RefreshAndSnapshotAsync(
+                allyCode,
+                "player",
+                "jugador",
+                telemetryFormat,
+                warnings,
+                cancellationToken);
+
+            await Task.WhenAll(
+                historySyncTask,
+                historicalScoutingTask,
+                counterStatisticsTask,
+                opponentDataTask,
+                playerDataTask).ConfigureAwait(false);
+
+            GacHistorySyncResult? historySync = await historySyncTask.ConfigureAwait(false);
+            OpponentScoutingReport? historicalScouting = await historicalScoutingTask.ConfigureAwait(false);
+            IReadOnlyCollection<GacCounterStatistics> counterStatistics = await counterStatisticsTask.ConfigureAwait(false);
+            PlayerRosterContext opponentData = await opponentDataTask.ConfigureAwait(false);
+            PlayerRosterContext playerData = await playerDataTask.ConfigureAwait(false);
+
+            CurrentOpponentRosterScouting? rosterScouting = GacTelemetry.MeasurePhase(
+                "opponent_roster_analysis",
+                () => BuildRosterScouting(opponentData.Profile, opponentData.Snapshot),
+                telemetryFormat);
+            CurrentGacBattlePlan? battlePlan = GacTelemetry.MeasurePhase(
+                "battle_plan",
+                () => BuildBattlePlan(
+                    opponent,
+                    playerData.Profile,
+                    playerData.Snapshot,
+                    rosterScouting,
+                    historicalScouting,
+                    counterStatistics,
+                    warnings),
+                telemetryFormat);
+
+            warningCount = warnings.Count;
+            activity?.SetTag("gac.warning_count", warningCount);
+            activity?.SetTag("gac.degraded", warningCount > 0);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            return new CurrentGacScoutingResult(
+                lookup,
+                historicalScouting,
+                rosterScouting,
+                battlePlan,
+                historySync,
+                [.. warnings]);
         }
-
-        CurrentGacOpponent opponent = lookup.Opponent;
-        int historyRoundLimit = Math.Clamp(maxRounds, 1, MaxRounds);
-        var warnings = new ConcurrentQueue<string>();
-
-        Task<GacHistorySyncResult?> historySyncTask = TryHistorySyncAsync(
-            opponent,
-            historyRoundLimit,
-            warnings,
-            cancellationToken);
-        Task<OpponentScoutingReport?> historicalScoutingTask = TryHistoricalScoutingAfterSyncAsync(
-            opponent,
-            historyRoundLimit,
-            historySyncTask,
-            warnings,
-            cancellationToken);
-        Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = TryCounterStatisticsAsync(
-            opponent.Format,
-            warnings,
-            cancellationToken);
-        Task<PlayerRosterContext> opponentDataTask = RefreshAndSnapshotAsync(
-            opponent.OpponentAllyCode,
-            "rival",
-            warnings,
-            cancellationToken);
-        Task<PlayerRosterContext> playerDataTask = RefreshAndSnapshotAsync(
-            allyCode,
-            "jugador",
-            warnings,
-            cancellationToken);
-
-        await Task.WhenAll(
-            historySyncTask,
-            historicalScoutingTask,
-            counterStatisticsTask,
-            opponentDataTask,
-            playerDataTask).ConfigureAwait(false);
-
-        GacHistorySyncResult? historySync = await historySyncTask.ConfigureAwait(false);
-        OpponentScoutingReport? historicalScouting = await historicalScoutingTask.ConfigureAwait(false);
-        IReadOnlyCollection<GacCounterStatistics> counterStatistics = await counterStatisticsTask.ConfigureAwait(false);
-        PlayerRosterContext opponentData = await opponentDataTask.ConfigureAwait(false);
-        PlayerRosterContext playerData = await playerDataTask.ConfigureAwait(false);
-
-        CurrentOpponentRosterScouting? rosterScouting = BuildRosterScouting(
-            opponentData.Profile,
-            opponentData.Snapshot);
-        CurrentGacBattlePlan? battlePlan = BuildBattlePlan(
-            opponent,
-            playerData.Profile,
-            playerData.Snapshot,
-            rosterScouting,
-            historicalScouting,
-            counterStatistics,
-            warnings);
-
-        return new CurrentGacScoutingResult(
-            lookup,
-            historicalScouting,
-            rosterScouting,
-            battlePlan,
-            historySync,
-            [.. warnings]);
+        catch (Exception exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            throw;
+        }
+        finally
+        {
+            total.Stop();
+            GacTelemetry.RecordPipeline(total.Elapsed, finalStatus, telemetryFormat, warningCount);
+        }
     }
 
     private async Task<PlayerRosterContext> RefreshAndSnapshotAsync(
         long allyCode,
+        string role,
         string label,
+        string? format,
         ConcurrentQueue<string> warnings,
         CancellationToken cancellationToken)
     {
-        PlayerProfile? profile = await RefreshOrFallbackAsync(
-            allyCode,
-            label,
-            warnings,
-            cancellationToken).ConfigureAwait(false);
+        PlayerProfile? profile = await GacTelemetry.MeasurePhaseAsync(
+            $"{role}_profile_refresh",
+            () => RefreshOrFallbackAsync(
+                allyCode,
+                label,
+                warnings,
+                cancellationToken),
+            format).ConfigureAwait(false);
 
-        PlayerRosterSnapshot? snapshot = await TrySnapshotAsync(
-            allyCode,
-            label,
-            warnings,
-            cancellationToken).ConfigureAwait(false);
+        PlayerRosterSnapshot? snapshot = await GacTelemetry.MeasurePhaseAsync(
+            $"{role}_roster_snapshot",
+            () => TrySnapshotAsync(
+                allyCode,
+                label,
+                warnings,
+                cancellationToken),
+            format).ConfigureAwait(false);
 
         return new PlayerRosterContext(profile, snapshot);
     }
