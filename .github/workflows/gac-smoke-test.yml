@@ -1,0 +1,250 @@
+name: GAC Smoke Test
+run-name: GAC Smoke Test · ally ${{ inputs.ally_code || '476825771' }}
+
+on:
+  workflow_run:
+    workflows: [ CI ]
+    types: [ completed ]
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      ally_code:
+        description: SWGOH ally code for the live GAC smoke test
+        required: true
+        default: '476825771'
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: gac-smoke-test-${{ github.event.workflow_run.head_sha || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  NUGET_XMLDOC_MODE: skip
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  CI: true
+  SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
+  GAC_COLD_LOOKUP_LIMIT_MS: 35000
+  GAC_CACHED_LOOKUP_LIMIT_MS: 3000
+  GAC_SCOUTING_LIMIT_MS: 60000
+
+jobs:
+  gac-smoke:
+    name: Strict live GAC smoke
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        vars.RUN_SMOKE_AFTER_CI != 'false'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Authenticate GitHub Packages
+        run: >-
+          dotnet nuget update source github-rga
+          --username "${{ github.actor }}"
+          --password "${{ secrets.NUGET_PAT }}"
+          --store-password-in-clear-text
+          --configfile NuGet.config
+
+      - name: Restore and build API
+        run: |
+          dotnet restore Swgoh.sln
+          dotnet build src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-restore
+
+      - name: Start GAC dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-results
+          docker network create swgoh-gac-smoke
+          docker run -d --name mongodb --network swgoh-gac-smoke -p 27017:27017 mongo:8
+          docker run -d --name comlink --network swgoh-gac-smoke -p 3000:3000 \
+            -e APP_NAME=swgoh \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+
+          comlink_ready=false
+          for attempt in {1..60}; do
+            if curl --silent --show-error --output /dev/null http://127.0.0.1:3000/; then
+              comlink_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${comlink_ready}" != true ]]; then
+            docker logs comlink || true
+            exit 1
+          fi
+
+          docker run -d --name swgoh-stats --network swgoh-gac-smoke -p 3223:3223 \
+            -e PORT=3223 \
+            -e CLIENT_URL=http://comlink:3000 \
+            ghcr.io/swgoh-utils/swgoh-stats:latest
+
+          stats_ready=false
+          for attempt in {1..90}; do
+            if docker logs swgoh-stats 2>&1 | grep -q 'Data updates complete!'; then
+              stats_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${stats_ready}" != true ]]; then
+            docker logs swgoh-stats || true
+            exit 1
+          fi
+
+      - name: Start API
+        env:
+          ASPNETCORE_URLS: http://127.0.0.1:5080
+          ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
+          Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
+          Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
+        run: |
+          set -euo pipefail
+          dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build --no-restore > smoke-results/api.log 2>&1 &
+          echo $! > smoke-results/api.pid
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:5080/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat smoke-results/api.log
+          exit 1
+
+      - name: Verify cold and cached GAC lookup
+        id: lookup
+        run: |
+          set -euo pipefail
+          api_root="http://127.0.0.1:5080"
+          lookup_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent"
+
+          start_ms=$(date +%s%3N)
+          final_status=""
+          for attempt in {1..40}; do
+            status=$(curl --silent --show-error \
+              "${lookup_url}" \
+              --output smoke-results/gac-lookup.json \
+              --write-out '%{http_code}')
+
+            if [[ "${status}" == "200" ]]; then
+              final_status="200"
+              break
+            fi
+
+            if [[ "${status}" == "404" ]]; then
+              gac_status=$(jq -r '.status // empty' smoke-results/gac-lookup.json)
+              if [[ "${gac_status}" == "NoActiveEvent" || "${gac_status}" == "PlayerNotJoined" ]]; then
+                echo "No active GAC matchup to performance-test: ${gac_status}."
+                echo "active=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+
+            if [[ "${status}" != "202" && "${status}" != "409" ]]; then
+              echo "Unexpected GAC lookup status ${status}"
+              cat smoke-results/gac-lookup.json
+              exit 1
+            fi
+
+            pending_status=$(jq -r '.status // empty' smoke-results/gac-lookup.json)
+            if [[ "${pending_status}" != "Pending" ]]; then
+              echo "GAC lookup reached terminal failure ${pending_status}."
+              cat smoke-results/gac-lookup.json
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [[ "${final_status}" != "200" ]]; then
+            echo "GAC cold lookup did not resolve to 200 within the smoke-test window."
+            cat smoke-results/gac-lookup.json
+            exit 1
+          fi
+
+          cold_ms=$(( $(date +%s%3N) - start_ms ))
+          echo "Cold GAC lookup: ${cold_ms} ms"
+          test "${cold_ms}" -lt "${GAC_COLD_LOOKUP_LIMIT_MS}"
+          jq -e '.playerAllyCode > 0 and .opponentAllyCode > 0 and (.format == "3v3" or .format == "5v5")' smoke-results/gac-lookup.json > /dev/null
+
+          cached_start_ms=$(date +%s%3N)
+          cached_status=$(curl --silent --show-error \
+            "${lookup_url}" \
+            --output smoke-results/gac-lookup-cached.json \
+            --write-out '%{http_code}')
+          cached_ms=$(( $(date +%s%3N) - cached_start_ms ))
+          echo "Cached GAC lookup: ${cached_ms} ms"
+          test "${cached_status}" = "200"
+          test "${cached_ms}" -lt "${GAC_CACHED_LOOKUP_LIMIT_MS}"
+          jq -e '.opponentAllyCode > 0' smoke-results/gac-lookup-cached.json > /dev/null
+
+          jq -n \
+            --argjson coldMs "${cold_ms}" \
+            --argjson cachedMs "${cached_ms}" \
+            '{coldLookupMs:$coldMs,cachedLookupMs:$cachedMs}' \
+            > smoke-results/gac-latency.json
+          echo "active=true" >> "$GITHUB_OUTPUT"
+
+      - name: Require final scouting response
+        if: steps.lookup.outputs.active == 'true'
+        run: |
+          set -euo pipefail
+          scouting_url="http://127.0.0.1:5080/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting?maxRounds=10"
+          start_ms=$(date +%s%3N)
+          status=$(curl --silent --show-error --max-time 65 \
+            "${scouting_url}" \
+            --output smoke-results/current-gac.json \
+            --write-out '%{http_code}')
+          scouting_ms=$(( $(date +%s%3N) - start_ms ))
+          echo "GAC scouting: ${scouting_ms} ms · HTTP ${status}"
+          test "${status}" = "200"
+          test "${scouting_ms}" -lt "${GAC_SCOUTING_LIMIT_MS}"
+          jq -e '.opponent.playerAllyCode > 0 and .opponent.opponentAllyCode > 0' smoke-results/current-gac.json > /dev/null
+          jq --argjson scoutingMs "${scouting_ms}" '. + {scoutingMs:$scoutingMs}' \
+            smoke-results/gac-latency.json > smoke-results/gac-latency.tmp.json
+          mv smoke-results/gac-latency.tmp.json smoke-results/gac-latency.json
+
+      - name: Show GAC telemetry log summary
+        if: always()
+        run: |
+          echo '--- GAC latency ---'
+          cat smoke-results/gac-latency.json 2>/dev/null || true
+          echo '--- GAC application log ---'
+          grep -E 'GAC|gac' smoke-results/api.log | tail -n 120 || true
+
+      - name: Upload GAC smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gac-smoke-${{ github.run_id }}
+          path: smoke-results/
+          if-no-files-found: ignore
+
+      - name: Stop processes
+        if: always()
+        run: |
+          if [[ -f smoke-results/api.pid ]]; then
+            kill "$(cat smoke-results/api.pid)" 2>/dev/null || true
+          fi
+          docker logs comlink > smoke-results/comlink.log 2>&1 || true
+          docker logs swgoh-stats > smoke-results/swgoh-stats.log 2>&1 || true
+          docker rm -f swgoh-stats comlink mongodb 2>/dev/null || true
+          docker network rm swgoh-gac-smoke 2>/dev/null || true
