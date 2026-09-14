@@ -6,9 +6,11 @@ namespace Swgoh.Application.Players;
 internal sealed class PlayerRosterService(
     IPlayerRepository repository,
     ISwgohGameDataCatalog gameDataCatalog,
-    IRosterGameDataCatalog? rosterGameDataCatalog = null) : IPlayerRosterService
+    IRosterGameDataCatalog? rosterGameDataCatalog = null,
+    PlayerRosterSnapshotCache? snapshotCache = null) : IPlayerRosterService
 {
     private const int MaxPageSize = 100;
+    private readonly PlayerRosterSnapshotCache cache = snapshotCache ?? new PlayerRosterSnapshotCache();
 
     public async Task<PlayerRosterPage?> GetAsync(
         long allyCode,
@@ -18,27 +20,13 @@ internal sealed class PlayerRosterService(
         ArgumentNullException.ThrowIfNull(query);
         Validate(query);
 
-        PlayerProfile? player = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
-        if (player is null)
+        PlayerRosterSnapshot? snapshot = await GetSnapshotAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        if (snapshot is null)
         {
             return null;
         }
 
-        IReadOnlyDictionary<string, GameUnitDefinition> gameUnits = rosterGameDataCatalog is null
-            ? (await gameDataCatalog.GetAsync(cancellationToken).ConfigureAwait(false)).Units
-            : await rosterGameDataCatalog.GetUnitsAsync(cancellationToken).ConfigureAwait(false);
-
-        PlayerRosterUnit[] allUnits = [.. player.Roster.Select(unit => Enrich(unit, gameUnits))];
-        string[] availableFactions =
-        [
-            .. allUnits
-                .SelectMany(unit => unit.Factions)
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-        ];
-
-        IEnumerable<PlayerRosterUnit> units = allUnits;
+        IEnumerable<PlayerRosterUnit> units = snapshot.Units;
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -94,17 +82,58 @@ internal sealed class PlayerRosterService(
         int totalPages = total == 0 ? 0 : (total + query.PageSize - 1) / query.PageSize;
 
         return new PlayerRosterPage(
-            player.AllyCode,
-            player.UpdatedAtUtc,
+            snapshot.AllyCode,
+            snapshot.UpdatedAtUtc,
             total,
             query.Page,
             query.PageSize,
             totalPages,
             items,
+            snapshot.PlayerName,
+            snapshot.GalacticPower,
+            snapshot.RosterCount,
+            snapshot.AvailableFactions);
+    }
+
+    public async Task<PlayerRosterSnapshot?> GetSnapshotAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        PlayerProfile? player = await repository.FindByAllyCodeAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        if (player is null)
+        {
+            return null;
+        }
+
+        if (cache.TryGet(player.AllyCode, player.UpdatedAtUtc, out PlayerRosterSnapshot? cached))
+        {
+            return cached;
+        }
+
+        IReadOnlyDictionary<string, GameUnitDefinition> gameUnits = rosterGameDataCatalog is null
+            ? (await gameDataCatalog.GetAsync(cancellationToken).ConfigureAwait(false)).Units
+            : await rosterGameDataCatalog.GetUnitsAsync(cancellationToken).ConfigureAwait(false);
+
+        PlayerRosterUnit[] allUnits = [.. player.Roster.Select(unit => Enrich(unit, gameUnits))];
+        string[] availableFactions =
+        [
+            .. allUnits
+                .SelectMany(unit => unit.Factions)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        ];
+
+        var snapshot = new PlayerRosterSnapshot(
+            player.AllyCode,
+            player.UpdatedAtUtc,
             player.Name,
             player.GalacticPower,
             player.Roster.Count,
+            allUnits,
             availableFactions);
+        cache.Set(snapshot);
+        return snapshot;
     }
 
     private static PlayerRosterUnit Enrich(
