@@ -31,7 +31,9 @@ env:
   SWGOH_TEST_ALLY_CODE: ${{ inputs.ally_code || '476825771' }}
   GAC_COLD_LOOKUP_LIMIT_MS: 35000
   GAC_CACHED_LOOKUP_LIMIT_MS: 3000
+  GAC_PERSISTED_LOOKUP_LIMIT_MS: 5000
   GAC_SCOUTING_LIMIT_MS: 60000
+  GAC_CACHED_SCOUTING_LIMIT_MS: 1500
 
 jobs:
   gac-smoke:
@@ -203,11 +205,57 @@ jobs:
             > smoke-results/gac-latency.json
           echo "active=true" >> "$GITHUB_OUTPUT"
 
-      - name: Require final scouting response
+      - name: Verify persisted bracket after API restart
+        if: steps.lookup.outputs.active == 'true'
+        env:
+          ASPNETCORE_URLS: http://127.0.0.1:5080
+          ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
+          Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
+          Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
+        run: |
+          set -euo pipefail
+          kill "$(cat smoke-results/api.pid)" 2>/dev/null || true
+          for attempt in {1..20}; do
+            if ! curl --silent http://127.0.0.1:5080/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          mv smoke-results/api.log smoke-results/api-first-run.log
+          dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build --no-restore > smoke-results/api.log 2>&1 &
+          echo $! > smoke-results/api.pid
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:5080/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          lookup_url="http://127.0.0.1:5080/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent"
+          start_ms=$(date +%s%3N)
+          status=$(curl --silent --show-error \
+            "${lookup_url}" \
+            --output smoke-results/gac-lookup-persisted.json \
+            --write-out '%{http_code}')
+          persisted_ms=$(( $(date +%s%3N) - start_ms ))
+          echo "Persisted GAC lookup after restart: ${persisted_ms} ms · HTTP ${status}"
+          test "${status}" = "200"
+          test "${persisted_ms}" -lt "${GAC_PERSISTED_LOOKUP_LIMIT_MS}"
+          jq -e '.opponentAllyCode > 0 and (.opponentResolutionMethod | startswith("PersistedBracket"))' smoke-results/gac-lookup-persisted.json > /dev/null
+
+          jq --argjson persistedMs "${persisted_ms}" '. + {persistedLookupAfterRestartMs:$persistedMs}' \
+            smoke-results/gac-latency.json > smoke-results/gac-latency.tmp.json
+          mv smoke-results/gac-latency.tmp.json smoke-results/gac-latency.json
+
+      - name: Require final and cached scouting responses
         if: steps.lookup.outputs.active == 'true'
         run: |
           set -euo pipefail
-          scouting_url="http://127.0.0.1:5080/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting?maxRounds=10"
+          api_root="http://127.0.0.1:5080"
+          scouting_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting?maxRounds=10"
+          refresh_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting/refresh"
+
           start_ms=$(date +%s%3N)
           status=$(curl --silent --show-error --max-time 65 \
             "${scouting_url}" \
@@ -218,8 +266,34 @@ jobs:
           test "${status}" = "200"
           test "${scouting_ms}" -lt "${GAC_SCOUTING_LIMIT_MS}"
           jq -e '.opponent.playerAllyCode > 0 and .opponent.opponentAllyCode > 0' smoke-results/current-gac.json > /dev/null
-          jq --argjson scoutingMs "${scouting_ms}" '. + {scoutingMs:$scoutingMs}' \
-            smoke-results/gac-latency.json > smoke-results/gac-latency.tmp.json
+
+          cached_start_ms=$(date +%s%3N)
+          cached_status=$(curl --silent --show-error \
+            "${scouting_url}" \
+            --output smoke-results/current-gac-cached.json \
+            --write-out '%{http_code}')
+          cached_scouting_ms=$(( $(date +%s%3N) - cached_start_ms ))
+          echo "Cached GAC scouting: ${cached_scouting_ms} ms · HTTP ${cached_status}"
+          test "${cached_status}" = "200"
+          test "${cached_scouting_ms}" -lt "${GAC_CACHED_SCOUTING_LIMIT_MS}"
+
+          refresh_status=$(curl --silent --show-error \
+            --request POST "${refresh_url}" \
+            --output smoke-results/gac-refresh.txt \
+            --write-out '%{http_code}')
+          echo "GAC refresh endpoint: HTTP ${refresh_status}"
+          test "${refresh_status}" = "204"
+
+          refreshed_status=$(curl --silent --show-error --max-time 65 \
+            "${scouting_url}" \
+            --output smoke-results/current-gac-refreshed.json \
+            --write-out '%{http_code}')
+          test "${refreshed_status}" = "200"
+
+          jq --argjson scoutingMs "${scouting_ms}" \
+             --argjson cachedScoutingMs "${cached_scouting_ms}" \
+             '. + {scoutingMs:$scoutingMs,cachedScoutingMs:$cachedScoutingMs}' \
+             smoke-results/gac-latency.json > smoke-results/gac-latency.tmp.json
           mv smoke-results/gac-latency.tmp.json smoke-results/gac-latency.json
 
       - name: Show GAC telemetry log summary
@@ -228,7 +302,7 @@ jobs:
           echo '--- GAC latency ---'
           cat smoke-results/gac-latency.json 2>/dev/null || true
           echo '--- GAC application log ---'
-          grep -E 'GAC|gac' smoke-results/api.log | tail -n 120 || true
+          grep -E 'GAC|gac' smoke-results/api.log | tail -n 160 || true
 
       - name: Upload GAC smoke artifacts
         if: always()
