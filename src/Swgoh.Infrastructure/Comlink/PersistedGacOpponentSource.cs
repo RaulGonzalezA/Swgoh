@@ -45,11 +45,9 @@ internal sealed class PersistedGacOpponentSource(
             persistedAttempts[key] = DateTimeOffset.UtcNow.Add(PersistedAttemptDuration);
             try
             {
-                playerContext = await ReadPlayerContextAsync(allyCode, cancellationToken).ConfigureAwait(false);
                 CurrentGacOpponentLookup? persisted = await TryResolvePersistedAsync(
                     allyCode,
                     formatOverride,
-                    playerContext,
                     cancellationToken).ConfigureAwait(false);
                 if (persisted is not null)
                 {
@@ -101,23 +99,36 @@ internal sealed class PersistedGacOpponentSource(
     private async Task<CurrentGacOpponentLookup?> TryResolvePersistedAsync(
         long allyCode,
         GacFormat? formatOverride,
-        PlayerContext? player,
         CancellationToken cancellationToken)
     {
-        if (player is null || string.IsNullOrWhiteSpace(player.PlayerId) || string.IsNullOrWhiteSpace(player.EventInstanceId))
-        {
-            return null;
-        }
-
         GacBracketLocation? location = await locations
-            .FindAsync(allyCode, player.EventInstanceId, player.League, cancellationToken)
+            .FindLatestAsync(allyCode, cancellationToken)
             .ConfigureAwait(false);
         if (location is null)
         {
             return null;
         }
 
+        ActiveEvent? activeEvent = await ReadActiveGacEventAsync(cancellationToken).ConfigureAwait(false);
+        if (activeEvent is null ||
+            !string.Equals(location.EventId, activeEvent.EventId, StringComparison.Ordinal) ||
+            !string.Equals(location.EventInstanceId, activeEvent.EventInstanceId, StringComparison.Ordinal))
+        {
+            logger.LogDebug(
+                "Persisted GAC bracket for {AllyCode} belongs to {PersistedEventInstanceId}, active instance is {ActiveEventInstanceId}",
+                allyCode,
+                location.EventInstanceId,
+                activeEvent?.EventInstanceId);
+            return null;
+        }
+
         if (formatOverride is GacFormat requestedFormat && requestedFormat != location.Format)
+        {
+            return null;
+        }
+
+        PlayerContext? player = await ReadPlayerContextAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        if (player is null || string.IsNullOrWhiteSpace(player.PlayerId))
         {
             return null;
         }
@@ -136,7 +147,7 @@ internal sealed class PersistedGacOpponentSource(
         }
 
         int? roundNumber = InferRoundNumber(participants);
-        Participant? opponent = ResolveFromSwissStandings(participants, player.PlayerId);
+        Participant? opponent = ResolveFromSwissStandings(participants, player.PlayerId, allyCode);
         string resolutionMethod = "PersistedBracketPvpScoreRankPairing";
         if (opponent is null && roundNumber == 1)
         {
@@ -183,28 +194,19 @@ internal sealed class PersistedGacOpponentSource(
             cancellationToken).ConfigureAwait(false);
 
         string? playerId = ReadString(player.RootElement, "playerId") ?? ReadString(player.RootElement, "id");
-        int skillRating = ReadNestedInt(player.RootElement, "playerRating", "skillRating") ?? 0;
-        if (!TryGetProperty(player.RootElement, "seasonStatus", out JsonElement statuses) || statuses.ValueKind != JsonValueKind.Array)
-        {
-            return new PlayerContext(playerId, null, GacLeague.Carbonite, skillRating);
-        }
+        int skillRating = ReadSkillRating(player.RootElement) ?? 0;
+        return string.IsNullOrWhiteSpace(playerId)
+            ? null
+            : new PlayerContext(playerId, skillRating);
+    }
 
-        foreach (JsonElement status in statuses.EnumerateArray())
-        {
-            string? eventInstanceId = ReadString(status, "eventInstanceId");
-            if (string.IsNullOrWhiteSpace(eventInstanceId))
-            {
-                continue;
-            }
-
-            GacLeague? league = ReadLeague(status) ?? ReadLeague(player.RootElement);
-            if (league is not null)
-            {
-                return new PlayerContext(playerId, eventInstanceId, league.Value, skillRating);
-            }
-        }
-
-        return new PlayerContext(playerId, null, ReadLeague(player.RootElement) ?? GacLeague.Carbonite, skillRating);
+    private async Task<ActiveEvent?> ReadActiveGacEventAsync(CancellationToken cancellationToken)
+    {
+        using JsonDocument events = await PostAsync(
+            "getEvents",
+            new { payload = new { }, enums = false },
+            cancellationToken).ConfigureAwait(false);
+        return ReadActiveGacEvent(events.RootElement);
     }
 
     private async Task<Participant[]?> ReadBracketAsync(
@@ -319,10 +321,13 @@ internal sealed class PersistedGacOpponentSource(
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
-    private static Participant? ResolveFromSwissStandings(IReadOnlyCollection<Participant> participants, string playerId)
+    private static Participant? ResolveFromSwissStandings(
+        IReadOnlyCollection<Participant> participants,
+        string playerId,
+        long allyCode)
     {
         Participant? current = participants.FirstOrDefault(participant =>
-            string.Equals(participant.PlayerId, playerId, StringComparison.Ordinal));
+            string.Equals(participant.PlayerId, playerId, StringComparison.Ordinal) || participant.AllyCode == allyCode);
         if (current is null || !TryReadPvpValue(current.Element, "score", out int currentScore))
         {
             return null;
@@ -354,7 +359,8 @@ internal sealed class PersistedGacOpponentSource(
         }
 
         int currentIndex = Array.FindIndex(ranked, value =>
-            string.Equals(value.Participant.PlayerId, playerId, StringComparison.Ordinal));
+            string.Equals(value.Participant.PlayerId, playerId, StringComparison.Ordinal) ||
+            value.Participant.AllyCode == allyCode);
         if (currentIndex < 0)
         {
             return null;
@@ -380,6 +386,79 @@ internal sealed class PersistedGacOpponentSource(
         ];
         return scores.Length == 0 ? null : Math.Clamp(scores.Max() + 1, 1, 3);
     }
+
+    private static ActiveEvent? ReadActiveGacEvent(JsonElement root)
+    {
+        if (!TryGetProperty(root, "gameEvent", out JsonElement events) || events.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        ActiveEvent[] contexts =
+        [
+            .. events.EnumerateArray()
+                .Where(IsGacEvent)
+                .SelectMany(ReadEventInstances)
+        ];
+        return contexts
+            .Where(context => context.StartTime <= now && now <= context.EndTime)
+            .OrderByDescending(context => context.StartTime)
+            .FirstOrDefault()
+            ?? contexts.OrderByDescending(context => context.StartTime).FirstOrDefault();
+    }
+
+    private static IEnumerable<ActiveEvent> ReadEventInstances(JsonElement eventElement)
+    {
+        string? eventId = ReadString(eventElement, "id");
+        if (string.IsNullOrWhiteSpace(eventId) ||
+            !TryGetProperty(eventElement, "instance", out JsonElement instances) ||
+            instances.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (JsonElement instance in instances.EnumerateArray())
+        {
+            string? instanceId = ReadString(instance, "id");
+            if (string.IsNullOrWhiteSpace(instanceId))
+            {
+                continue;
+            }
+
+            long startTime = ReadLong(instance, "startTime") ?? long.MinValue;
+            long endTime = ReadLong(instance, "endTime") ?? long.MaxValue;
+            yield return new ActiveEvent(
+                eventId,
+                $"{eventId}:{instanceId}",
+                startTime,
+                endTime);
+        }
+    }
+
+    private static bool IsGacEvent(JsonElement element) =>
+        TryGetProperty(element, "type", out JsonElement type) &&
+        TryReadInt(type, out int value) &&
+        value == 10;
+
+    private static int? ReadSkillRating(JsonElement root)
+    {
+        if (!TryGetProperty(root, "playerRating", out JsonElement playerRating) ||
+            !TryGetProperty(playerRating, "playerSkillRating", out JsonElement playerSkillRating) ||
+            !TryGetProperty(playerSkillRating, "skillRating", out JsonElement skillRating) ||
+            !TryReadInt(skillRating, out int value))
+        {
+            return null;
+        }
+
+        return value;
+    }
+
+    private static long? ReadLong(JsonElement element, string propertyName) =>
+        TryGetProperty(element, propertyName, out JsonElement property) &&
+        long.TryParse(JsonString(property), out long value)
+            ? value
+            : null;
 
     private static bool TryGetLeaderboardPlayers(JsonElement root, out JsonElement players)
     {
@@ -418,33 +497,6 @@ internal sealed class PersistedGacOpponentSource(
             allyCode,
             element.Clone());
     }
-
-    private static GacLeague? ReadLeague(JsonElement element)
-    {
-        string? text = ReadString(element, "league");
-        if (!string.IsNullOrWhiteSpace(text) && Enum.TryParse(text, true, out GacLeague parsed) && Enum.IsDefined(parsed))
-        {
-            return parsed;
-        }
-
-        if (TryGetProperty(element, "playerRating", out JsonElement rating))
-        {
-            text = ReadString(rating, "league");
-            if (!string.IsNullOrWhiteSpace(text) && Enum.TryParse(text, true, out parsed) && Enum.IsDefined(parsed))
-            {
-                return parsed;
-            }
-        }
-
-        return null;
-    }
-
-    private static int? ReadNestedInt(JsonElement element, string parentName, string propertyName) =>
-        TryGetProperty(element, parentName, out JsonElement parent) &&
-        TryGetProperty(parent, propertyName, out JsonElement property) &&
-        TryReadInt(property, out int value)
-            ? value
-            : null;
 
     private static bool TryReadPvpValue(JsonElement participant, string name, out int value)
     {
@@ -499,7 +551,8 @@ internal sealed class PersistedGacOpponentSource(
     }
 
     private sealed record ResultCacheEntry(CurrentGacOpponentLookup Lookup, DateTimeOffset ExpiresAtUtc);
-    private sealed record PlayerContext(string? PlayerId, string? EventInstanceId, GacLeague League, int SkillRating);
+    private sealed record PlayerContext(string PlayerId, int SkillRating);
+    private sealed record ActiveEvent(string EventId, string EventInstanceId, long StartTime, long EndTime);
     private sealed record Participant(string Name, string PlayerId, long? AllyCode, JsonElement Element);
     private sealed record ParticipantProfile(long AllyCode, string Name, string? PlayerId);
     private sealed record RankedParticipant(Participant Participant, int Rank);
