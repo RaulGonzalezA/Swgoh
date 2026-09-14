@@ -1,0 +1,107 @@
+.planner-tactical-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    margin: 14px 0 18px;
+    padding: 12px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-md);
+    background: rgba(4, 12, 19, .4);
+}
+
+.planner-tactical-sort {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.planner-tactical-sort label {
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.planner-tactical-sort select {
+    min-height: 38px;
+    padding: 0 34px 0 10px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm);
+    background: var(--ds-bg-elevated);
+    color: var(--ds-text);
+}
+
+.planner-tactical-filters {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.planner-tactical-filters button {
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--ds-border);
+    border-radius: 999px;
+    background: var(--ds-surface-soft);
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color var(--ds-transition), background var(--ds-transition), color var(--ds-transition);
+}
+
+.planner-tactical-filters button:hover {
+    border-color: rgba(85, 215, 255, .28);
+    color: var(--ds-text-soft);
+}
+
+.planner-tactical-filters button.active {
+    border-color: rgba(85, 215, 255, .35);
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent);
+}
+
+.planner-tactical-count {
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+    white-space: nowrap;
+}
+
+.planner-tactical-count strong {
+    color: var(--ds-text);
+    font-size: var(--ds-text-sm);
+}
+
+@media (max-width: 1040px) {
+    .planner-tactical-toolbar {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .planner-tactical-count {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 720px) {
+    .planner-tactical-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .planner-tactical-sort {
+        justify-content: space-between;
+    }
+
+    .planner-tactical-sort select {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .planner-tactical-count {
+        grid-column: auto;
+    }
+}
