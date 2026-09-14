@@ -64,6 +64,7 @@ internal sealed class CurrentGacScoutingService(
             warnings,
             cancellationToken);
         Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = TryCounterStatisticsAsync(
+            opponent.Format,
             warnings,
             cancellationToken);
         Task<PlayerProfile?> refreshedOpponentTask = RefreshOrFallbackAsync(
@@ -245,6 +246,7 @@ internal sealed class CurrentGacScoutingService(
     }
 
     private async Task<IReadOnlyCollection<GacCounterStatistics>> TryCounterStatisticsAsync(
+        GacFormat format,
         ConcurrentQueue<string> warnings,
         CancellationToken cancellationToken)
     {
@@ -252,7 +254,7 @@ internal sealed class CurrentGacScoutingService(
         {
             return await counterStatisticsService.GetAsync(
                 new GacCounterStatisticsQuery(
-                    Format: null,
+                    format,
                     MaxRounds: CounterSourceRoundLimit,
                     Limit: CounterResultLimit),
                 cancellationToken).ConfigureAwait(false);
