@@ -97,6 +97,7 @@ app.MapSquadEndpoints();
 app.MapConquestEndpoints();
 app.MapConquestDailyPlanEndpoints();
 app.MapGacEndpoints();
+app.MapGacScoutingCacheEndpoints();
 app.MapGacPlannerEndpoints();
 app.MapGacPlannerOptimizationEndpoints();
 app.MapGacAttackExecutionEndpoints();
