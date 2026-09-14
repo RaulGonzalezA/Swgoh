@@ -1,0 +1,414 @@
+@using Swgoh.Blazor.Clients
+@inject GacAttackExecutionApiClient ExecutionClient
+
+<section id="gac-execution" class="gac-execution-panel" aria-labelledby="gac-execution-title">
+    <div class="gac-execution-heading">
+        <div>
+            <span class="section-kicker">Modo ejecución</span>
+            <h2 id="gac-execution-title">Ataca, registra el resultado y recalcula</h2>
+            <p>Los equipos usados quedan consumidos. Victoria o fallo alimentan tu histórico personal y el siguiente ataque se recalcula automáticamente.</p>
+        </div>
+        <div class="gac-execution-summary">
+            <span><strong>@PlannedAttacks.Count</strong> preparados</span>
+            <span><strong>@WonAttacks</strong> victorias</span>
+            <span><strong>@FailedAttacks</strong> fallos</span>
+            @if (KnownBannerAverage is decimal bannerAverage)
+            {
+                <span><strong>@bannerAverage.ToString("0.#")</strong> banners med.</span>
+            }
+        </div>
+    </div>
+
+    @if (LastExecution is not null)
+    {
+        <div class="gac-execution-result gac-execution-result-@LastExecution.Execution.Status.ToLowerInvariant()">
+            <div>
+                <span>@(LastExecution.Execution.Status == "Won" ? "✓ Resultado registrado" : "× Fallo registrado")</span>
+                <strong>@ExecutionLabel(LastExecution.Execution)</strong>
+            </div>
+            <small>El resultado ya forma parte de tu aprendizaje personal y el plan ha sido recalculado.</small>
+        </div>
+
+        @if (LastExecution.NextRecommendation is not null)
+        {
+            GacPlannerApiClient.OptimizationRecommendationViewModel next = LastExecution.NextRecommendation;
+            GacPlannerApiClient.VisibleDefenseViewModel? nextDefense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == next.DefenseId);
+            GacPlannerApiClient.TeamPresetViewModel? nextTeam = Planner.Presets.FirstOrDefault(item => item.Id == next.TeamPresetId);
+            <article class="gac-next-action">
+                <div class="gac-next-action-copy">
+                    <span class="section-kicker">Siguiente ataque recomendado</span>
+                    <h3>@next.DefenseName → @next.TeamName</h3>
+                    <p>@next.Rationale</p>
+                    <div class="gac-next-action-meta">
+                        <span>Score <strong>@next.Score.ToString("0.#")</strong></span>
+                        <span>Confianza <strong>@FriendlyConfidence(next.Confidence)</strong></span>
+                        @if (next.PersonalSamples > 0)
+                        {
+                            <span>Tu histórico <strong>@next.PersonalWins/@next.PersonalSamples</strong></span>
+                        }
+                        @if (next.PersonalAverageBanners is decimal personalBanners)
+                        {
+                            <span>Tus banners <strong>@personalBanners.ToString("0.#")</strong></span>
+                        }
+                    </div>
+                </div>
+                @if (nextDefense is not null && nextTeam is not null)
+                {
+                    <div class="gac-execution-matchup compact">
+                        <div class="gac-execution-squad">
+                            <small>Rival</small>
+                            <div class="rich-squad">
+                                @{ bool nextRivalLeader = true; }
+                                @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in nextDefense.Squad.AllUnits)
+                                {
+                                    PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOpponentRosterUnit(unit.DefinitionId);
+                                    <RichUnitPortrait Name="@unit.Name"
+                                                      ThumbnailName="@unit.ThumbnailName"
+                                                      RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                      Speed="@rosterUnit?.Stats?.Speed"
+                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                      IsLeader="@nextRivalLeader"
+                                                      Compact="true" />
+                                    nextRivalLeader = false;
+                                }
+                            </div>
+                        </div>
+                        <span class="gac-execution-arrow">→</span>
+                        <div class="gac-execution-squad">
+                            <small>Tu equipo</small>
+                            <div class="rich-squad">
+                                @{ bool nextOwnLeader = true; }
+                                @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in nextTeam.Squad.AllUnits)
+                                {
+                                    PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                    <RichUnitPortrait Name="@unit.Name"
+                                                      ThumbnailName="@unit.ThumbnailName"
+                                                      RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                      Speed="@rosterUnit?.Stats?.Speed"
+                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                      IsLeader="@nextOwnLeader"
+                                                      Compact="true" />
+                                    nextOwnLeader = false;
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </article>
+        }
+        else
+        {
+            <div class="gac-execution-empty compact"><strong>No queda otro ataque calculable.</strong><span>La ronda visible está limpia o no quedan equipos compatibles disponibles.</span></div>
+        }
+    }
+
+    @if (SelectedAttack is not null)
+    {
+        GacPlannerApiClient.AttackViewModel selectedAttack = SelectedAttack;
+        GacPlannerApiClient.VisibleDefenseViewModel? selectedDefense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == selectedAttack.DefenseId);
+        <div class="gac-execution-editor">
+            <div class="gac-execution-editor-heading">
+                <div>
+                    <span>Intento #@selectedAttack.Attempt</span>
+                    <strong>@selectedAttack.Team.Name</strong>
+                    <small>@(selectedDefense?.Label ?? selectedDefense?.Squad.Leader.Name ?? "Defensa rival")</small>
+                </div>
+                <button class="text-button" type="button" @onclick="CloseEditor">Cerrar</button>
+            </div>
+
+            @if (selectedDefense is not null)
+            {
+                <div class="gac-execution-matchup">
+                    <div class="gac-execution-squad">
+                        <small>Defensa rival</small>
+                        <div class="rich-squad">
+                            @{ bool selectedRivalLeader = true; }
+                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in selectedDefense.Squad.AllUnits)
+                            {
+                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOpponentRosterUnit(unit.DefinitionId);
+                                <RichUnitPortrait Name="@unit.Name"
+                                                  ThumbnailName="@unit.ThumbnailName"
+                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                  IsLeader="@selectedRivalLeader" />
+                                selectedRivalLeader = false;
+                            }
+                        </div>
+                    </div>
+                    <span class="gac-execution-arrow">→</span>
+                    <div class="gac-execution-squad">
+                        <small>Tu ataque</small>
+                        <div class="rich-squad">
+                            @{ bool selectedOwnLeader = true; }
+                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in selectedAttack.Team.Squad.AllUnits)
+                            {
+                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                <RichUnitPortrait Name="@unit.Name"
+                                                  ThumbnailName="@unit.ThumbnailName"
+                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                  IsLeader="@selectedOwnLeader" />
+                                selectedOwnLeader = false;
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="gac-execution-form">
+                <div class="gac-result-toggle" role="group" aria-label="Resultado del ataque">
+                    <button type="button" class="@(ExecutionStatus == "Won" ? "active won" : string.Empty)" @onclick="() => ExecutionStatus = "Won"">✓ Gané</button>
+                    <button type="button" class="@(ExecutionStatus == "Failed" ? "active failed" : string.Empty)" @onclick="() => ExecutionStatus = "Failed"">× Fallé</button>
+                </div>
+                <label>
+                    <span>Banners</span>
+                    <input type="number" min="0" max="100" @bind="ExecutionBanners" placeholder="Opcional" />
+                    <small>Se guardan en tu histórico personal para futuras recomendaciones.</small>
+                </label>
+                <label class="gac-execution-notes">
+                    <span>Nota</span>
+                    <input maxlength="500" @bind="ExecutionNotes" placeholder="Datacron, RNG, error de turno…" />
+                    <small>Opcional. Si la dejas vacía se conserva la nota del planificador.</small>
+                </label>
+                <button class="primary-button" type="button" @onclick="SubmitExecutionAsync" disabled="@ExecutionBusy">
+                    @(ExecutionBusy ? "Registrando y recalculando…" : "Guardar resultado y calcular siguiente")
+                </button>
+            </div>
+
+            @if (ExecutionError is not null)
+            {
+                <div class="status-card status-error" role="alert"><span class="status-icon">!</span><div><strong>No se pudo registrar el resultado</strong><p>@ExecutionError</p></div></div>
+            }
+        </div>
+    }
+
+    @if (PlannedAttacks.Count == 0)
+    {
+        <div class="gac-execution-empty">
+            <strong>No tienes ataques planificados pendientes.</strong>
+            <span>Aplica una propuesta del optimizador o planifica un ataque manual para empezar el modo ejecución.</span>
+        </div>
+    }
+    else
+    {
+        <div class="gac-execution-list">
+            @foreach (GacPlannerApiClient.AttackViewModel attack in PlannedAttacks)
+            {
+                GacPlannerApiClient.VisibleDefenseViewModel? defense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == attack.DefenseId);
+                <article class="gac-execution-card @(SelectedAttackId == attack.Id ? "selected" : string.Empty)">
+                    <div class="gac-execution-card-copy">
+                        <span>@(defense?.Zone ?? "Zona") · intento #@attack.Attempt</span>
+                        <strong>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa") → @attack.Team.Name</strong>
+                        @if (!string.IsNullOrWhiteSpace(attack.Notes))
+                        {
+                            <small>@attack.Notes</small>
+                        }
+                    </div>
+                    <div class="gac-execution-card-team rich-squad">
+                        @{ bool cardLeader = true; }
+                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in attack.Team.Squad.AllUnits)
+                        {
+                            PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                            <RichUnitPortrait Name="@unit.Name"
+                                              ThumbnailName="@unit.ThumbnailName"
+                                              RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                              Speed="@rosterUnit?.Stats?.Speed"
+                                              EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                              SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                              ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                              IsLeader="@cardLeader"
+                                              Compact="true" />
+                            cardLeader = false;
+                        }
+                    </div>
+                    <button class="secondary-button" type="button" @onclick="() => OpenEditor(attack.Id)">Registrar resultado</button>
+                </article>
+            }
+        </div>
+    }
+
+    @if (CompletedAttacks.Count > 0)
+    {
+        <div class="gac-execution-history">
+            <h3>Resultados de esta ronda</h3>
+            @foreach (GacPlannerApiClient.AttackViewModel attack in CompletedAttacks)
+            {
+                GacPlannerApiClient.VisibleDefenseViewModel? defense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == attack.DefenseId);
+                <div class="gac-execution-history-row">
+                    <span class="gac-history-status gac-history-@attack.Status.ToLowerInvariant()">@(attack.Status == "Won" ? "✓" : "×")</span>
+                    <div><strong>@attack.Team.Name</strong><small>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa") · intento #@attack.Attempt</small></div>
+                    <span>@(attack.Banners is int banners ? $"{banners} banners" : "sin banners")</span>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public long AllyCode { get; set; }
+
+    [Parameter, EditorRequired]
+    public GacPlannerApiClient.PlannerViewModel Planner { get; set; } = null!;
+
+    [Parameter]
+    public GacPlannerApiClient.OptimizationViewModel? Optimization { get; set; }
+
+    [Parameter]
+    public IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> OwnRoster { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> OpponentRoster { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<GacAttackExecutionApiClient.ExecutionEnvelopeViewModel> Executed { get; set; }
+
+    private Guid? SelectedAttackId { get; set; }
+    private string ExecutionStatus { get; set; } = "Won";
+    private int? ExecutionBanners { get; set; }
+    private string ExecutionNotes { get; set; } = string.Empty;
+    private bool ExecutionBusy { get; set; }
+    private string? ExecutionError { get; set; }
+    private GacAttackExecutionApiClient.ExecutionEnvelopeViewModel? LastExecution { get; set; }
+
+    private IReadOnlyCollection<GacPlannerApiClient.AttackViewModel> PlannedAttacks =>
+        [.. Planner.Plan.Attacks
+            .Where(attack => attack.Status == "Planned")
+            .OrderBy(attack => DefenseZone(attack.DefenseId), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(attack => attack.Attempt)];
+
+    private IReadOnlyCollection<GacPlannerApiClient.AttackViewModel> CompletedAttacks =>
+        [.. Planner.Plan.Attacks
+            .Where(attack => attack.Status is "Won" or "Failed")
+            .OrderByDescending(attack => attack.Attempt)];
+
+    private int WonAttacks => Planner.Plan.Attacks.Count(attack => attack.Status == "Won");
+    private int FailedAttacks => Planner.Plan.Attacks.Count(attack => attack.Status == "Failed");
+
+    private decimal? KnownBannerAverage
+    {
+        get
+        {
+            int[] banners =
+            [
+                .. Planner.Plan.Attacks
+                    .Where(attack => attack.Status == "Won" && attack.Banners is not null)
+                    .Select(attack => attack.Banners!.Value)
+            ];
+            return banners.Length == 0 ? null : Math.Round((decimal)banners.Average(), 1);
+        }
+    }
+
+    private GacPlannerApiClient.AttackViewModel? SelectedAttack => SelectedAttackId is Guid id
+        ? Planner.Plan.Attacks.FirstOrDefault(attack => attack.Id == id)
+        : null;
+
+    protected override void OnParametersSet()
+    {
+        if (SelectedAttackId is Guid id && Planner.Plan.Attacks.All(attack => attack.Id != id || attack.Status != "Planned"))
+        {
+            CloseEditor();
+        }
+    }
+
+    private void OpenEditor(Guid attackId)
+    {
+        GacPlannerApiClient.AttackViewModel? attack = Planner.Plan.Attacks.FirstOrDefault(item => item.Id == attackId);
+        if (attack is null || attack.Status != "Planned")
+        {
+            return;
+        }
+
+        SelectedAttackId = attackId;
+        ExecutionStatus = "Won";
+        ExecutionBanners = attack.Banners;
+        ExecutionNotes = string.Empty;
+        ExecutionError = null;
+    }
+
+    private void CloseEditor()
+    {
+        SelectedAttackId = null;
+        ExecutionStatus = "Won";
+        ExecutionBanners = null;
+        ExecutionNotes = string.Empty;
+        ExecutionError = null;
+    }
+
+    private async Task SubmitExecutionAsync()
+    {
+        if (SelectedAttackId is not Guid attackId)
+        {
+            return;
+        }
+
+        if (ExecutionBanners is < 0 or > 100)
+        {
+            ExecutionError = "Los banners deben estar entre 0 y 100.";
+            return;
+        }
+
+        ExecutionBusy = true;
+        ExecutionError = null;
+        try
+        {
+            GacAttackExecutionApiClient.ExecutionResult result = await ExecutionClient.ExecuteAsync(
+                AllyCode,
+                attackId,
+                ExecutionStatus,
+                ExecutionBanners,
+                string.IsNullOrWhiteSpace(ExecutionNotes) ? null : ExecutionNotes.Trim());
+            if (result.Envelope is null)
+            {
+                ExecutionError = result.Message ?? "No se ha podido registrar el resultado.";
+                return;
+            }
+
+            LastExecution = result.Envelope;
+            Planner = result.Envelope.Planner;
+            CloseEditor();
+            await Executed.InvokeAsync(result.Envelope);
+        }
+        catch (HttpRequestException)
+        {
+            ExecutionError = "No se ha podido registrar el resultado ni recalcular el siguiente ataque.";
+        }
+        finally
+        {
+            ExecutionBusy = false;
+        }
+    }
+
+    private string DefenseZone(Guid defenseId) => Planner.Plan.VisibleDefenses
+        .FirstOrDefault(defense => defense.Id == defenseId)?.Zone ?? string.Empty;
+
+    private PlayerApiClient.RosterUnitViewModel? FindOwnRosterUnit(string definitionId) => OwnRoster.FirstOrDefault(unit =>
+        string.Equals(unit.DefinitionId, definitionId, StringComparison.OrdinalIgnoreCase));
+
+    private PlayerApiClient.RosterUnitViewModel? FindOpponentRosterUnit(string definitionId) => OpponentRoster.FirstOrDefault(unit =>
+        string.Equals(unit.DefinitionId, definitionId, StringComparison.OrdinalIgnoreCase));
+
+    private static string FriendlyConfidence(string confidence) => confidence switch
+    {
+        "High" => "Alta",
+        "Medium" => "Media",
+        "Low" => "Baja",
+        _ => confidence
+    };
+
+    private static string ExecutionLabel(GacAttackExecutionApiClient.ExecutedAttackViewModel execution)
+    {
+        string outcome = execution.Status == "Won" ? "Victoria" : "Fallo";
+        return execution.Banners is int banners ? $"{outcome} · {banners} banners" : outcome;
+    }
+}
