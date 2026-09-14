@@ -24,6 +24,22 @@ public sealed class GacDeferredResponseTests
         Assert.Equal(2, handler.Calls);
     }
 
+    [Fact]
+    public async Task ScoutingClientTreatsAcceptedPendingAsDeferredResponse()
+    {
+        using var handler = new AcceptedPendingHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://api") };
+        var client = new GacApiClient(http);
+
+        GacApiClient.CurrentGacResult result = await client.GetCurrentOpponentAsync(
+            476825771,
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(result.Scouting);
+        Assert.Equal("Búsqueda completada sin rival.", result.Message);
+        Assert.Equal(2, handler.Calls);
+    }
+
     private sealed class PendingHandler : HttpMessageHandler
     {
         public int Calls { get; private set; }
@@ -35,6 +51,25 @@ public sealed class GacDeferredResponseTests
             {
                 Content = JsonContent.Create(new { Status = Calls == 1 ? "Pending" : "OpponentUnavailable", Message = "Completed" })
             });
+        }
+    }
+
+    private sealed class AcceptedPendingHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(Calls == 1
+                ? new HttpResponseMessage(HttpStatusCode.Accepted)
+                {
+                    Content = JsonContent.Create(new { Status = "Pending", Message = "Buscando rival." })
+                }
+                : new HttpResponseMessage(HttpStatusCode.Conflict)
+                {
+                    Content = JsonContent.Create(new { Status = "OpponentUnavailable", Message = "Búsqueda completada sin rival." })
+                });
         }
     }
 
