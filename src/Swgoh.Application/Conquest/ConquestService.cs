@@ -88,6 +88,13 @@ internal sealed class ConquestService(
         }
 
         plan.ReplaceDataDisks(input.DiskCapacityLimit, dataDisks, diskLoadouts, now);
+        plan.ReplaceDailyGoal(
+            input.AvailableEnergy,
+            input.EnergyCostPerBattle,
+            input.CurrentRewardPoints,
+            input.TargetRewardPoints,
+            input.RewardTargetName,
+            now);
         await repository.UpsertAsync(plan, cancellationToken).ConfigureAwait(false);
         return ToDetails(plan);
     }
@@ -591,6 +598,11 @@ internal sealed class ConquestService(
             plan.DiskCapacityLimit,
             plan.DataDisks,
             plan.DiskLoadouts,
+            plan.AvailableEnergy,
+            plan.EnergyCostPerBattle,
+            plan.CurrentRewardPoints,
+            plan.TargetRewardPoints,
+            plan.RewardTargetName,
             plan.UpdatedAtUtc);
     }
 

@@ -16,7 +16,7 @@ internal static class ConquestDailyPlanEndpoints
             .WithTags("Conquest");
 
         group.MapPost("/daily-plan", BuildDailyPlanAsync)
-            .WithSummary("Build a sequential Conquest battle plan using projected feat progress, stamina and data disks");
+            .WithSummary("Build an energy-aware sequential Conquest plan toward the configured reward target");
 
         return endpoints;
     }
@@ -53,6 +53,17 @@ internal static class ConquestDailyPlanEndpoints
         int StartingPendingFeats,
         int ProjectedCompletedFeats,
         int ProjectedRemainingFeats,
+        int? AvailableEnergy,
+        int EnergyCostPerBattle,
+        int EnergySpent,
+        int? EnergyRemaining,
+        int StartingRewardPoints,
+        int ProjectedRewardPoints,
+        int ProjectedRewardPointsGained,
+        int? TargetRewardPoints,
+        string? RewardTargetName,
+        bool RewardTargetReached,
+        decimal RewardPointsPerEnergy,
         string StopReason,
         IReadOnlyCollection<DailyPlanStepResponse> Steps,
         IReadOnlyCollection<RecoveryUnitResponse> RecoveryPriority,
@@ -66,6 +77,17 @@ internal static class ConquestDailyPlanEndpoints
             result.StartingPendingFeats,
             result.ProjectedCompletedFeats,
             result.ProjectedRemainingFeats,
+            result.AvailableEnergy,
+            result.EnergyCostPerBattle,
+            result.EnergySpent,
+            result.EnergyRemaining,
+            result.StartingRewardPoints,
+            result.ProjectedRewardPoints,
+            result.ProjectedRewardPointsGained,
+            result.TargetRewardPoints,
+            result.RewardTargetName,
+            result.RewardTargetReached,
+            result.RewardPointsPerEnergy,
             result.StopReason,
             [.. result.Steps.Select(DailyPlanStepResponse.From)],
             [.. result.RecoveryPriority.Select(RecoveryUnitResponse.From)],
@@ -76,6 +98,12 @@ internal static class ConquestDailyPlanEndpoints
         int BattleNumber,
         decimal Score,
         decimal FeatEfficiency,
+        int EnergyCost,
+        int CumulativeEnergySpent,
+        int RewardPointsEarned,
+        int ProjectedRewardPointsAfterBattle,
+        decimal RewardPointsPerEnergy,
+        bool RewardTargetReached,
         decimal AverageStaminaBefore,
         decimal AverageStaminaAfter,
         int ReserveRiskUnits,
@@ -90,6 +118,12 @@ internal static class ConquestDailyPlanEndpoints
             step.BattleNumber,
             step.Score,
             step.FeatEfficiency,
+            step.EnergyCost,
+            step.CumulativeEnergySpent,
+            step.RewardPointsEarned,
+            step.ProjectedRewardPointsAfterBattle,
+            step.RewardPointsPerEnergy,
+            step.RewardTargetReached,
             step.AverageStaminaBefore,
             step.AverageStaminaAfter,
             step.ReserveRiskUnits,
@@ -108,7 +142,8 @@ internal static class ConquestDailyPlanEndpoints
         int BeforeProgress,
         int AfterProgress,
         int Target,
-        bool CompletedByBattle)
+        bool CompletedByBattle,
+        int RewardPointsGranted)
     {
         public static FeatProgressResponse From(ConquestDailyFeatProgress value) => new(
             value.FeatId,
@@ -117,7 +152,8 @@ internal static class ConquestDailyPlanEndpoints
             value.BeforeProgress,
             value.AfterProgress,
             value.Target,
-            value.CompletedByBattle);
+            value.CompletedByBattle,
+            value.RewardPointsGranted);
     }
 
     internal sealed record RecoveryUnitResponse(

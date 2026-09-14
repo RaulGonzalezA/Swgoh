@@ -39,6 +39,8 @@ public partial class Conquest
 
     protected static string DailyStopReason(string value) => value switch
     {
+        "RewardTargetReached" => "Se alcanzó el objetivo de recompensa configurado",
+        "EnergyBudgetExhausted" => "No queda energía suficiente para otro combate",
         "AllFeatsCompleted" => "Todas las hazañas proyectadas quedan completadas",
         "NoUsableCharacters" => "No quedan personajes utilizables con la stamina actual",
         "NoViableTeam" => "No hay otro equipo que avance las hazañas pendientes",

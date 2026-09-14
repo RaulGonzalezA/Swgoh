@@ -443,12 +443,12 @@ else
         <div class="conquest-panel-heading">
             <div>
                 <span class="section-kicker">Plan del día</span>
-                <h2>Ordena los próximos combates, no solo el siguiente</h2>
-                <p>Simula progreso y stamina combate a combate, cambia de equipo cuando conviene y recomienda el preset de discos adecuado para cada paso.</p>
+                <h2>Llega a tu caja objetivo con el menor gasto posible</h2>
+                <p>Simula progreso, energía, stamina y discos combate a combate. Si configuras una recompensa objetivo, el motor se detiene en cuanto los puntos de hazañas completadas permiten alcanzarla.</p>
             </div>
             <div class="conquest-daily-controls">
                 <label>
-                    <span>Combates a planificar</span>
+                    <span>Combates máximos</span>
                     <input type="number" min="1" max="20" @bind="DailyPlanBattles" />
                 </label>
                 <button class="primary-button" @onclick="BuildDailyPlanAsync" disabled="@(PlanningDay || Feats.Count == 0)">
@@ -456,14 +456,50 @@ else
                 </button>
             </div>
         </div>
-        <p class="conquest-daily-note">Es una proyección: generar el plan guarda tu configuración actual, pero no aplica automáticamente los resultados ni descuenta stamina real.</p>
+
+        <div class="conquest-daily-goal-grid">
+            <label>
+                <span>Energía disponible</span>
+                <input type="number" min="0" @bind="AvailableEnergy" placeholder="Sin límite" />
+                <small>Déjalo vacío para no limitar el plan por energía.</small>
+            </label>
+            <label>
+                <span>Coste energía / combate</span>
+                <input type="number" min="1" max="1000" @bind="EnergyCostPerBattle" />
+                <small>Configurable: no asumimos un coste fijo universal.</small>
+            </label>
+            <label>
+                <span>Puntos actuales</span>
+                <input type="number" min="0" @bind="CurrentRewardPoints" />
+                <small>Progreso real hacia la recompensa.</small>
+            </label>
+            <label>
+                <span>Puntos objetivo</span>
+                <input type="number" min="0" @bind="TargetRewardPoints" placeholder="Sin objetivo" />
+                <small>Déjalo vacío para planificar solo por hazañas.</small>
+            </label>
+            <label class="conquest-daily-goal-name">
+                <span>Nombre de la recompensa</span>
+                <input @bind="RewardTargetName" placeholder="Ej. Caja roja" />
+                <small>Etiqueta libre para identificar el objetivo.</small>
+            </label>
+            <div class="conquest-daily-goal-status">
+                <span>Capacidad actual</span>
+                <strong>@(EnergyBattleCapacity is int capacity ? $"{capacity} combates" : "Sin límite")</strong>
+                <small>@(RewardPointsRemaining is int remaining ? $"Faltan {remaining} puntos" : "Sin objetivo de caja")</small>
+            </div>
+        </div>
+
+        <p class="conquest-daily-note">Es una proyección: generar el plan guarda tu configuración actual, pero no aplica automáticamente los resultados, no descuenta stamina real y solo suma puntos de recompensa cuando una hazaña queda proyectada como completada.</p>
 
         @if (DailyPlan is not null)
         {
-            <div class="conquest-daily-summary">
+            <div class="conquest-daily-summary conquest-daily-summary-energy">
                 <div><span>Combates</span><strong>@DailyPlan.PlannedBattles / @DailyPlan.RequestedBattles</strong><small>secuencia propuesta</small></div>
-                <div><span>Hazañas cerradas</span><strong>@DailyPlan.ProjectedCompletedFeats</strong><small>completadas en la simulación</small></div>
-                <div><span>Pendientes después</span><strong>@DailyPlan.ProjectedRemainingFeats</strong><small>del conjunto inicial</small></div>
+                <div><span>Energía</span><strong>@DailyPlan.EnergySpent</strong><small>@(DailyPlan.EnergyRemaining is int energyRemaining ? $"quedan {energyRemaining}" : "sin límite configurado")</small></div>
+                <div><span>Puntos</span><strong>@DailyPlan.StartingRewardPoints → @DailyPlan.ProjectedRewardPoints</strong><small>+@DailyPlan.ProjectedRewardPointsGained proyectados</small></div>
+                <div><span>Objetivo</span><strong>@(DailyPlan.TargetRewardPoints?.ToString() ?? "—")</strong><small>@(string.IsNullOrWhiteSpace(DailyPlan.RewardTargetName) ? "sin recompensa nombrada" : DailyPlan.RewardTargetName)</small></div>
+                <div><span>Eficiencia</span><strong>@DailyPlan.RewardPointsPerEnergy.ToString("0.###")</strong><small>puntos desbloqueados / energía</small></div>
                 <div><span>Fin del plan</span><strong>@DailyPlan.PlannedBattles</strong><small>@DailyStopReason(DailyPlan.StopReason)</small></div>
             </div>
 
@@ -476,12 +512,21 @@ else
                 <div class="conquest-daily-timeline">
                     @foreach (ConquestDailyPlanApiClient.DailyPlanStepViewModel step in DailyPlan.Steps)
                     {
-                        <article class="conquest-daily-step">
+                        <article class="conquest-daily-step @(step.RewardTargetReached ? "target-reached" : string.Empty)">
                             <div class="conquest-daily-step-index"><span>Combate</span><strong>@step.BattleNumber</strong></div>
                             <div class="conquest-daily-step-content">
                                 <div class="conquest-daily-step-heading">
                                     <div><h3>@step.FeatProgress.Count hazaña(s) avanzan</h3><p>@step.Rationale</p></div>
                                     <div class="conquest-daily-step-badges">
+                                        <span>⚡ @step.EnergyCost</span>
+                                        @if (step.RewardPointsEarned > 0)
+                                        {
+                                            <span class="reward">+@step.RewardPointsEarned pts</span>
+                                        }
+                                        @if (step.RewardTargetReached)
+                                        {
+                                            <span class="target">★ Objetivo alcanzado</span>
+                                        }
                                         @if (step.ChangesTeamFromPrevious)
                                         {
                                             <span class="rotate">↻ Cambiar equipo</span>
@@ -535,7 +580,7 @@ else
                                     {
                                         <div class="conquest-daily-feat @(feat.CompletedByBattle ? "complete" : string.Empty)">
                                             <strong>@feat.FeatName</strong>
-                                            <span>@feat.BeforeProgress → @feat.AfterProgress / @feat.Target @(feat.CompletedByBattle ? "· completada" : string.Empty)</span>
+                                            <span>@feat.BeforeProgress → @feat.AfterProgress / @feat.Target @(feat.CompletedByBattle ? $"· completada · +{feat.RewardPointsGranted} pts" : string.Empty)</span>
                                         </div>
                                     }
                                 </div>
@@ -543,6 +588,9 @@ else
                                     <span>score <strong>@step.Score.ToString("0.#")</strong></span>
                                     <span>valor hazañas <strong>@step.FeatEfficiency.ToString("0.##")</strong></span>
                                     <span>stamina <strong>@step.AverageStaminaBefore.ToString("0")% → @step.AverageStaminaAfter.ToString("0")%</strong></span>
+                                    <span>energía acumulada <strong>@step.CumulativeEnergySpent</strong></span>
+                                    <span>puntos proyectados <strong>@step.ProjectedRewardPointsAfterBattle</strong></span>
+                                    <span>pts/energía <strong>@step.RewardPointsPerEnergy.ToString("0.###")</strong></span>
                                 </div>
                             </div>
                         </article>

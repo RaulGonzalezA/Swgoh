@@ -50,6 +50,16 @@ internal sealed class ConquestDailyPlanService(
         }
 
         ConquestFeat[] startingPending = [.. plan.Feats.Where(feat => !feat.IsComplete)];
+        if (plan.TargetRewardPoints is int initialTarget && plan.CurrentRewardPoints >= initialTarget)
+        {
+            return EmptyResult(plan, request.MaxBattles, startingPending, "RewardTargetReached");
+        }
+
+        if (plan.AvailableEnergy is int initialEnergy && initialEnergy < plan.EnergyCostPerBattle)
+        {
+            return EmptyResult(plan, request.MaxBattles, startingPending, "EnergyBudgetExhausted");
+        }
+
         PlayerProfile? player = await playerTask.ConfigureAwait(false);
         GameDataCatalog catalog = await catalogTask.ConfigureAwait(false);
         if (player is null)
@@ -62,10 +72,25 @@ internal sealed class ConquestDailyPlanService(
         var steps = new List<ConquestDailyPlanStep>();
         HashSet<string>? previousTeam = null;
         Guid? previousLoadoutId = null;
+        int energySpent = 0;
+        int projectedRewardPoints = plan.CurrentRewardPoints;
         string stopReason = "BattleLimitReached";
 
         for (int battle = 1; battle <= request.MaxBattles; battle++)
         {
+            if (plan.TargetRewardPoints is int target && projectedRewardPoints >= target)
+            {
+                stopReason = "RewardTargetReached";
+                break;
+            }
+
+            if (plan.AvailableEnergy is int availableEnergy &&
+                energySpent + plan.EnergyCostPerBattle > availableEnergy)
+            {
+                stopReason = "EnergyBudgetExhausted";
+                break;
+            }
+
             ConquestFeat[] pending =
             [
                 .. plan.Feats
@@ -82,15 +107,33 @@ internal sealed class ConquestDailyPlanService(
             [
                 .. player.Roster
                     .Where(unit => !unit.IsShip)
-                    .Select(unit => ToCandidate(unit, catalog, pending, plan, CurrentStamina(unit.DefinitionId, plan, stamina)))
+                    .Select(unit => ToCandidate(
+                        unit,
+                        catalog,
+                        pending,
+                        plan,
+                        CurrentStamina(unit.DefinitionId, plan, stamina)))
                     .Where(candidate => candidate is not null)
                     .Select(candidate => candidate!)
             ];
             CandidateUnit[] pool = BuildPool(allCharacters);
-            TeamCandidate? best = BuildTeams(pool, pending, plan)
-                .OrderByDescending(team => team.FeatEfficiency)
-                .ThenByDescending(team => team.Score)
-                .FirstOrDefault();
+            IEnumerable<TeamCandidate> orderedTeams = BuildTeams(pool, pending, plan);
+            if (plan.TargetRewardPoints is int rewardTarget)
+            {
+                int rewardPointsNeeded = Math.Max(0, rewardTarget - projectedRewardPoints);
+                orderedTeams = orderedTeams
+                    .OrderByDescending(team => RewardPointsUnlocked(team, rewardPointsNeeded))
+                    .ThenByDescending(team => team.FeatEfficiency)
+                    .ThenByDescending(team => team.Score);
+            }
+            else
+            {
+                orderedTeams = orderedTeams
+                    .OrderByDescending(team => team.FeatEfficiency)
+                    .ThenByDescending(team => team.Score);
+            }
+
+            TeamCandidate? best = orderedTeams.FirstOrDefault();
             if (best is null)
             {
                 stopReason = allCharacters.Length == 0 ? "NoUsableCharacters" : "NoViableTeam";
@@ -104,6 +147,7 @@ internal sealed class ConquestDailyPlanService(
                     ConquestFeat source = pending.Single(feat => feat.Id == contribution.FeatId);
                     int before = progress[source.Id];
                     int after = Math.Min(source.Target, before + contribution.ExpectedProgress);
+                    bool completed = before < source.Target && after >= source.Target;
                     return new ConquestDailyFeatProgress(
                         source.Id,
                         source.Name,
@@ -111,9 +155,19 @@ internal sealed class ConquestDailyPlanService(
                         before,
                         after,
                         source.Target,
-                        before < source.Target && after >= source.Target);
+                        completed,
+                        completed ? source.Points : 0);
                 })
             ];
+
+            int rewardPointsEarned = featProgress.Sum(value => value.RewardPointsGranted);
+            energySpent += plan.EnergyCostPerBattle;
+            projectedRewardPoints += rewardPointsEarned;
+            decimal stepEfficiency = energySpent == 0
+                ? 0m
+                : Math.Round((projectedRewardPoints - plan.CurrentRewardPoints) / (decimal)energySpent, 3);
+            bool rewardTargetReached = plan.TargetRewardPoints is int configuredTarget &&
+                projectedRewardPoints >= configuredTarget;
 
             var teamIds = best.Units
                 .Select(candidate => candidate.Unit.DefinitionId)
@@ -123,7 +177,10 @@ internal sealed class ConquestDailyPlanService(
             bool changesLoadout = previousLoadoutId is not null && previousLoadoutId != loadoutId;
             int completedThisBattle = featProgress.Count(value => value.CompletedByBattle);
             string completionNote = completedThisBattle > 0
-                ? $" Completa {completedThisBattle} hazaña(s)."
+                ? $" Completa {completedThisBattle} hazaña(s) y suma {rewardPointsEarned} punto(s) de recompensa."
+                : string.Empty;
+            string targetNote = rewardTargetReached
+                ? " Alcanza el objetivo de recompensa configurado."
                 : string.Empty;
             string rotationNote = changesTeam
                 ? " Rota equipo respecto al combate anterior."
@@ -136,6 +193,12 @@ internal sealed class ConquestDailyPlanService(
                 battle,
                 best.Score,
                 best.FeatEfficiency,
+                plan.EnergyCostPerBattle,
+                energySpent,
+                rewardPointsEarned,
+                projectedRewardPoints,
+                stepEfficiency,
+                rewardTargetReached,
                 best.AverageStamina,
                 best.PostBattleAverageStamina,
                 best.ReserveRiskUnits,
@@ -144,7 +207,7 @@ internal sealed class ConquestDailyPlanService(
                 best.DiskLoadout,
                 [.. best.Units.Select(candidate => candidate.View)],
                 featProgress,
-                $"Avanza {best.Contributions.Count} hazaña(s).{completionNote}{rotationNote}{diskNote}"));
+                $"Avanza {best.Contributions.Count} hazaña(s).{completionNote}{targetNote}{rotationNote}{diskNote}"));
 
             foreach (CandidateUnit candidate in best.Units)
             {
@@ -158,6 +221,12 @@ internal sealed class ConquestDailyPlanService(
 
             previousTeam = teamIds;
             previousLoadoutId = loadoutId;
+
+            if (rewardTargetReached)
+            {
+                stopReason = "RewardTargetReached";
+                break;
+            }
         }
 
         Guid[] remainingFeatIds =
@@ -168,9 +237,21 @@ internal sealed class ConquestDailyPlanService(
         ];
         int remainingStartingFeats = startingPending.Count(feat => progress[feat.Id] < feat.Target);
         int projectedCompleted = startingPending.Length - remainingStartingFeats;
-        if (remainingStartingFeats == 0)
+        bool targetReached = plan.TargetRewardPoints is int finalTarget && projectedRewardPoints >= finalTarget;
+        bool energyExhausted = plan.AvailableEnergy is int available &&
+            available - energySpent < plan.EnergyCostPerBattle;
+
+        if (targetReached)
+        {
+            stopReason = "RewardTargetReached";
+        }
+        else if (remainingStartingFeats == 0)
         {
             stopReason = "AllFeatsCompleted";
+        }
+        else if (energyExhausted && steps.Count < request.MaxBattles)
+        {
+            stopReason = "EnergyBudgetExhausted";
         }
         else if (steps.Count >= request.MaxBattles)
         {
@@ -202,6 +283,14 @@ internal sealed class ConquestDailyPlanService(
                 .Take(12)
         ];
 
+        int rewardPointsGained = projectedRewardPoints - plan.CurrentRewardPoints;
+        int? energyRemaining = plan.AvailableEnergy is int configuredEnergy
+            ? Math.Max(0, configuredEnergy - energySpent)
+            : null;
+        decimal rewardPointsPerEnergy = energySpent == 0
+            ? 0m
+            : Math.Round(rewardPointsGained / (decimal)energySpent, 3);
+
         return new ConquestDailyPlanResult(
             plan.AllyCode,
             plan.EventId,
@@ -210,6 +299,17 @@ internal sealed class ConquestDailyPlanService(
             startingPending.Length,
             projectedCompleted,
             remainingStartingFeats,
+            plan.AvailableEnergy,
+            plan.EnergyCostPerBattle,
+            energySpent,
+            energyRemaining,
+            plan.CurrentRewardPoints,
+            projectedRewardPoints,
+            rewardPointsGained,
+            plan.TargetRewardPoints,
+            plan.RewardTargetName,
+            targetReached,
+            rewardPointsPerEnergy,
             stopReason,
             steps,
             recovery,
@@ -228,10 +328,29 @@ internal sealed class ConquestDailyPlanService(
             startingPending.Count,
             0,
             startingPending.Count,
+            plan.AvailableEnergy,
+            plan.EnergyCostPerBattle,
+            0,
+            plan.AvailableEnergy,
+            plan.CurrentRewardPoints,
+            plan.CurrentRewardPoints,
+            0,
+            plan.TargetRewardPoints,
+            plan.RewardTargetName,
+            plan.TargetRewardPoints is int target && plan.CurrentRewardPoints >= target,
+            0m,
             stopReason,
             [],
             [],
             [.. startingPending.Select(feat => feat.Id)]);
+
+    private static int RewardPointsUnlocked(TeamCandidate team, int rewardPointsNeeded)
+    {
+        int unlocked = team.Contributions
+            .Where(contribution => contribution.ExpectedProgress >= contribution.Remaining)
+            .Sum(contribution => contribution.Points);
+        return rewardPointsNeeded > 0 ? Math.Min(unlocked, rewardPointsNeeded) : unlocked;
+    }
 
     private static ConquestFeat Project(ConquestFeat feat, int progress) => ConquestFeat.Create(
         feat.Id,

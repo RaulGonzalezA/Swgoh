@@ -69,6 +69,11 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         int DiskCapacityLimit,
         IReadOnlyCollection<DataDiskViewModel> DataDisks,
         IReadOnlyCollection<DiskLoadoutViewModel> DiskLoadouts,
+        int? AvailableEnergy,
+        int EnergyCostPerBattle,
+        int CurrentRewardPoints,
+        int? TargetRewardPoints,
+        string? RewardTargetName,
         DateTimeOffset UpdatedAtUtc);
 
     public sealed record UnitStaminaViewModel(string DefinitionId, int CurrentPercent);
@@ -171,7 +176,12 @@ public sealed class ConquestApiClient(HttpClient httpClient)
         IReadOnlyCollection<SaveUnitStaminaRequest> Stamina,
         int DiskCapacityLimit,
         IReadOnlyCollection<SaveDataDiskRequest> DataDisks,
-        IReadOnlyCollection<SaveDiskLoadoutRequest> DiskLoadouts);
+        IReadOnlyCollection<SaveDiskLoadoutRequest> DiskLoadouts,
+        int? AvailableEnergy,
+        int EnergyCostPerBattle,
+        int CurrentRewardPoints,
+        int? TargetRewardPoints,
+        string? RewardTargetName);
 
     public sealed record SaveUnitStaminaRequest(string DefinitionId, int CurrentPercent);
 

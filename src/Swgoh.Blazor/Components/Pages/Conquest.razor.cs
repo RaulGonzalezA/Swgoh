@@ -9,6 +9,7 @@ public partial class Conquest
     private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
     private const int DefaultStaminaCostPerBattle = 10;
     private const int DefaultReserveFloorPercent = 40;
+    private const int DefaultEnergyCostPerBattle = 20;
     private readonly List<PlayerApiClient.RosterUnitViewModel> roster = [];
     private readonly List<FeatDraft> feats = [];
     private readonly Dictionary<string, int> stamina = new(StringComparer.OrdinalIgnoreCase);
@@ -35,6 +36,11 @@ public partial class Conquest
     protected string Difficulty { get; set; } = "Hard";
     protected int StaminaCostPerBattle { get; set; } = DefaultStaminaCostPerBattle;
     protected int ReserveFloorPercent { get; set; } = DefaultReserveFloorPercent;
+    protected int? AvailableEnergy { get; set; }
+    protected int EnergyCostPerBattle { get; set; } = DefaultEnergyCostPerBattle;
+    protected int CurrentRewardPoints { get; set; }
+    protected int? TargetRewardPoints { get; set; }
+    protected string RewardTargetName { get; set; } = string.Empty;
     protected string StaminaUnitDefinitionId { get; set; } = string.Empty;
     protected int StaminaPercent { get; set; } = 100;
 
@@ -56,6 +62,12 @@ public partial class Conquest
     protected int EarnedFeatPoints => feats.Where(feat => feat.IsComplete).Sum(feat => feat.Points);
     protected int AvailableFeatPoints => feats.Where(feat => !feat.IsComplete).Sum(feat => feat.Points);
     protected int TrackedStaminaCount => stamina.Count;
+    protected int? RewardPointsRemaining => TargetRewardPoints is int target
+        ? Math.Max(0, target - CurrentRewardPoints)
+        : null;
+    protected int? EnergyBattleCapacity => AvailableEnergy is int energy && EnergyCostPerBattle > 0
+        ? energy / EnergyCostPerBattle
+        : null;
 
     protected IReadOnlyCollection<string> FactionOptions =>
         [
@@ -107,12 +119,18 @@ public partial class Conquest
         Loading = true;
         Error = null;
         Optimization = null;
+        DailyPlan = null;
         roster.Clear();
         feats.Clear();
         stamina.Clear();
         ResetDiskState();
         StaminaCostPerBattle = DefaultStaminaCostPerBattle;
         ReserveFloorPercent = DefaultReserveFloorPercent;
+        AvailableEnergy = null;
+        EnergyCostPerBattle = DefaultEnergyCostPerBattle;
+        CurrentRewardPoints = 0;
+        TargetRewardPoints = null;
+        RewardTargetName = string.Empty;
 
         try
         {
@@ -163,12 +181,14 @@ public partial class Conquest
         StaminaUnitDefinitionId = string.Empty;
         StaminaPercent = 100;
         Optimization = null;
+        DailyPlan = null;
     }
 
     protected void RemoveStamina(string definitionId)
     {
         stamina.Remove(definitionId);
         Optimization = null;
+        DailyPlan = null;
     }
 
     protected int GetCurrentStamina(string definitionId) =>
@@ -212,6 +232,7 @@ public partial class Conquest
         });
         ResetFeatBuilder();
         Optimization = null;
+        DailyPlan = null;
     }
 
     protected void RemoveFeat(Guid id)
@@ -219,6 +240,7 @@ public partial class Conquest
         feats.RemoveAll(feat => feat.Id == id);
         OnFeatRemoved(id);
         Optimization = null;
+        DailyPlan = null;
     }
 
     protected async Task SavePlanAsync()
@@ -231,7 +253,7 @@ public partial class Conquest
         }
         catch (HttpRequestException)
         {
-            Error = "No se ha podido guardar la Conquista. Revisa los objetivos, progreso, stamina, discos y requisitos de las hazañas.";
+            Error = "No se ha podido guardar la Conquista. Revisa objetivos, energía, progreso, stamina, discos y requisitos de las hazañas.";
         }
         finally
         {
@@ -329,7 +351,12 @@ public partial class Conquest
             ],
             Math.Clamp(DiskCapacityLimit, 1, 100),
             BuildDataDiskSaveRequests(),
-            BuildDiskLoadoutSaveRequests());
+            BuildDiskLoadoutSaveRequests(),
+            AvailableEnergy is int energy ? Math.Max(0, energy) : null,
+            Math.Clamp(EnergyCostPerBattle, 1, 1_000),
+            Math.Max(0, CurrentRewardPoints),
+            TargetRewardPoints is int target ? Math.Max(0, target) : null,
+            string.IsNullOrWhiteSpace(RewardTargetName) ? null : RewardTargetName.Trim());
         ConquestApiClient.PlanViewModel plan = await ConquestClient.SaveCurrentAsync(AllyCode, request);
         MapPlan(plan);
         Optimization = null;
@@ -342,6 +369,11 @@ public partial class Conquest
         Difficulty = plan.Difficulty;
         StaminaCostPerBattle = plan.StaminaCostPerBattle;
         ReserveFloorPercent = plan.ReserveFloorPercent;
+        AvailableEnergy = plan.AvailableEnergy;
+        EnergyCostPerBattle = plan.EnergyCostPerBattle;
+        CurrentRewardPoints = plan.CurrentRewardPoints;
+        TargetRewardPoints = plan.TargetRewardPoints;
+        RewardTargetName = plan.RewardTargetName ?? string.Empty;
         stamina.Clear();
         foreach (ConquestApiClient.UnitStaminaViewModel value in plan.Stamina)
         {
