@@ -14,6 +14,11 @@ internal sealed class ConquestPlanDocument
     public int? DiskCapacityLimit { get; set; }
     public List<ConquestDataDiskDocument> DataDisks { get; set; } = [];
     public List<ConquestDiskLoadoutDocument> DiskLoadouts { get; set; } = [];
+    public int? AvailableEnergy { get; set; }
+    public int? EnergyCostPerBattle { get; set; }
+    public int? CurrentRewardPoints { get; set; }
+    public int? TargetRewardPoints { get; set; }
+    public string? RewardTargetName { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }
