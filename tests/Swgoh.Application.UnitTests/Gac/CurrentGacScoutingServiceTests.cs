@@ -60,7 +60,8 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Equal(2, profiles.RefreshCallCount);
         Assert.Contains(playerAllyCode, profiles.RefreshedAllyCodes);
         Assert.Contains(opponentAllyCode, profiles.RefreshedAllyCodes);
-        Assert.Equal(6, roster.CallCount);
+        Assert.Equal(0, roster.PageCallCount);
+        Assert.Equal(2, roster.SnapshotCallCount);
 
         CurrentOpponentRosterScouting rosterScouting = Assert.IsType<CurrentOpponentRosterScouting>(result.RosterScouting);
         Assert.Equal(opponentAllyCode, rosterScouting.Analysis.AllyCode);
@@ -86,6 +87,51 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Contains(counter.CandidateAnchors, candidate => candidate.DefinitionId == "GL_SELF");
         Assert.True(counter.RequiresDatacronVerification);
         Assert.Contains(battlePlan.Warnings, warning => warning.Contains("No historical GAC rounds", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenOptionalScoutingDependenciesFail_ReturnsDegradedFoundResult()
+    {
+        const long playerAllyCode = 123456789;
+        const long opponentAllyCode = 987654321;
+        var source = new FakeOpponentSource(new CurrentGacOpponent(
+            playerAllyCode,
+            opponentAllyCode,
+            "Opponent",
+            "opponent-player-id",
+            GacLeague.Kyber,
+            GacFormat.ThreeVsThree,
+            "event",
+            "event:instance",
+            "event:instance:KYBER:1",
+            2,
+            "SeasonStatus",
+            "DirectBracketMetadata"));
+        var profiles = new RecordingPlayerProfileService(playerAllyCode, opponentAllyCode);
+        var roster = new RecordingPlayerRosterService(playerAllyCode, opponentAllyCode);
+        var service = new CurrentGacScoutingService(
+            source,
+            new ThrowingScoutingService(),
+            profiles,
+            roster,
+            new ThrowingHistorySyncService(),
+            new ThrowingCounterStatisticsService());
+
+        CurrentGacScoutingResult result = await service.GetAsync(
+            playerAllyCode,
+            formatOverride: null,
+            maxRounds: 30,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(CurrentGacOpponentStatus.Found, result.Lookup.Status);
+        Assert.NotNull(result.Lookup.Opponent);
+        Assert.Null(result.HistorySync);
+        Assert.Null(result.Scouting);
+        Assert.NotNull(result.RosterScouting);
+        Assert.NotNull(result.BattlePlan);
+        Assert.Contains(result.DegradationWarnings, warning => warning.Contains("histórico de GAC", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.DegradationWarnings, warning => warning.Contains("scouting histórico", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.DegradationWarnings, warning => warning.Contains("counters", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -119,7 +165,8 @@ public sealed class CurrentGacScoutingServiceTests
         Assert.Equal(0, scouting.CallCount);
         Assert.Equal(0, historySync.CallCount);
         Assert.Equal(0, profiles.RefreshCallCount);
-        Assert.Equal(0, roster.CallCount);
+        Assert.Equal(0, roster.PageCallCount);
+        Assert.Equal(0, roster.SnapshotCallCount);
         Assert.Null(result.RosterScouting);
         Assert.Null(result.BattlePlan);
         Assert.Null(result.HistorySync);
@@ -167,6 +214,17 @@ public sealed class CurrentGacScoutingServiceTests
         }
     }
 
+    private sealed class ThrowingScoutingService : IOpponentScoutingService
+    {
+        public Task<OpponentScoutingReport?> GetAsync(
+            long allyCode,
+            GacFormat format,
+            GacLeague? targetLeague,
+            int maxRounds,
+            CancellationToken cancellationToken = default) =>
+            throw new HttpRequestException("history unavailable");
+    }
+
     private sealed class RecordingHistorySyncService : IGacHistorySyncService
     {
         public int CallCount { get; private set; }
@@ -186,12 +244,30 @@ public sealed class CurrentGacScoutingServiceTests
         }
     }
 
+    private sealed class ThrowingHistorySyncService : IGacHistorySyncService
+    {
+        public Task<GacHistorySyncResult> SyncAsync(
+            long allyCode,
+            GacFormat format,
+            int maxRounds,
+            CancellationToken cancellationToken = default) =>
+            throw new HttpRequestException("sync unavailable");
+    }
+
     private sealed class EmptyCounterStatisticsService : IGacCounterStatisticsService
     {
         public Task<IReadOnlyCollection<GacCounterStatistics>> GetAsync(
             GacCounterStatisticsQuery query,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyCollection<GacCounterStatistics>>([]);
+    }
+
+    private sealed class ThrowingCounterStatisticsService : IGacCounterStatisticsService
+    {
+        public Task<IReadOnlyCollection<GacCounterStatistics>> GetAsync(
+            GacCounterStatisticsQuery query,
+            CancellationToken cancellationToken = default) =>
+            throw new HttpRequestException("counter source unavailable");
     }
 
     private sealed class RecordingPlayerProfileService(long playerAllyCode, long opponentAllyCode) : IPlayerProfileService
@@ -252,14 +328,15 @@ public sealed class CurrentGacScoutingServiceTests
 
     private sealed class RecordingPlayerRosterService(long playerAllyCode, long opponentAllyCode) : IPlayerRosterService
     {
-        public int CallCount { get; private set; }
+        public int PageCallCount { get; private set; }
+        public int SnapshotCallCount { get; private set; }
 
         public Task<PlayerRosterPage?> GetAsync(
             long allyCode,
             PlayerRosterQuery query,
             CancellationToken cancellationToken = default)
         {
-            CallCount++;
+            PageCallCount++;
             Assert.True(allyCode == playerAllyCode || allyCode == opponentAllyCode);
 
             PlayerRosterUnit[] items = allyCode == playerAllyCode
@@ -274,6 +351,36 @@ public sealed class CurrentGacScoutingServiceTests
                 query.PageSize,
                 1,
                 items));
+        }
+
+        public Task<PlayerRosterSnapshot?> GetSnapshotAsync(
+            long allyCode,
+            CancellationToken cancellationToken = default)
+        {
+            SnapshotCallCount++;
+            Assert.True(allyCode == playerAllyCode || allyCode == opponentAllyCode);
+            PlayerRosterUnit[] units = allyCode == playerAllyCode
+                ?
+                [
+                    Unit("gl-self", "GL_SELF", "Player Legend", 55_000, relic: 9, tags: ["galactic_legend"], omicrons: 1),
+                    Unit("omi-self", "OMI_SELF", "Player Omicron", 45_000, relic: 8, omicrons: 1),
+                    Unit("ship-self", "SHIP_SELF", "Player Capital Ship", 75_000, isShip: true)
+                ]
+                :
+                [
+                    Unit("gl", "GL_TEST", "Opponent Legend", 50_000, relic: 9, tags: ["galactic_legend"], omicrons: 1),
+                    Unit("char", "CHAR_TEST", "Opponent Character", 40_000, relic: 8),
+                    Unit("ship", "SHIP_TEST", "Opponent Capital Ship", 70_000, isShip: true)
+                ];
+
+            return Task.FromResult<PlayerRosterSnapshot?>(new PlayerRosterSnapshot(
+                allyCode,
+                DateTimeOffset.Parse("2026-09-13T14:00:00Z"),
+                allyCode == playerAllyCode ? "Player" : "Opponent",
+                allyCode == playerAllyCode ? 11_000_000 : 12_000_000,
+                units.Length,
+                units,
+                []));
         }
 
         private static PlayerRosterUnit[] PlayerItems(PlayerRosterQuery query) => query.Type == PlayerRosterUnitType.Ship
