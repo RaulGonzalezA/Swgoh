@@ -253,8 +253,9 @@ jobs:
         run: |
           set -euo pipefail
           api_root="http://127.0.0.1:5080"
-          scouting_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting?maxRounds=10"
-          refresh_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent/scouting/refresh"
+          lookup_url="${api_root}/api/v1/gac/players/${SWGOH_TEST_ALLY_CODE}/current-opponent"
+          scouting_url="${lookup_url}/scouting?maxRounds=10"
+          refresh_url="${lookup_url}/scouting/refresh"
 
           start_ms=$(date +%s%3N)
           status=$(curl --silent --show-error --max-time 65 \
@@ -284,6 +285,17 @@ jobs:
           echo "GAC refresh endpoint: HTTP ${refresh_status}"
           test "${refresh_status}" = "204"
 
+          refreshed_lookup_start_ms=$(date +%s%3N)
+          refreshed_lookup_status=$(curl --silent --show-error \
+            "${lookup_url}" \
+            --output smoke-results/gac-lookup-after-refresh.json \
+            --write-out '%{http_code}')
+          refreshed_lookup_ms=$(( $(date +%s%3N) - refreshed_lookup_start_ms ))
+          echo "GAC lookup after refresh: ${refreshed_lookup_ms} ms · HTTP ${refreshed_lookup_status}"
+          test "${refreshed_lookup_status}" = "200"
+          test "${refreshed_lookup_ms}" -lt "${GAC_PERSISTED_LOOKUP_LIMIT_MS}"
+          jq -e '.opponentAllyCode > 0 and (.opponentResolutionMethod | startswith("PersistedBracket"))' smoke-results/gac-lookup-after-refresh.json > /dev/null
+
           refreshed_status=$(curl --silent --show-error --max-time 65 \
             "${scouting_url}" \
             --output smoke-results/current-gac-refreshed.json \
@@ -292,7 +304,8 @@ jobs:
 
           jq --argjson scoutingMs "${scouting_ms}" \
              --argjson cachedScoutingMs "${cached_scouting_ms}" \
-             '. + {scoutingMs:$scoutingMs,cachedScoutingMs:$cachedScoutingMs}' \
+             --argjson refreshedLookupMs "${refreshed_lookup_ms}" \
+             '. + {scoutingMs:$scoutingMs,cachedScoutingMs:$cachedScoutingMs,refreshedLookupMs:$refreshedLookupMs}' \
              smoke-results/gac-latency.json > smoke-results/gac-latency.tmp.json
           mv smoke-results/gac-latency.tmp.json smoke-results/gac-latency.json
 
