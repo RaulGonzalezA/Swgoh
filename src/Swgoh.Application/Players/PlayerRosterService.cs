@@ -5,7 +5,8 @@ namespace Swgoh.Application.Players;
 
 internal sealed class PlayerRosterService(
     IPlayerRepository repository,
-    ISwgohGameDataCatalog gameDataCatalog) : IPlayerRosterService
+    ISwgohGameDataCatalog gameDataCatalog,
+    IRosterGameDataCatalog? rosterGameDataCatalog = null) : IPlayerRosterService
 {
     private const int MaxPageSize = 100;
 
@@ -23,8 +24,21 @@ internal sealed class PlayerRosterService(
             return null;
         }
 
-        GameDataCatalog catalog = await gameDataCatalog.GetAsync(cancellationToken).ConfigureAwait(false);
-        IEnumerable<PlayerRosterUnit> units = player.Roster.Select(unit => Enrich(unit, catalog));
+        IReadOnlyDictionary<string, GameUnitDefinition> gameUnits = rosterGameDataCatalog is null
+            ? (await gameDataCatalog.GetAsync(cancellationToken).ConfigureAwait(false)).Units
+            : await rosterGameDataCatalog.GetUnitsAsync(cancellationToken).ConfigureAwait(false);
+
+        PlayerRosterUnit[] allUnits = [.. player.Roster.Select(unit => Enrich(unit, gameUnits))];
+        string[] availableFactions =
+        [
+            .. allUnits
+                .SelectMany(unit => unit.Factions)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        ];
+
+        IEnumerable<PlayerRosterUnit> units = allUnits;
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -38,6 +52,13 @@ internal sealed class PlayerRosterService(
             PlayerRosterUnitType.Ship => units.Where(unit => unit.IsShip),
             _ => units
         };
+
+        if (!string.IsNullOrWhiteSpace(query.Faction))
+        {
+            string faction = query.Faction.Trim();
+            units = units.Where(unit => unit.Factions.Any(value =>
+                string.Equals(value, faction, StringComparison.OrdinalIgnoreCase)));
+        }
 
         if (query.MinRarity is int minRarity)
         {
@@ -79,12 +100,18 @@ internal sealed class PlayerRosterService(
             query.Page,
             query.PageSize,
             totalPages,
-            items);
+            items,
+            player.Name,
+            player.GalacticPower,
+            player.Roster.Count,
+            availableFactions);
     }
 
-    private static PlayerRosterUnit Enrich(RosterUnit unit, GameDataCatalog catalog)
+    private static PlayerRosterUnit Enrich(
+        RosterUnit unit,
+        IReadOnlyDictionary<string, GameUnitDefinition> gameUnits)
     {
-        catalog.Units.TryGetValue(unit.DefinitionId, out GameUnitDefinition? gameUnit);
+        gameUnits.TryGetValue(unit.DefinitionId, out GameUnitDefinition? gameUnit);
 
         return new PlayerRosterUnit(
             unit.Id,
