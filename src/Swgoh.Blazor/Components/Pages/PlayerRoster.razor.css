@@ -107,8 +107,8 @@
 
 .roster-collection-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--ds-space-4);
+    grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+    gap: var(--ds-space-3);
     align-items: stretch;
 }
 
@@ -139,14 +139,17 @@
     }
 
     .roster-collection-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     }
 }
 
 @media (max-width: 900px) {
-    .roster-metrics,
-    .roster-collection-grid {
+    .roster-metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .roster-collection-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .roster-filters {
@@ -165,6 +168,10 @@
 
     .roster-search {
         grid-column: auto;
+    }
+
+    .roster-collection-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .roster-section-heading {
@@ -190,7 +197,7 @@
 @media (max-width: 520px) {
     .roster-collection-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--ds-space-3);
+        gap: var(--ds-space-2);
     }
 
     .roster-filter-summary {
