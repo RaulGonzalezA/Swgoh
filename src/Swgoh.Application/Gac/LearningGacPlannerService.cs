@@ -1,3 +1,5 @@
+using Swgoh.Domain.Gac;
+
 namespace Swgoh.Application.Gac;
 
 internal sealed class LearningGacPlannerService(
@@ -59,7 +61,7 @@ internal sealed class LearningGacPlannerService(
             return lookup;
         }
 
-        IReadOnlyCollection<Domain.Gac.GacPersonalBattleObservation> observations = await personalBattleRepository
+        IReadOnlyCollection<GacPersonalBattleObservation> observations = await personalBattleRepository
             .GetRoundAsync(
                 lookup.State.Plan.PlayerAllyCode,
                 lookup.State.Plan.EventInstanceId,
