@@ -1,0 +1,28 @@
+@page "/gac/{AllyCode:long}/refresh"
+@rendermode InteractiveServer
+@using Swgoh.Blazor.Clients
+@inject GacScoutingCacheApiClient GacCacheClient
+@inject NavigationManager Navigation
+
+<PageTitle>Actualizar Gran Arena</PageTitle>
+
+<UiLoadingState Title="Actualizando Gran Arena"
+                Description="Invalidando el scouting cacheado y preparando una lectura nueva del rival."
+                Class="gac-inline-state" />
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            await GacCacheClient.RefreshAsync(AllyCode);
+        }
+        finally
+        {
+            Navigation.NavigateTo($"/gac/{AllyCode}");
+        }
+    }
+}
