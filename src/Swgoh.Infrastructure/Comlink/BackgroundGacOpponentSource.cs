@@ -15,7 +15,8 @@ internal sealed class BackgroundGacOpponentSource(
 {
     private readonly object gate = new();
     private readonly Dictionary<(long AllyCode, GacFormat? Format), Entry> entries = [];
-    private readonly Channel<(long AllyCode, GacFormat? Format)> queue = Channel.CreateBounded<(long, GacFormat?)>(32);
+    private readonly Dictionary<long, long> generations = [];
+    private readonly Channel<LookupWorkItem> queue = Channel.CreateBounded<LookupWorkItem>(32);
 
     public Task<CurrentGacOpponentLookup> GetAsync(long allyCode, GacFormat? formatOverride, CancellationToken cancellationToken = default)
     {
@@ -41,8 +42,9 @@ internal sealed class BackgroundGacOpponentSource(
                 return Task.FromResult(existing.Result);
             }
 
+            long generation = generations.GetValueOrDefault(allyCode);
             var pending = CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.Pending, "Buscando rival de Gran Arena en segundo plano…");
-            if (!queue.Writer.TryWrite(key))
+            if (!queue.Writer.TryWrite(new LookupWorkItem(key, generation)))
             {
                 CurrentGacOpponentLookup unavailable = CurrentGacOpponentLookup.Unavailable(
                     CurrentGacOpponentStatus.OpponentUnavailable,
@@ -59,10 +61,23 @@ internal sealed class BackgroundGacOpponentSource(
         }
     }
 
+    public void Invalidate(long allyCode)
+    {
+        lock (gate)
+        {
+            generations[allyCode] = generations.GetValueOrDefault(allyCode) + 1;
+            foreach (var key in entries.Keys.Where(key => key.AllyCode == allyCode).ToArray())
+            {
+                entries.Remove(key);
+            }
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var key in queue.Reader.ReadAllAsync(stoppingToken))
+        await foreach (LookupWorkItem workItem in queue.Reader.ReadAllAsync(stoppingToken))
         {
+            var key = workItem.Key;
             CurrentGacOpponentLookup result;
             Stopwatch stopwatch = Stopwatch.StartNew();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -96,10 +111,22 @@ internal sealed class BackgroundGacOpponentSource(
 
             lock (gate)
             {
+                long currentGeneration = generations.GetValueOrDefault(key.AllyCode);
+                if (currentGeneration != workItem.Generation)
+                {
+                    logger.LogDebug(
+                        "Discarding stale GAC background result for {AllyCode}: generation {CompletedGeneration}, current {CurrentGeneration}",
+                        key.AllyCode,
+                        workItem.Generation,
+                        currentGeneration);
+                    continue;
+                }
+
                 entries[key] = new Entry(result, DateTimeOffset.UtcNow.AddMinutes(result.Status == CurrentGacOpponentStatus.Found ? 5 : 1));
             }
         }
     }
 
     private sealed record Entry(CurrentGacOpponentLookup Result, DateTimeOffset ExpiresAt);
+    private readonly record struct LookupWorkItem((long AllyCode, GacFormat? Format) Key, long Generation);
 }
