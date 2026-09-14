@@ -14,14 +14,22 @@ public sealed class GacApiClient(HttpClient httpClient)
                 $"/api/v1/gac/players/{allyCode}/current-opponent/scouting",
                 cancellationToken);
 
-            if (response.IsSuccessStatusCode)
+            if (response.StatusCode == HttpStatusCode.Accepted)
             {
-                CurrentGacScoutingViewModel? scouting =
-                    await response.Content.ReadFromJsonAsync<CurrentGacScoutingViewModel>(cancellationToken);
-                return new CurrentGacResult(scouting, null);
+                CurrentGacUnavailableViewModel? pending =
+                    await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
+                if (pending?.Status == "Pending")
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    continue;
+                }
+
+                return new CurrentGacResult(
+                    null,
+                    pending?.Message ?? "La búsqueda del rival continúa en segundo plano.");
             }
 
-            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Accepted or HttpStatusCode.Conflict)
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
             {
                 CurrentGacUnavailableViewModel? unavailable =
                     await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
@@ -30,14 +38,33 @@ public sealed class GacApiClient(HttpClient httpClient)
                     await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                     continue;
                 }
-                return new CurrentGacResult(null, unavailable?.Message ?? "No hay un enfrentamiento de Gran Arena disponible.");
+
+                return new CurrentGacResult(
+                    null,
+                    unavailable?.Message ?? "No hay un enfrentamiento de Gran Arena disponible.");
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                CurrentGacScoutingViewModel? scouting =
+                    await response.Content.ReadFromJsonAsync<CurrentGacScoutingViewModel>(cancellationToken);
+                if (scouting?.Opponent is null)
+                {
+                    return new CurrentGacResult(
+                        null,
+                        "El enfrentamiento todavía no tiene datos completos. Vuelve a consultar en unos segundos.");
+                }
+
+                return new CurrentGacResult(scouting, null);
             }
 
             response.EnsureSuccessStatusCode();
             return new CurrentGacResult(null, "No se ha podido consultar la Gran Arena.");
         }
 
-        return new CurrentGacResult(null, "La búsqueda continúa en segundo plano. Puedes volver a consultar más tarde.");
+        return new CurrentGacResult(
+            null,
+            "La búsqueda continúa en segundo plano. Puedes volver a consultar más tarde.");
     }
 
     public sealed record CurrentGacResult(CurrentGacScoutingViewModel? Scouting, string? Message);
