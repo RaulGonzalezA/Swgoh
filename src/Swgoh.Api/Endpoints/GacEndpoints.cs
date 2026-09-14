@@ -20,6 +20,8 @@ internal static class GacEndpoints
             .WithSummary("Get GAC defense requirements for a league and format");
         group.MapGet("/defense-requirements/transition", GetLeagueTransition)
             .WithSummary("Compare GAC defense requirements between two leagues");
+        group.MapGet("/players/{allyCode:long}/current-opponent", GetCurrentOpponentAsync)
+            .WithSummary("Detect the current GAC opponent without loading roster scouting or battle planning");
         group.MapGet("/players/{allyCode:long}/current-opponent/scouting", GetCurrentOpponentScoutingAsync)
             .WithSummary("Detect the current GAC opponent, scout both rosters and build a battle plan for the active format");
         group.MapPost("/opponents/{allyCode:long}/history", ImportHistoryAsync)
@@ -65,6 +67,29 @@ internal static class GacEndpoints
         }
     }
 
+    private static async Task<IResult> GetCurrentOpponentAsync(
+        long allyCode,
+        string? format,
+        ICurrentGacOpponentSource source,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            GacFormat? formatOverride = string.IsNullOrWhiteSpace(format) ? null : ParseFormat(format);
+            CurrentGacOpponentLookup lookup = await source.GetAsync(allyCode, formatOverride, cancellationToken);
+            if (lookup.Status == CurrentGacOpponentStatus.Found && lookup.Opponent is not null)
+            {
+                return Results.Ok(CurrentGacOpponentResponse.From(lookup.Opponent));
+            }
+
+            return LookupUnavailableResult(lookup);
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
     private static async Task<IResult> GetCurrentOpponentScoutingAsync(
         long allyCode,
         string? format,
@@ -86,21 +111,26 @@ internal static class GacEndpoints
                 return Results.Ok(CurrentGacScoutingResponse.From(result));
             }
 
-            CurrentGacLookupResponse unavailable = CurrentGacLookupResponse.From(result.Lookup);
-            return result.Lookup.Status switch
-            {
-                CurrentGacOpponentStatus.NoActiveEvent or CurrentGacOpponentStatus.PlayerNotJoined =>
-                    Results.NotFound(unavailable),
-                CurrentGacOpponentStatus.Pending => Results.Accepted(value: unavailable),
-                CurrentGacOpponentStatus.OpponentUnavailable or CurrentGacOpponentStatus.FormatUnavailable =>
-                    Results.Conflict(unavailable),
-                _ => Results.Problem(statusCode: StatusCodes.Status502BadGateway)
-            };
+            return LookupUnavailableResult(result.Lookup);
         }
         catch (ArgumentException exception)
         {
             return Validation(exception);
         }
+    }
+
+    private static IResult LookupUnavailableResult(CurrentGacOpponentLookup lookup)
+    {
+        CurrentGacLookupResponse unavailable = CurrentGacLookupResponse.From(lookup);
+        return lookup.Status switch
+        {
+            CurrentGacOpponentStatus.NoActiveEvent or CurrentGacOpponentStatus.PlayerNotJoined =>
+                Results.NotFound(unavailable),
+            CurrentGacOpponentStatus.Pending => Results.Accepted(value: unavailable),
+            CurrentGacOpponentStatus.OpponentUnavailable or CurrentGacOpponentStatus.FormatUnavailable =>
+                Results.Conflict(unavailable),
+            _ => Results.Problem(statusCode: StatusCodes.Status502BadGateway)
+        };
     }
 
     private static async Task<IResult> ImportHistoryAsync(
@@ -304,7 +334,8 @@ internal static class GacEndpoints
         CurrentGacOpponentResponse Opponent,
         OpponentScoutingResponse? Scouting,
         CurrentOpponentRosterScoutingResponse? RosterScouting,
-        CurrentGacBattlePlan? BattlePlan)
+        CurrentGacBattlePlan? BattlePlan,
+        IReadOnlyCollection<string> Warnings)
     {
         public static CurrentGacScoutingResponse From(CurrentGacScoutingResult result)
         {
@@ -314,7 +345,8 @@ internal static class GacEndpoints
                 CurrentGacOpponentResponse.From(opponent),
                 result.Scouting is null ? null : OpponentScoutingResponse.From(result.Scouting),
                 result.RosterScouting is null ? null : CurrentOpponentRosterScoutingResponse.From(result.RosterScouting),
-                result.BattlePlan);
+                result.BattlePlan,
+                result.DegradationWarnings);
         }
     }
 
