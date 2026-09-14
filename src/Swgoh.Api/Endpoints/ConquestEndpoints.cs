@@ -18,7 +18,7 @@ internal static class ConquestEndpoints
         group.MapGet("/current", GetCurrentAsync)
             .WithSummary("Get the current Conquest plan and feat progress");
         group.MapPut("/current", SaveCurrentAsync)
-            .WithSummary("Save the current Conquest event, feats, stamina and data disks");
+            .WithSummary("Save the current Conquest event, feats, stamina, data disks and daily goal settings");
         group.MapPost("/current/optimize", OptimizeCurrentAsync)
             .WithSummary("Recommend stamina-aware teams and data disk loadouts for pending Conquest feats");
 
@@ -65,7 +65,12 @@ internal static class ConquestEndpoints
                 [.. (request.DiskLoadouts ?? []).Select(value => new SaveConquestDiskLoadout(
                     value.Id,
                     value.Name,
-                    value.DiskIds ?? []))]);
+                    value.DiskIds ?? []))],
+                request.AvailableEnergy,
+                request.EnergyCostPerBattle ?? ConquestPlan.DefaultEnergyCostPerBattle,
+                request.CurrentRewardPoints ?? 0,
+                request.TargetRewardPoints,
+                request.RewardTargetName);
             ConquestPlanDetails plan = await service.SaveAsync(allyCode, input, cancellationToken);
             return Results.Ok(PlanResponse.From(plan));
         }
@@ -162,7 +167,12 @@ internal static class ConquestEndpoints
         IReadOnlyCollection<UnitStaminaRequest>? Stamina = null,
         int? DiskCapacityLimit = null,
         IReadOnlyCollection<DataDiskRequest>? DataDisks = null,
-        IReadOnlyCollection<DiskLoadoutRequest>? DiskLoadouts = null);
+        IReadOnlyCollection<DiskLoadoutRequest>? DiskLoadouts = null,
+        int? AvailableEnergy = null,
+        int? EnergyCostPerBattle = null,
+        int? CurrentRewardPoints = null,
+        int? TargetRewardPoints = null,
+        string? RewardTargetName = null);
 
     internal sealed record UnitStaminaRequest(string DefinitionId, int CurrentPercent);
 
@@ -214,6 +224,11 @@ internal static class ConquestEndpoints
         int DiskCapacityLimit,
         IReadOnlyCollection<DataDiskResponse> DataDisks,
         IReadOnlyCollection<DiskLoadoutResponse> DiskLoadouts,
+        int? AvailableEnergy,
+        int EnergyCostPerBattle,
+        int CurrentRewardPoints,
+        int? TargetRewardPoints,
+        string? RewardTargetName,
         DateTimeOffset UpdatedAtUtc)
     {
         public static PlanResponse From(ConquestPlanDetails plan) => new(
@@ -233,6 +248,11 @@ internal static class ConquestEndpoints
             plan.DiskCapacityLimit,
             [.. plan.DataDisks.Select(DataDiskResponse.From)],
             [.. plan.DiskLoadouts.Select(DiskLoadoutResponse.From)],
+            plan.AvailableEnergy,
+            plan.EnergyCostPerBattle,
+            plan.CurrentRewardPoints,
+            plan.TargetRewardPoints,
+            plan.RewardTargetName,
             plan.UpdatedAtUtc);
     }
 
