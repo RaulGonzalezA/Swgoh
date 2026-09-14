@@ -48,6 +48,11 @@ public sealed class PlayerRosterServiceTests
         PlayerRosterPage page = Assert.IsType<PlayerRosterPage>(result);
         Assert.Equal(476_825_771, page.AllyCode);
         Assert.Equal(UpdatedAtUtc, page.UpdatedAtUtc);
+        Assert.Equal("Aberronko", page.PlayerName);
+        Assert.Equal(4_100, page.GalacticPower);
+        Assert.Equal(5, page.RosterCount);
+        Assert.Contains("Empire", page.FactionOptions);
+        Assert.Contains("Galactic Republic", page.FactionOptions);
         Assert.Equal(2, page.Total);
         Assert.Equal(2, page.Page);
         Assert.Equal(1, page.PageSize);
@@ -61,6 +66,27 @@ public sealed class PlayerRosterServiceTests
         Assert.Contains("Galactic Republic", unit.Factions);
         Assert.Contains("affiliation_republic", unit.Tags);
         Assert.Equal(900, unit.GalacticPower);
+    }
+
+    [Fact]
+    public async Task GetAsync_FiltersByExactFactionIgnoringCase()
+    {
+        var service = CreateService(CreatePlayer());
+
+        PlayerRosterPage? result = await service.GetAsync(
+            476_825_771,
+            new PlayerRosterQuery(
+                Type: PlayerRosterUnitType.Character,
+                Faction: "galactic republic",
+                OrderBy: PlayerRosterSortField.Name,
+                Direction: PlayerRosterSortDirection.Ascending),
+            TestContext.Current.CancellationToken);
+
+        PlayerRosterPage page = Assert.IsType<PlayerRosterPage>(result);
+        PlayerRosterUnit unit = Assert.Single(page.Items);
+        Assert.Equal("CHAR_ALPHA", unit.DefinitionId);
+        Assert.Contains("Empire", page.FactionOptions);
+        Assert.Contains("Galactic Republic", page.FactionOptions);
     }
 
     [Fact]
@@ -104,9 +130,14 @@ public sealed class PlayerRosterServiceTests
             () => service.GetAsync(476_825_771, query, TestContext.Current.CancellationToken));
     }
 
-    private static PlayerRosterService CreateService(PlayerProfile? player) => new(
-        new FakePlayerRepository(player),
-        new FakeGameDataCatalog(CreateCatalog()));
+    private static PlayerRosterService CreateService(PlayerProfile? player)
+    {
+        GameDataCatalog catalog = CreateCatalog();
+        return new PlayerRosterService(
+            new FakePlayerRepository(player),
+            new FakeGameDataCatalog(catalog),
+            new FakeRosterGameDataCatalog(catalog.Units));
+    }
 
     private static GameDataCatalog CreateCatalog() => new(
         new Dictionary<string, GameUnitDefinition>(StringComparer.Ordinal)
@@ -160,6 +191,13 @@ public sealed class PlayerRosterServiceTests
     {
         public Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(catalog);
+    }
+
+    private sealed class FakeRosterGameDataCatalog(IReadOnlyDictionary<string, GameUnitDefinition> units)
+        : IRosterGameDataCatalog
+    {
+        public Task<IReadOnlyDictionary<string, GameUnitDefinition>> GetUnitsAsync(
+            CancellationToken cancellationToken = default) => Task.FromResult(units);
     }
 
     private sealed class FakePlayerRepository(PlayerProfile? player) : IPlayerRepository
