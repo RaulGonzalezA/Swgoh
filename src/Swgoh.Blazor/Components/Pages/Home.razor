@@ -1,339 +1,351 @@
 @page "/"
 @rendermode InteractiveServer
-@using Microsoft.JSInterop
 @using Swgoh.Blazor.State
 @inject PlayerApiClient PlayerClient
 @inject GacPlannerApiClient PlannerClient
 @inject ConquestApiClient ConquestClient
+@inject ConquestDailyPlanApiClient DailyPlanClient
 @inject PlayerSessionState Session
-@inject PlayerPreferenceService Preferences
+@inject PlayerContextService PlayerContext
 
-<PageTitle>Centro de operaciones · SWGOH Assistant</PageTitle>
+<PageTitle>Qué hago ahora · SWGOH Assistant</PageTitle>
 
 @if (_loading && _player is null)
 {
-    <section class="command-loading">
-        <span class="spinner" aria-hidden="true"></span>
-        <div>
-            <strong>Cargando tu centro de operaciones</strong>
-            <small>Roster, GAC y Conquista</small>
-        </div>
-    </section>
+    <UiLoadingState Title="Buscando tu siguiente acción"
+                    Description="Roster, GAC, Conquista, stamina, energía y objetivo de recompensa" />
 }
 else if (_player is null)
 {
-    <section class="command-onboarding">
-        <div class="command-onboarding-copy">
-            <span class="section-kicker">SWGOH Assistant</span>
-            <h1>Tu siguiente decisión, con tus datos reales.</h1>
+    <section class="home-onboarding">
+        <div class="home-onboarding-copy">
+            <span class="ui-kicker">SWGOH Assistant</span>
+            <h1>Abre el juego sabiendo qué hacer primero.</h1>
             <p>
-                Carga un jugador una vez y el dashboard recordará su Ally Code. Después podrás entrar directamente
-                a tu roster, la ronda actual de GAC y el plan de Conquista.
+                El asistente cruza tu ronda de Gran Arena con el plan diario de Conquista para darte una única
+                acción prioritaria, no otro dashboard que tengas que interpretar.
             </p>
         </div>
 
-        <div class="command-search-card">
-            <span class="section-kicker">Empezar</span>
-            <h2>Conecta tu perfil</h2>
-            <form class="command-search" @onsubmit="LoadAsync" @onsubmit:preventDefault>
-                <label for="home-ally-code">Ally Code</label>
-                <div class="command-search-row">
-                    <input id="home-ally-code"
-                           inputmode="numeric"
-                           autocomplete="off"
-                           placeholder="123 456 789"
-                           @bind="_allyCode" />
-                    <button class="primary-button" type="submit" disabled="@_loading">
-                        @(_loading ? "Consultando…" : "Abrir dashboard")
-                    </button>
-                </div>
+        <UiCard Kicker="Empezar" Title="Conecta tu perfil" Variant="accent">
+            <form class="home-player-form" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+                <label>
+                    Ally Code
+                    <input inputmode="numeric" autocomplete="off" placeholder="123 456 789" @bind="_allyCode" />
+                </label>
+                <button class="primary-button" type="submit" disabled="@_loading">
+                    @(_loading ? "Analizando…" : "Decirme qué hacer")
+                </button>
             </form>
             @if (_error is not null)
             {
-                <p class="command-inline-error" role="alert">@_error</p>
+                <p class="home-inline-error" role="alert">@_error</p>
             }
-        </div>
+        </UiCard>
     </section>
 }
 else
 {
-    <section class="command-dashboard" aria-labelledby="command-player-name">
-        <header class="command-dashboard-heading">
-            <div>
-                <span class="section-kicker">Centro de operaciones</span>
-                <h1 id="command-player-name">Hola, @_player.Name</h1>
-                <p>
-                    @if (!string.IsNullOrWhiteSpace(_player.GuildName))
-                    {
-                        <span>@_player.GuildName · </span>
-                    }
-                    <span>#@FormatAllyCode(_player.AllyCode) · actualizado @RelativeUpdated(_player.UpdatedAtUtc)</span>
-                </p>
-            </div>
-            <button class="ghost-button" type="button" @onclick="ShowPlayerPicker">Cambiar jugador</button>
-        </header>
+    <section class="home-assistant">
+        <UiPageHeader Kicker="Asistente operativo"
+                      Title="@($"Hola, {_player.Name}")"
+                      Description="@HeaderDescription">
+            <Actions>
+                <button class="ghost-button" type="button" @onclick="ShowPlayerPicker">Cambiar jugador</button>
+            </Actions>
+        </UiPageHeader>
 
         @if (_showPlayerPicker)
         {
-            <section class="command-player-picker">
-                <form class="command-search" @onsubmit="LoadAsync" @onsubmit:preventDefault>
-                    <label for="change-ally-code">Nuevo Ally Code</label>
-                    <div class="command-search-row">
-                        <input id="change-ally-code" inputmode="numeric" autocomplete="off" @bind="_allyCode" />
-                        <button class="primary-button" type="submit" disabled="@_loading">Cargar</button>
-                        <button class="ghost-button" type="button" @onclick="HidePlayerPicker">Cancelar</button>
-                    </div>
+            <UiCard Kicker="Jugador activo" Title="Cambiar Ally Code" Compact="true" Class="home-player-picker">
+                <form class="home-player-form" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+                    <label>
+                        Nuevo Ally Code
+                        <input inputmode="numeric" autocomplete="off" @bind="_allyCode" />
+                    </label>
+                    <button class="primary-button" type="submit" disabled="@_loading">Cargar</button>
+                    <button class="ghost-button" type="button" @onclick="HidePlayerPicker">Cancelar</button>
                 </form>
                 @if (_error is not null)
                 {
-                    <p class="command-inline-error" role="alert">@_error</p>
+                    <p class="home-inline-error" role="alert">@_error</p>
                 }
+            </UiCard>
+        }
+
+        <UiActionCard Kicker="Qué hago ahora"
+                      Title="@PrimaryActionTitle"
+                      Description="@PrimaryActionDescription"
+                      Tone="@PrimaryActionTone"
+                      Badge="@PrimaryActionBadge"
+                      Href="@PrimaryActionHref"
+                      ActionText="@PrimaryActionText">
+            @switch (PrimaryAction)
+            {
+                case HomeActionKind.GacExecute:
+                    @if (PlannedGacAttack is not null)
+                    {
+                        GacPlannerApiClient.AttackViewModel attack = PlannedGacAttack;
+                        GacPlannerApiClient.VisibleDefenseViewModel? defense = PlannedGacDefense;
+                        <div class="home-action-matchup">
+                            <div class="home-action-side">
+                                <span>Defensa rival</span>
+                                <h3>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa visible")</h3>
+                                @if (defense is not null)
+                                {
+                                    <div class="home-action-squad">
+                                        @{ bool rivalLeader = true; }
+                                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in defense.Squad.AllUnits)
+                                        {
+                                            <RichUnitPortrait Name="@unit.Name"
+                                                              ThumbnailName="@unit.ThumbnailName"
+                                                              RelicTier="@unit.RelicTier"
+                                                              IsLeader="@rivalLeader"
+                                                              Compact="true" />
+                                            rivalLeader = false;
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <span class="home-action-arrow" aria-hidden="true">→</span>
+                            <div class="home-action-side">
+                                <span>Tu ataque · intento #@attack.Attempt</span>
+                                <h3>@attack.Team.Name</h3>
+                                <div class="home-action-squad">
+                                    @{ bool ownLeader = true; }
+                                    @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in attack.Team.Squad.AllUnits)
+                                    {
+                                        <RichUnitPortrait Name="@unit.Name"
+                                                          ThumbnailName="@unit.ThumbnailName"
+                                                          RelicTier="@unit.RelicTier"
+                                                          IsLeader="@ownLeader"
+                                                          Compact="true" />
+                                        ownLeader = false;
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="home-action-facts">
+                            <span>Zona <strong>@(defense?.Zone ?? "—")</strong></span>
+                            <span>Rival <strong>@(_planner?.Opponent.OpponentName ?? "—")</strong></span>
+                            <span>Después <strong>registrar resultado y recalcular</strong></span>
+                        </div>
+                    }
+                    break;
+
+                case HomeActionKind.GacPlan:
+                    @if (TopGacRecommendation is not null)
+                    {
+                        GacPlannerApiClient.OptimizationRecommendationViewModel recommendation = TopGacRecommendation;
+                        GacPlannerApiClient.TeamPresetViewModel? team = GacRecommendedPreset;
+                        GacPlannerApiClient.VisibleDefenseViewModel? defense = GacRecommendedDefense;
+                        <div class="home-action-matchup">
+                            <div class="home-action-side">
+                                <span>Objetivo</span>
+                                <h3>@recommendation.DefenseName</h3>
+                                @if (defense is not null)
+                                {
+                                    <div class="home-action-squad">
+                                        @{ bool rivalLeader = true; }
+                                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in defense.Squad.AllUnits)
+                                        {
+                                            <RichUnitPortrait Name="@unit.Name"
+                                                              ThumbnailName="@unit.ThumbnailName"
+                                                              RelicTier="@unit.RelicTier"
+                                                              IsLeader="@rivalLeader"
+                                                              Compact="true" />
+                                            rivalLeader = false;
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <span class="home-action-arrow" aria-hidden="true">→</span>
+                            <div class="home-action-side">
+                                <span>Counter recomendado</span>
+                                <h3>@recommendation.TeamName</h3>
+                                @if (team is not null)
+                                {
+                                    <div class="home-action-squad">
+                                        @{ bool ownLeader = true; }
+                                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in team.Squad.AllUnits)
+                                        {
+                                            <RichUnitPortrait Name="@unit.Name"
+                                                              ThumbnailName="@unit.ThumbnailName"
+                                                              RelicTier="@unit.RelicTier"
+                                                              IsLeader="@ownLeader"
+                                                              Compact="true" />
+                                            ownLeader = false;
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="home-action-facts">
+                            <span>Score <strong>@recommendation.Score.ToString("0.#")</strong></span>
+                            <span>Confianza <strong>@ConfidenceLabel(recommendation.Confidence)</strong></span>
+                            @if (recommendation.WinRate is decimal winRate)
+                            {
+                                <span>Histórico <strong>@Percent(winRate)</strong></span>
+                            }
+                            @if (recommendation.PersonalSamples > 0)
+                            {
+                                <span>Tu histórico <strong>@recommendation.PersonalWins/@recommendation.PersonalSamples</strong></span>
+                            }
+                        </div>
+                    }
+                    break;
+
+                case HomeActionKind.ConquestRewardPush:
+                case HomeActionKind.ConquestBattles:
+                    @if (_dailyPlan is not null)
+                    {
+                        <div class="home-action-sequence">
+                            <span>Secuencia inmediata</span>
+                            <div class="home-battle-list">
+                                @foreach (ConquestDailyPlanApiClient.DailyPlanStepViewModel step in _dailyPlan.Steps.Take(ImmediateConquestBattles))
+                                {
+                                    <div class="home-battle-row">
+                                        <span class="home-battle-number">@step.BattleNumber</span>
+                                        <div>
+                                            <strong>@string.Join(" · ", step.Team.Take(3).Select(unit => unit.Name))</strong>
+                                            <small>@step.FeatProgress.Count hazaña(s) avanzan · +@step.RewardPointsEarned pts</small>
+                                        </div>
+                                        <span class="home-battle-stamina">STA @step.AverageStaminaBefore.ToString("0") → @step.AverageStaminaAfter.ToString("0")</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        @if (_dailyPlan.Steps.FirstOrDefault() is ConquestDailyPlanApiClient.DailyPlanStepViewModel firstStep)
+                        {
+                            <div class="home-action-squad">
+                                @{ bool conquestLeader = true; }
+                                @foreach (ConquestDailyPlanApiClient.UnitViewModel unit in firstStep.Team)
+                                {
+                                    <RichUnitPortrait Name="@unit.Name"
+                                                      ThumbnailName="@unit.ThumbnailName"
+                                                      RelicTier="@unit.RelicTier"
+                                                      Speed="@unit.Speed"
+                                                      IsLeader="@conquestLeader"
+                                                      Compact="true" />
+                                    conquestLeader = false;
+                                }
+                            </div>
+                        }
+                        <div class="home-action-facts">
+                            <span>Energía <strong>@EnergySummary</strong></span>
+                            <span>Stamina media <strong>@ConquestStaminaSummary</strong></span>
+                            @if (RewardPointsMissing > 0)
+                            {
+                                <span>Para @RewardTargetLabel <strong>@RewardPointsMissing pts</strong></span>
+                            }
+                        </div>
+                    }
+                    break;
+
+                case HomeActionKind.ConquestWaitStamina:
+                    <div class="home-action-recovery">
+                        <span>Prioridad de recuperación</span>
+                        <div class="home-action-recovery-grid">
+                            @foreach (ConquestDailyPlanApiClient.RecoveryUnitViewModel unit in (_dailyPlan?.RecoveryPriority ?? []).Take(5))
+                            {
+                                <div class="home-recovery-unit">
+                                    <strong>@unit.Name</strong>
+                                    <small>@unit.FinalStamina% stamina · reserva @unit.ReserveFloorPercent%</small>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    break;
+
+                case HomeActionKind.ConquestWaitEnergy:
+                    <div class="home-action-facts">
+                        <span>Energía disponible <strong>@(_dailyPlan?.AvailableEnergy?.ToString() ?? "sin dato")</strong></span>
+                        <span>Coste por combate <strong>@(_dailyPlan?.EnergyCostPerBattle ?? _conquest?.EnergyCostPerBattle ?? 0)</strong></span>
+                        @if (RewardPointsMissing > 0)
+                        {
+                            <span>Objetivo pendiente <strong>@RewardPointsMissing pts</strong></span>
+                        }
+                    </div>
+                    break;
+
+                case HomeActionKind.ConquestOptimize:
+                    @if (TopConquestRecommendation is not null)
+                    {
+                        ConquestApiClient.TeamViewModel recommendation = TopConquestRecommendation;
+                        <div class="home-action-squad">
+                            @{ bool conquestLeader = true; }
+                            @foreach (ConquestApiClient.UnitViewModel unit in recommendation.Team)
+                            {
+                                <RichUnitPortrait Name="@unit.Name"
+                                                  ThumbnailName="@unit.ThumbnailName"
+                                                  RelicTier="@unit.RelicTier"
+                                                  Speed="@unit.Speed"
+                                                  IsLeader="@conquestLeader"
+                                                  Compact="true" />
+                                conquestLeader = false;
+                            }
+                        </div>
+                        <div class="home-action-facts">
+                            <span>Hazañas <strong>@recommendation.AdvancesFeats.Count</strong></span>
+                            <span>Stamina <strong>@recommendation.AverageStamina.ToString("0") → @recommendation.ExpectedPostBattleAverageStamina.ToString("0")</strong></span>
+                            <span>Score <strong>@recommendation.Score.ToString("0.#")</strong></span>
+                        </div>
+                    }
+                    break;
+
+                default:
+                    <div class="home-action-facts">
+                        <span>GAC <strong>@(_planner is null ? "sin ronda" : $"{GacPendingDefenses} pendientes")</strong></span>
+                        <span>Conquista <strong>@(_conquest is null ? "sin plan" : $"{_conquest.EarnedFeatPoints} pts")</strong></span>
+                        <span>Roster <strong>@RelativeUpdated(_player.UpdatedAtUtc)</strong></span>
+                    </div>
+                    break;
+            }
+        </UiActionCard>
+
+        @if (ActionQueue.Count > 0)
+        {
+            <section class="home-queue" aria-labelledby="home-queue-title">
+                <div class="home-section-heading">
+                    <div>
+                        <span class="ui-kicker">Después</span>
+                        <h2 id="home-queue-title">Lo siguiente, sin perder el foco</h2>
+                    </div>
+                    <p>Solo mostramos tareas que pueden cambiar una decisión.</p>
+                </div>
+                <div class="home-queue-list">
+                    @{ int queueIndex = 1; }
+                    @foreach (HomeQueueItem item in ActionQueue)
+                    {
+                        <a class="home-queue-item" href="@item.Href">
+                            <span class="home-queue-index">@queueIndex.ToString("00")</span>
+                            <span><strong>@item.Title</strong><small>@item.Description</small></span>
+                            <span class="home-queue-arrow" aria-hidden="true">→</span>
+                        </a>
+                        queueIndex++;
+                    }
+                </div>
             </section>
         }
 
-        <div class="command-metric-grid">
-            <article class="command-metric command-metric-primary">
-                <span>Poder galáctico</span>
-                <strong>@CompactNumber(_player.GalacticPower)</strong>
-                <small>@_player.GalacticPower.ToString("N0") GP</small>
-            </article>
-            <article class="command-metric">
-                <span>Gran Arena</span>
-                <strong>@(_planner?.Opponent.League ?? "—")</strong>
-                <small>@(_planner is null ? "Sin ronda cargada" : $"vs {_planner.Opponent.OpponentName} · {_planner.Opponent.Format}")</small>
-            </article>
-            <article class="command-metric">
-                <span>Conquista</span>
-                <strong>@(_conquest is null ? "—" : $"{_conquest.EarnedFeatPoints} pts")</strong>
-                <small>@(_conquest is null ? "Sin plan activo" : $"{_conquest.CompletedFeats}/{_conquest.TotalFeats} hazañas completadas")</small>
-            </article>
-            <article class="command-metric">
-                <span>Roster</span>
-                <strong>@(_analysis?.CharacterCount.ToString("N0") ?? _player.RosterCount.ToString("N0"))</strong>
-                <small>@(_analysis is null ? $"{_player.AvailableDatacrons.Count} datacrons" : $"{_analysis.RelicCharacters:N0} en reliquia · {_player.AvailableDatacrons.Count} datacrons")</small>
-            </article>
-        </div>
-
-        <div class="command-focus-grid">
-            <section class="command-panel command-next-action">
-                <div class="command-panel-heading">
-                    <div>
-                        <span class="section-kicker">Siguiente acción recomendada</span>
-                        <h2>@NextActionTitle</h2>
-                    </div>
-                    <span class="command-mode-pill @NextActionCssClass">@NextActionMode</span>
+        <section aria-labelledby="home-context-title">
+            <div class="home-section-heading">
+                <div>
+                    <span class="ui-kicker">Contexto mínimo</span>
+                    <h2 id="home-context-title">Lo necesario para confiar en la prioridad</h2>
                 </div>
-
-                @if (TopGacRecommendation is not null)
-                {
-                    GacPlannerApiClient.OptimizationRecommendationViewModel gac = TopGacRecommendation;
-                    <div class="command-action-body">
-                        <div class="command-squad-strip">
-                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in GacRecommendedUnits)
-                            {
-                                string? portrait = GetPortraitUrl(unit.ThumbnailName);
-                                <div class="command-unit-mini" title="@unit.Name">
-                                    @if (portrait is not null)
-                                    {
-                                        <img src="@portrait" alt="" />
-                                    }
-                                    else
-                                    {
-                                        <span>@Initial(unit.Name)</span>
-                                    }
-                                    @if (unit.RelicTier is > 0)
-                                    {
-                                        <small>R@unit.RelicTier</small>
-                                    }
-                                </div>
-                            }
-                        </div>
-                        <div class="command-action-copy">
-                            <strong>@gac.TeamName → @gac.DefenseName</strong>
-                            <p>@gac.Rationale</p>
-                            <div class="command-action-stats">
-                                <span>Score <b>@gac.Score.ToString("0.#")</b></span>
-                                <span>Confianza <b>@ConfidenceLabel(gac.Confidence)</b></span>
-                                @if (gac.WinRate is decimal winRate)
-                                {
-                                    <span>Histórico <b>@Percent(winRate)</b></span>
-                                }
-                                @if (gac.PersonalSamples > 0)
-                                {
-                                    <span>Personal <b>@gac.PersonalWins/@gac.PersonalSamples</b></span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                    <a class="command-wide-action" href="@($"/gac/{_player.AllyCode}/planner")">Abrir War Room <span>→</span></a>
-                }
-                else if (TopConquestRecommendation is not null)
-                {
-                    ConquestApiClient.TeamViewModel conquest = TopConquestRecommendation;
-                    <div class="command-action-body">
-                        <div class="command-squad-strip">
-                            @foreach (ConquestApiClient.UnitViewModel unit in conquest.Team)
-                            {
-                                string? portrait = GetPortraitUrl(unit.ThumbnailName);
-                                <div class="command-unit-mini" title="@unit.Name">
-                                    @if (portrait is not null)
-                                    {
-                                        <img src="@portrait" alt="" />
-                                    }
-                                    else
-                                    {
-                                        <span>@Initial(unit.Name)</span>
-                                    }
-                                    @if (unit.RelicTier > 0)
-                                    {
-                                        <small>R@unit.RelicTier</small>
-                                    }
-                                </div>
-                            }
-                        </div>
-                        <div class="command-action-copy">
-                            <strong>Avanza @conquest.AdvancesFeats.Count hazaña(s) en el mismo combate</strong>
-                            <p>@conquest.Rationale</p>
-                            <div class="command-feat-chips">
-                                @foreach (ConquestApiClient.ContributionViewModel feat in conquest.AdvancesFeats.Take(3))
-                                {
-                                    <span>@feat.FeatName · +@feat.ExpectedProgress</span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                    <a class="command-wide-action" href="@($"/conquest/{_player.AllyCode}")">Ver plan de Conquista <span>→</span></a>
-                }
-                else
-                {
-                    <div class="command-empty-action">
-                        <strong>No hay una acción urgente calculada.</strong>
-                        <p>Configura una ronda de GAC o añade hazañas a Conquista para que el asistente priorice tu siguiente movimiento.</p>
-                    </div>
-                    <div class="command-action-links">
-                        <a href="@($"/gac/{_player.AllyCode}/planner")">Configurar GAC</a>
-                        <a href="@($"/conquest/{_player.AllyCode}")">Configurar Conquista</a>
-                    </div>
-                }
-            </section>
-
-            <section class="command-panel command-gac-panel">
-                <div class="command-panel-heading">
-                    <div>
-                        <span class="section-kicker">GAC en curso</span>
-                        <h2>@(_planner?.Opponent.OpponentName ?? "Sin rival cargado")</h2>
-                    </div>
-                    @if (_planner is not null)
-                    {
-                        <span class="command-mode-pill gac">@_planner.Opponent.League</span>
-                    }
-                </div>
-
-                @if (_planner is not null)
-                {
-                    <div class="command-gac-scoreboard">
-                        <div><strong>@GacVisibleDefenses</strong><span>Defensas</span></div>
-                        <div><strong>@GacPendingDefenses</strong><span>Pendientes</span></div>
-                        <div><strong>@GacCoveredDefenses</strong><span>Cubiertas</span></div>
-                    </div>
-                    @if (TopGacRecommendation is not null)
-                    {
-                        <div class="command-mini-recommendation">
-                            <span>Próximo ataque</span>
-                            <strong>@TopGacRecommendation.TeamName → @TopGacRecommendation.DefenseName</strong>
-                            <small>@TopGacRecommendation.Evidence · coste estratégico @TopGacRecommendation.StrategicCost.ToString("0.#")</small>
-                        </div>
-                    }
-                    <a class="command-secondary-link" href="@($"/gac/{_player.AllyCode}/planner")">Ir al Planner →</a>
-                }
-                else
-                {
-                    <div class="command-panel-empty">No hay una ronda de Gran Arena preparada.</div>
-                    <a class="command-secondary-link" href="@($"/gac/{_player.AllyCode}")">Comprobar GAC →</a>
-                }
-            </section>
-        </div>
-
-        <div class="command-secondary-grid">
-            <section class="command-panel">
-                <div class="command-panel-heading compact">
-                    <div>
-                        <span class="section-kicker">Progreso de Conquista</span>
-                        <h2>@(_conquest?.Name ?? "Sin Conquista activa")</h2>
-                    </div>
-                    @if (_conquest is not null)
-                    {
-                        <strong class="command-panel-number">@ConquestProgressPercent%</strong>
-                    }
-                </div>
-                @if (_conquest is not null)
-                {
-                    <div class="command-progress"><span style="width:@($"{ConquestProgressPercent}%")"></span></div>
-                    <div class="command-progress-meta">
-                        <span>@_conquest.EarnedFeatPoints pts completados</span>
-                        <span>@_conquest.AvailableFeatPoints pts pendientes</span>
-                    </div>
-                    <div class="command-feat-summary">
-                        <div><strong>@PendingGlobalFeats</strong><span>Globales pendientes</span></div>
-                        <div><strong>@PendingSectorFeats</strong><span>Sector pendientes</span></div>
-                        <div><strong>@PendingBossFeats</strong><span>Jefe pendientes</span></div>
-                    </div>
-                    <a class="command-secondary-link" href="@($"/conquest/{_player.AllyCode}")">Ver Conquista →</a>
-                }
-                else
-                {
-                    <div class="command-panel-empty">Crea el evento actual y añade sus hazañas para empezar a optimizar.</div>
-                    <a class="command-secondary-link" href="@($"/conquest/{_player.AllyCode}")">Crear plan →</a>
-                }
-            </section>
-
-            <section class="command-panel">
-                <div class="command-panel-heading compact">
-                    <div>
-                        <span class="section-kicker">Salud del roster</span>
-                        <h2>@(_analysis?.CharacterCount.ToString("N0") ?? "—") personajes</h2>
-                    </div>
-                    <span class="command-data-age">@RelativeUpdated(_player.UpdatedAtUtc)</span>
-                </div>
-                @if (_analysis is not null)
-                {
-                    <div class="command-roster-stats">
-                        <div><strong>@_analysis.Relic7Plus</strong><span>R7+</span></div>
-                        <div><strong>@_analysis.Relic9Plus</strong><span>R9+</span></div>
-                        <div><strong>@_analysis.Omicrons</strong><span>Omicrons</span></div>
-                        <div><strong>@_analysis.FullyModdedCharacters</strong><span>Mods completos</span></div>
-                    </div>
-                    <div class="command-roster-foot">
-                        <span>@_analysis.Zetas zetas</span>
-                        <span>@_player.AvailableDatacrons.Count datacrons</span>
-                        <span>@_analysis.UnmoddedCharacters sin mods</span>
-                    </div>
-                }
-                <a class="command-secondary-link" href="@($"/player/{_player.AllyCode}")">Explorar roster →</a>
-            </section>
-
-            <section class="command-panel command-data-panel">
-                <div class="command-panel-heading compact">
-                    <div>
-                        <span class="section-kicker">Estado de datos</span>
-                        <h2>Todo en contexto</h2>
-                    </div>
-                    <span class="command-status-dot @DataStatusCss"></span>
-                </div>
-                <div class="command-data-list">
-                    <div><span>Perfil / roster</span><strong>@RelativeUpdated(_player.UpdatedAtUtc)</strong></div>
-                    <div><span>Plan GAC</span><strong>@(_planner is null ? "No disponible" : RelativeUpdated(_planner.Plan.UpdatedAtUtc))</strong></div>
-                    <div><span>Conquista</span><strong>@(_conquest is null ? "No disponible" : RelativeUpdated(_conquest.UpdatedAtUtc))</strong></div>
-                </div>
-                <p>El asistente muestra de dónde sale cada recomendación y evita inventar contexto que no esté disponible.</p>
-            </section>
-        </div>
+                <p class="home-data-note">Perfil @_player.GalacticPower.ToString("N0") GP · actualizado @RelativeUpdated(_player.UpdatedAtUtc)</p>
+            </div>
+            <div class="home-context-strip">
+                <UiMetric Label="Gran Arena" Value="@GacContextValue" Hint="@GacContextHint" Tone="accent" />
+                <UiMetric Label="Conquista" Value="@ConquestContextValue" Hint="@ConquestContextHint" Tone="success" />
+                <UiMetric Label="Datos" Value="@DataContextValue" Hint="@DataContextHint" Tone="@DataMetricTone" />
+            </div>
+        </section>
     </section>
 }
 
 @code {
-    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
-
     private string _allyCode = string.Empty;
     private bool _loading;
     private bool _searched;
@@ -345,84 +357,292 @@ else
     private GacPlannerApiClient.OptimizationViewModel? _gacOptimization;
     private ConquestApiClient.PlanViewModel? _conquest;
     private ConquestApiClient.OptimizationViewModel? _conquestOptimization;
+    private ConquestDailyPlanApiClient.DailyPlanViewModel? _dailyPlan;
+
+    private GacPlannerApiClient.AttackViewModel? PlannedGacAttack => _planner?.Plan.Attacks
+        .Where(attack => string.Equals(attack.Status, "Planned", StringComparison.OrdinalIgnoreCase))
+        .Where(attack => _planner.Plan.VisibleDefenses.Any(defense => defense.Id == attack.DefenseId && !defense.Defeated))
+        .OrderBy(attack => attack.Attempt)
+        .FirstOrDefault();
+
+    private GacPlannerApiClient.VisibleDefenseViewModel? PlannedGacDefense => PlannedGacAttack is null
+        ? null
+        : _planner?.Plan.VisibleDefenses.FirstOrDefault(defense => defense.Id == PlannedGacAttack.DefenseId);
 
     private GacPlannerApiClient.OptimizationRecommendationViewModel? TopGacRecommendation =>
         _gacOptimization?.Recommendations.FirstOrDefault();
 
+    private GacPlannerApiClient.TeamPresetViewModel? GacRecommendedPreset => TopGacRecommendation is null
+        ? null
+        : _planner?.Presets.FirstOrDefault(preset => preset.Id == TopGacRecommendation.TeamPresetId);
+
+    private GacPlannerApiClient.VisibleDefenseViewModel? GacRecommendedDefense => TopGacRecommendation is null
+        ? null
+        : _planner?.Plan.VisibleDefenses.FirstOrDefault(defense => defense.Id == TopGacRecommendation.DefenseId);
+
     private ConquestApiClient.TeamViewModel? TopConquestRecommendation =>
-        TopGacRecommendation is null ? _conquestOptimization?.Recommendations.FirstOrDefault() : null;
-
-    private IReadOnlyCollection<GacPlannerApiClient.PlannerUnitViewModel> GacRecommendedUnits
-    {
-        get
-        {
-            if (_planner is null || TopGacRecommendation is null)
-            {
-                return [];
-            }
-
-            return _planner.Presets
-                .FirstOrDefault(preset => preset.Id == TopGacRecommendation.TeamPresetId)?
-                .Squad.AllUnits ?? [];
-        }
-    }
-
-    private string NextActionMode => TopGacRecommendation is not null
-        ? "GAC"
-        : TopConquestRecommendation is not null ? "Conquista" : "Sin urgencias";
-
-    private string NextActionCssClass => TopGacRecommendation is not null
-        ? "gac"
-        : TopConquestRecommendation is not null ? "conquest" : "neutral";
-
-    private string NextActionTitle => TopGacRecommendation is not null
-        ? "Ataca antes de gastar ese counter en otro sitio"
-        : TopConquestRecommendation is not null
-            ? "Aprovecha un combate para varias hazañas"
-            : "Configura el próximo objetivo";
-
-    private int GacVisibleDefenses => _planner?.Plan.VisibleDefenses.Count ?? 0;
+        _conquestOptimization?.Recommendations.FirstOrDefault();
 
     private int GacPendingDefenses => _planner?.Plan.VisibleDefenses.Count(defense => !defense.Defeated) ?? 0;
 
-    private int GacCoveredDefenses
+    private bool HasHighConfidenceGacPlan => TopGacRecommendation is { Score: >= 85m, Confidence: "High" };
+
+    private int RewardPointsMissing
     {
         get
         {
-            if (_planner is null)
+            if (_dailyPlan?.TargetRewardPoints is int dailyTarget)
             {
-                return 0;
+                return Math.Max(0, dailyTarget - _dailyPlan.StartingRewardPoints);
             }
 
-            HashSet<Guid> covered = _planner.Plan.Attacks
-                .Where(attack => !string.Equals(attack.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
-                .Select(attack => attack.DefenseId)
-                .ToHashSet();
-            return _planner.Plan.VisibleDefenses.Count(defense => defense.Defeated || covered.Contains(defense.Id));
+            return _conquest?.TargetRewardPoints is int target
+                ? Math.Max(0, target - _conquest.CurrentRewardPoints)
+                : 0;
         }
     }
 
-    private int ConquestProgressPercent
+    private int? BattlesToRewardTarget
     {
         get
         {
-            if (_conquest is null)
+            if (_dailyPlan?.TargetRewardPoints is not int target)
             {
-                return 0;
+                return null;
             }
 
-            int total = _conquest.EarnedFeatPoints + _conquest.AvailableFeatPoints;
-            return total == 0 ? 0 : (int)Math.Round((_conquest.EarnedFeatPoints * 100m) / total);
+            ConquestDailyPlanApiClient.DailyPlanStepViewModel? step = _dailyPlan.Steps
+                .FirstOrDefault(item => item.ProjectedRewardPointsAfterBattle >= target);
+            return step?.BattleNumber;
         }
     }
 
-    private int PendingGlobalFeats => _conquest?.Feats.Count(feat => !feat.IsComplete && feat.Scope == "Global") ?? 0;
-    private int PendingSectorFeats => _conquest?.Feats.Count(feat => !feat.IsComplete && feat.Scope == "Sector") ?? 0;
-    private int PendingBossFeats => _conquest?.Feats.Count(feat => !feat.IsComplete && feat.Scope == "Boss") ?? 0;
+    private bool RewardTargetSoon => RewardPointsMissing > 0 && BattlesToRewardTarget is > 0 and <= 3;
 
-    private string DataStatusCss => DateTimeOffset.UtcNow - _player!.UpdatedAtUtc < TimeSpan.FromHours(24)
-        ? "fresh"
-        : "stale";
+    private int ImmediateConquestBattles => Math.Min(3, _dailyPlan?.PlannedBattles ?? 0);
+
+    private HomeActionKind PrimaryAction
+    {
+        get
+        {
+            if (PlannedGacAttack is not null)
+            {
+                return HomeActionKind.GacExecute;
+            }
+
+            if (RewardTargetSoon)
+            {
+                return HomeActionKind.ConquestRewardPush;
+            }
+
+            if (HasHighConfidenceGacPlan)
+            {
+                return HomeActionKind.GacPlan;
+            }
+
+            if (_dailyPlan?.PlannedBattles > 0)
+            {
+                return HomeActionKind.ConquestBattles;
+            }
+
+            if (TopGacRecommendation is not null)
+            {
+                return HomeActionKind.GacPlan;
+            }
+
+            if (_dailyPlan?.StopReason == "NoUsableCharacters" ||
+                (_dailyPlan?.PlannedBattles == 0 && _dailyPlan.RecoveryPriority.Count > 0))
+            {
+                return HomeActionKind.ConquestWaitStamina;
+            }
+
+            if (_dailyPlan?.StopReason == "EnergyBudgetExhausted")
+            {
+                return HomeActionKind.ConquestWaitEnergy;
+            }
+
+            if (TopConquestRecommendation is not null)
+            {
+                return HomeActionKind.ConquestOptimize;
+            }
+
+            return HomeActionKind.Configure;
+        }
+    }
+
+    private string HeaderDescription
+    {
+        get
+        {
+            string guild = string.IsNullOrWhiteSpace(_player?.GuildName) ? string.Empty : $"{_player.GuildName} · ";
+            return $"{guild}#{FormatAllyCode(_player!.AllyCode)} · una prioridad calculada con el estado actual de GAC y Conquista.";
+        }
+    }
+
+    private string PrimaryActionTitle => PrimaryAction switch
+    {
+        HomeActionKind.GacExecute => $"Ataca a {PlannedGacDefense?.Squad.Leader.Name ?? "esa defensa"} con {PlannedGacAttack?.Team.Name}",
+        HomeActionKind.ConquestRewardPush => $"Haz {BattlesToRewardTarget} combate(s): te faltan {RewardPointsMissing} puntos para {RewardTargetLabel}",
+        HomeActionKind.ConquestBattles => $"Haz los próximos {ImmediateConquestBattles} combates de Conquista",
+        HomeActionKind.GacPlan => $"Prepara {TopGacRecommendation?.TeamName} contra {TopGacRecommendation?.DefenseName}",
+        HomeActionKind.ConquestWaitStamina => "Espera stamina antes de volver a gastar ese equipo",
+        HomeActionKind.ConquestWaitEnergy => "Espera energía: ahora no compensa forzar otro combate",
+        HomeActionKind.ConquestOptimize => "Usa este combate para avanzar varias hazañas a la vez",
+        _ => "Configura el siguiente objetivo que quieras optimizar"
+    };
+
+    private string PrimaryActionDescription => PrimaryAction switch
+    {
+        HomeActionKind.GacExecute => "Ese ataque ya está planificado y el equipo está reservado. Ejecútalo y registra victoria/fallo y banners para que el Planner aprenda y recalcule el siguiente.",
+        HomeActionKind.ConquestRewardPush => $"El plan diario alcanza {RewardTargetLabel} dentro de tres combates. Es una ganancia inmediata y medible antes de volver a repartir recursos.",
+        HomeActionKind.ConquestBattles => $"Tienes una secuencia viable con stamina y energía disponibles. Hazla en orden para maximizar progreso por combate y evitar gastar equipos de reserva.",
+        HomeActionKind.GacPlan => $"Es la mejor combinación disponible para una defensa aún pendiente. Score {TopGacRecommendation?.Score:0.#} con confianza {ConfidenceLabel(TopGacRecommendation?.Confidence ?? string.Empty)}.",
+        HomeActionKind.ConquestWaitStamina => "El plan no encuentra otro equipo utilizable sin castigar demasiado la reserva. Mientras recuperan stamina, GAC y roster siguen disponibles.",
+        HomeActionKind.ConquestWaitEnergy => "El plan diario se ha detenido por presupuesto de energía. No hay una acción de Conquista mejor hasta recuperar energía o cambiar el objetivo.",
+        HomeActionKind.ConquestOptimize => TopConquestRecommendation?.Rationale ?? "Hay una combinación que avanza varias hazañas en el mismo combate.",
+        _ => "No hay una acción urgente calculable con los datos actuales. Añade defensas visibles en GAC o configura las hazañas/objetivo de Conquista."
+    };
+
+    private string PrimaryActionTone => PrimaryAction switch
+    {
+        HomeActionKind.GacExecute or HomeActionKind.GacPlan => "accent",
+        HomeActionKind.ConquestRewardPush or HomeActionKind.ConquestBattles or HomeActionKind.ConquestOptimize => "success",
+        HomeActionKind.ConquestWaitStamina or HomeActionKind.ConquestWaitEnergy => "warning",
+        _ => "neutral"
+    };
+
+    private string PrimaryActionBadge => PrimaryAction switch
+    {
+        HomeActionKind.GacExecute => "GAC · ejecutar",
+        HomeActionKind.GacPlan => "GAC · preparar",
+        HomeActionKind.ConquestRewardPush => "Conquista · recompensa",
+        HomeActionKind.ConquestBattles => "Conquista · ahora",
+        HomeActionKind.ConquestWaitStamina => "Conquista · recuperar",
+        HomeActionKind.ConquestWaitEnergy => "Conquista · esperar",
+        HomeActionKind.ConquestOptimize => "Conquista · optimizar",
+        _ => "Sin urgencias"
+    };
+
+    private string PrimaryActionHref => PrimaryAction switch
+    {
+        HomeActionKind.GacExecute => $"/gac/{_player!.AllyCode}/planner#gac-execution",
+        HomeActionKind.GacPlan => $"/gac/{_player!.AllyCode}/planner",
+        HomeActionKind.ConquestRewardPush or HomeActionKind.ConquestBattles or HomeActionKind.ConquestWaitStamina or
+            HomeActionKind.ConquestWaitEnergy or HomeActionKind.ConquestOptimize => $"/conquest/{_player!.AllyCode}",
+        _ => $"/data"
+    };
+
+    private string PrimaryActionText => PrimaryAction switch
+    {
+        HomeActionKind.GacExecute => "Abrir modo ejecución",
+        HomeActionKind.GacPlan => "Abrir Planner y confirmar",
+        HomeActionKind.ConquestRewardPush or HomeActionKind.ConquestBattles or HomeActionKind.ConquestOptimize => "Abrir plan de Conquista",
+        HomeActionKind.ConquestWaitStamina => "Ver recuperación y plan",
+        HomeActionKind.ConquestWaitEnergy => "Ver energía y objetivo",
+        _ => "Revisar datos disponibles"
+    };
+
+    private string RewardTargetLabel => string.IsNullOrWhiteSpace(_dailyPlan?.RewardTargetName)
+        ? string.IsNullOrWhiteSpace(_conquest?.RewardTargetName) ? "la recompensa objetivo" : _conquest.RewardTargetName!
+        : _dailyPlan.RewardTargetName!;
+
+    private string EnergySummary
+    {
+        get
+        {
+            if (_dailyPlan?.AvailableEnergy is not int available)
+            {
+                return "sin límite configurado";
+            }
+
+            int remaining = _dailyPlan.EnergyRemaining ?? Math.Max(0, available - _dailyPlan.EnergySpent);
+            return $"{available} → {remaining}";
+        }
+    }
+
+    private string ConquestStaminaSummary
+    {
+        get
+        {
+            ConquestDailyPlanApiClient.DailyPlanStepViewModel? step = _dailyPlan?.Steps.FirstOrDefault();
+            return step is null ? "sin combate" : $"{step.AverageStaminaBefore:0} → {step.AverageStaminaAfter:0}";
+        }
+    }
+
+    private IReadOnlyCollection<HomeQueueItem> ActionQueue
+    {
+        get
+        {
+            var items = new List<HomeQueueItem>();
+
+            if (PrimaryAction != HomeActionKind.GacExecute && PlannedGacAttack is not null)
+            {
+                items.Add(new HomeQueueItem(
+                    "Ejecutar el ataque GAC ya reservado",
+                    $"{PlannedGacAttack.Team.Name} · intento #{PlannedGacAttack.Attempt}",
+                    $"/gac/{_player!.AllyCode}/planner#gac-execution"));
+            }
+            else if (PrimaryAction != HomeActionKind.GacPlan && TopGacRecommendation is not null)
+            {
+                items.Add(new HomeQueueItem(
+                    "Preparar el siguiente counter de GAC",
+                    $"{TopGacRecommendation.TeamName} → {TopGacRecommendation.DefenseName} · score {TopGacRecommendation.Score:0.#}",
+                    $"/gac/{_player!.AllyCode}/planner"));
+            }
+
+            if (!IsConquestPrimary && _dailyPlan?.PlannedBattles > 0)
+            {
+                items.Add(new HomeQueueItem(
+                    $"Completar {Math.Min(3, _dailyPlan.PlannedBattles)} combate(s) de Conquista",
+                    RewardPointsMissing > 0
+                        ? $"Faltan {RewardPointsMissing} puntos para {RewardTargetLabel}"
+                        : $"{_dailyPlan.ProjectedRewardPointsGained} puntos proyectados",
+                    $"/conquest/{_player!.AllyCode}"));
+            }
+
+            if (IsDataStale)
+            {
+                items.Add(new HomeQueueItem(
+                    "Actualizar datos antes de una decisión importante",
+                    $"El roster tiene {RelativeUpdated(_player!.UpdatedAtUtc)}",
+                    "/data"));
+            }
+
+            return [.. items.Take(3)];
+        }
+    }
+
+    private bool IsConquestPrimary => PrimaryAction is
+        HomeActionKind.ConquestRewardPush or
+        HomeActionKind.ConquestBattles or
+        HomeActionKind.ConquestWaitStamina or
+        HomeActionKind.ConquestWaitEnergy or
+        HomeActionKind.ConquestOptimize;
+
+    private string GacContextValue => _planner is null
+        ? "Sin ronda"
+        : PlannedGacAttack is not null ? "Ataque listo" : $"{GacPendingDefenses} pendientes";
+
+    private string GacContextHint => _planner is null
+        ? "No hay rival activo disponible"
+        : $"vs {_planner.Opponent.OpponentName} · {_planner.Opponent.Format}";
+
+    private string ConquestContextValue => _conquest is null
+        ? "Sin plan"
+        : RewardPointsMissing > 0 ? $"{RewardPointsMissing} pts para objetivo" : $"{_conquest.EarnedFeatPoints} pts";
+
+    private string ConquestContextHint => _dailyPlan is null
+        ? "Configura hazañas y recursos"
+        : _dailyPlan.PlannedBattles > 0
+            ? $"{_dailyPlan.PlannedBattles} combates viables · {_dailyPlan.StopReason}"
+            : DailyStopReason(_dailyPlan.StopReason);
+
+    private bool IsDataStale => DateTimeOffset.UtcNow - _player!.UpdatedAtUtc >= TimeSpan.FromHours(24);
+    private string DataContextValue => IsDataStale ? "Revisar" : "Actualizados";
+    private string DataContextHint => $"Roster {RelativeUpdated(_player!.UpdatedAtUtc)} · GAC {PlannerAge} · Conquista {ConquestAge}";
+    private string DataMetricTone => IsDataStale ? "warning" : "success";
+    private string PlannerAge => _planner is null ? "sin dato" : RelativeUpdated(_planner.Plan.UpdatedAtUtc);
+    private string ConquestAge => _conquest is null ? "sin dato" : RelativeUpdated(_conquest.UpdatedAtUtc);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -431,19 +651,11 @@ else
             return;
         }
 
-        try
+        if (await PlayerContext.RestoreAsync() && Session.AllyCode is long allyCode)
         {
-            long? saved = await Preferences.GetAllyCodeAsync();
-            if (saved is long allyCode)
-            {
-                _allyCode = allyCode.ToString();
-                await LoadPlayerAsync(allyCode, persistPreference: false);
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch (JSException)
-        {
-            // Local storage is an enhancement; the dashboard still works without it.
+            _allyCode = allyCode.ToString();
+            await LoadPlayerAsync(allyCode, persistPreference: false);
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -471,21 +683,23 @@ else
         _gacOptimization = null;
         _conquest = null;
         _conquestOptimization = null;
+        _dailyPlan = null;
 
         try
         {
-            _player = await PlayerClient.GetAsync(allyCode);
-            if (_player is null)
+            bool activated = await PlayerContext.ActivateAsync(allyCode, persistPreference);
+            if (!activated)
             {
-                Session.Clear();
+                _player = null;
                 _error = "No hay un perfil persistido para ese Ally Code. Refresca primero el jugador desde la API.";
                 return;
             }
 
-            Session.SetPlayer(_player.AllyCode, _player.Name);
-            if (persistPreference)
+            _player = await PlayerClient.GetAsync(allyCode);
+            if (_player is null)
             {
-                await Preferences.SetAllyCodeAsync(_player.AllyCode);
+                _error = "El perfil activo no está disponible en la API.";
+                return;
             }
 
             Task<PlayerApiClient.PlayerRosterAnalysisViewModel?> analysisTask = PlayerClient.GetAnalysisAsync(allyCode);
@@ -511,14 +725,16 @@ else
         {
             GacPlannerApiClient.PlannerResult plannerResult = await PlannerClient.GetCurrentAsync(allyCode);
             _planner = plannerResult.Planner;
-            if (_planner is not null)
+            if (_planner is null)
             {
-                GacPlannerApiClient.OptimizationResult optimization = await PlannerClient.OptimizeCurrentAsync(
-                    allyCode,
-                    "FillGaps",
-                    apply: false);
-                _gacOptimization = optimization.Envelope?.Optimization;
+                return;
             }
+
+            GacPlannerApiClient.OptimizationResult optimization = await PlannerClient.OptimizeCurrentAsync(
+                allyCode,
+                "FillGaps",
+                apply: false);
+            _gacOptimization = optimization.Envelope?.Optimization;
         }
         catch (HttpRequestException)
         {
@@ -532,15 +748,22 @@ else
         try
         {
             _conquest = await ConquestClient.GetCurrentAsync(allyCode);
-            if (_conquest is not null)
+            if (_conquest is null)
             {
-                _conquestOptimization = await ConquestClient.OptimizeCurrentAsync(allyCode);
+                return;
             }
+
+            Task<ConquestApiClient.OptimizationViewModel?> optimizationTask = ConquestClient.OptimizeCurrentAsync(allyCode);
+            Task<ConquestDailyPlanApiClient.DailyPlanViewModel?> dailyPlanTask = DailyPlanClient.BuildAsync(allyCode, maxBattles: 6);
+            await Task.WhenAll(optimizationTask, dailyPlanTask);
+            _conquestOptimization = await optimizationTask;
+            _dailyPlan = await dailyPlanTask;
         }
         catch (HttpRequestException)
         {
             _conquest = null;
             _conquestOptimization = null;
+            _dailyPlan = null;
         }
     }
 
@@ -564,13 +787,6 @@ else
         return $"{value[..3]}-{value[3..6]}-{value[6..]}";
     }
 
-    private static string CompactNumber(long value) => value switch
-    {
-        >= 1_000_000 => $"{value / 1_000_000d:0.##}M",
-        >= 1_000 => $"{value / 1_000d:0.#}K",
-        _ => value.ToString("N0")
-    };
-
     private static string RelativeUpdated(DateTimeOffset updatedAt)
     {
         TimeSpan age = DateTimeOffset.UtcNow - updatedAt;
@@ -592,25 +808,34 @@ else
         _ => confidence
     };
 
-    private static string Percent(decimal value) => $"{Math.Clamp(value * 100m, 0m, 100m):0.#}%";
-
-    private static string? GetPortraitUrl(string? thumbnailName)
+    private static string Percent(decimal value)
     {
-        if (string.IsNullOrWhiteSpace(thumbnailName))
-        {
-            return null;
-        }
-
-        string asset = thumbnailName.Trim();
-        if (!asset.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-        {
-            asset += ".png";
-        }
-
-        return AssetBaseUrl + Uri.EscapeDataString(asset);
+        decimal normalized = value <= 1m ? value * 100m : value;
+        return $"{Math.Clamp(normalized, 0m, 100m):0.#}%";
     }
 
-    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
-        ? "?"
-        : char.ToUpperInvariant(name.Trim()[0]).ToString();
+    private static string DailyStopReason(string value) => value switch
+    {
+        "RewardTargetReached" => "Objetivo de recompensa alcanzado",
+        "EnergyBudgetExhausted" => "Sin energía suficiente",
+        "AllFeatsCompleted" => "Hazañas proyectadas completadas",
+        "NoUsableCharacters" => "Esperando stamina",
+        "NoViableTeam" => "Sin otro equipo viable",
+        "RosterUnavailable" => "Roster no disponible",
+        _ => "Límite diario alcanzado"
+    };
+
+    private enum HomeActionKind
+    {
+        GacExecute,
+        GacPlan,
+        ConquestRewardPush,
+        ConquestBattles,
+        ConquestWaitStamina,
+        ConquestWaitEnergy,
+        ConquestOptimize,
+        Configure
+    }
+
+    private sealed record HomeQueueItem(string Title, string Description, string Href);
 }

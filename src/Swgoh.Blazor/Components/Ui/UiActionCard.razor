@@ -1,0 +1,60 @@
+<article class="ui-action-card ui-action-card-@Tone @Class">
+    <header class="ui-action-card-header">
+        <div>
+            @if (!string.IsNullOrWhiteSpace(Kicker))
+            {
+                <span class="ui-kicker">@Kicker</span>
+            }
+            <h2>@Title</h2>
+            @if (!string.IsNullOrWhiteSpace(Description))
+            {
+                <p>@Description</p>
+            }
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Badge))
+        {
+            <UiStatusPill Label="@Badge" Tone="@Tone" ShowDot="true" />
+        }
+    </header>
+
+    @if (ChildContent is not null)
+    {
+        <div class="ui-action-card-body">@ChildContent</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Href) && !string.IsNullOrWhiteSpace(ActionText))
+    {
+        <footer class="ui-action-card-footer">
+            <a class="primary-button button-link" href="@Href">@ActionText <span aria-hidden="true">→</span></a>
+        </footer>
+    }
+</article>
+
+@code {
+    [Parameter]
+    public string Kicker { get; set; } = "Siguiente acción";
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public string Tone { get; set; } = "accent";
+
+    [Parameter]
+    public string? Badge { get; set; }
+
+    [Parameter]
+    public string? Href { get; set; }
+
+    [Parameter]
+    public string? ActionText { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}
