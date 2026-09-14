@@ -21,15 +21,19 @@ internal sealed class SwgohComlinkGacOpponentSource(
 
     private const int BracketSize = 8;
     private const int BracketBatchSize = 8;
-    private const int RankSearchRadius = 512;
-    private const int MaxBracketIndex = 8191;
+    private const int MaxBracketIndex = 20_000;
     private const int RateLimitRetryCount = 5;
-    private static readonly TimeSpan BracketBatchDelay = TimeSpan.FromMilliseconds(125);
+    private static readonly int[] RankSearchRadii = [3, 16, 64, 256];
+    private static readonly TimeSpan NormalBracketBatchDelay = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan RateLimitedBracketBatchDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan PositiveCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan NegativeCacheDuration = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan BracketLocationCacheDuration = TimeSpan.FromDays(8);
     private static readonly TimeSpan LookupTimeout = TimeSpan.FromMinutes(5);
 
     private readonly ConcurrentDictionary<string, CacheEntry> cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, BracketLocationCacheEntry> bracketLocations = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, int> lastKnownBracketIndexes = new(StringComparer.Ordinal);
 
     public async Task<CurrentGacOpponentLookup> GetAsync(
         long allyCode,
@@ -71,13 +75,14 @@ internal sealed class SwgohComlinkGacOpponentSource(
         {
             diagnostics.TotalElapsed = diagnostics.Elapsed.Elapsed;
             logger.LogInformation(
-                "GAC bracket lookup {Status} for {AllyCode}: PlayerArena {PlayerArenaMs} ms, GetEvents {GetEventsMs} ms, Rank {Rank}, EstimatedBracket {EstimatedBracket}, Search {SearchRanges}, Batches {Batches}, Requests {Requests}, RateLimits {RateLimits}, BracketFound {BracketFound}, Total {TotalMs} ms",
+                "GAC bracket lookup {Status} for {AllyCode}: PlayerArena {PlayerArenaMs} ms, GetEvents {GetEventsMs} ms, Rank {Rank}, EstimatedBracket {EstimatedBracket}, BracketCache {BracketCacheHit}, Search {SearchRanges}, Batches {Batches}, Requests {Requests}, RateLimits {RateLimits}, BracketFound {BracketFound}, Total {TotalMs} ms",
                 lookup?.Status.ToString() ?? "Cancelled",
                 allyCode,
                 diagnostics.PlayerArenaElapsed.TotalMilliseconds,
                 diagnostics.GetEventsElapsed.TotalMilliseconds,
                 diagnostics.Rank,
                 diagnostics.EstimatedBracket,
+                diagnostics.BracketCacheHit,
                 string.Join("; ", diagnostics.SearchRanges),
                 diagnostics.Batches,
                 diagnostics.LeaderboardRequests,
@@ -261,23 +266,63 @@ internal sealed class SwgohComlinkGacOpponentSource(
         LookupDiagnostics diagnostics,
         CancellationToken cancellationToken)
     {
-        string[] leagueTokens =
-        [
-            league.ToString().ToUpperInvariant(),
-            league.ToString().ToLowerInvariant()
-        ];
+        string leagueToken = league.ToString().ToUpperInvariant();
+        string lastKnownKey = LastKnownBracketKey(allyCode, leagueToken);
 
         foreach (string eventInstanceId in eventInstanceIds)
         {
-            foreach (string leagueToken in leagueTokens.Distinct(StringComparer.Ordinal))
+            var checkedIndexes = new HashSet<int>();
+            string locationKey = BracketLocationKey(allyCode, eventInstanceId, leagueToken);
+
+            if (TryGetCachedBracketIndex(locationKey, out int cachedBracketIndex))
             {
-                var checkedIndexes = new HashSet<int>();
-                if (rank is > 0)
+                diagnostics.BracketCacheHit = true;
+                BracketMatch? cachedMatch = await ScanRangeAsync(
+                    cachedBracketIndex,
+                    cachedBracketIndex,
+                    checkedIndexes,
+                    allyCode,
+                    playerId,
+                    leagueToken,
+                    eventInstanceId,
+                    diagnostics,
+                    cancellationToken).ConfigureAwait(false);
+                if (cachedMatch is not null)
                 {
-                    int estimatedBracket = Math.Clamp((rank.Value - 1) / BracketSize, 0, MaxBracketIndex);
-                    diagnostics.EstimatedBracket ??= estimatedBracket;
-                    int start = Math.Max(0, estimatedBracket - RankSearchRadius);
-                    int end = Math.Min(MaxBracketIndex, estimatedBracket + RankSearchRadius);
+                    return cachedMatch;
+                }
+
+                bracketLocations.TryRemove(locationKey, out _);
+            }
+
+            if (lastKnownBracketIndexes.TryGetValue(lastKnownKey, out int lastKnownBracketIndex) &&
+                lastKnownBracketIndex is >= 0 and <= MaxBracketIndex)
+            {
+                BracketMatch? lastKnownMatch = await ScanRangeAsync(
+                    lastKnownBracketIndex,
+                    lastKnownBracketIndex,
+                    checkedIndexes,
+                    allyCode,
+                    playerId,
+                    leagueToken,
+                    eventInstanceId,
+                    diagnostics,
+                    cancellationToken).ConfigureAwait(false);
+                if (lastKnownMatch is not null)
+                {
+                    return lastKnownMatch;
+                }
+            }
+
+            if (rank is > 0)
+            {
+                int estimatedBracket = Math.Clamp((rank.Value - 1) / BracketSize, 0, MaxBracketIndex);
+                diagnostics.EstimatedBracket ??= estimatedBracket;
+
+                foreach (int radius in RankSearchRadii)
+                {
+                    int start = Math.Max(0, estimatedBracket - radius);
+                    int end = Math.Min(MaxBracketIndex, estimatedBracket + radius);
                     BracketMatch? nearRank = await ScanRangeAsync(
                         start,
                         end,
@@ -293,21 +338,21 @@ internal sealed class SwgohComlinkGacOpponentSource(
                         return nearRank;
                     }
                 }
+            }
 
-                BracketMatch? fullScan = await ScanRangeAsync(
-                    0,
-                    MaxBracketIndex,
-                    checkedIndexes,
-                    allyCode,
-                    playerId,
-                    leagueToken,
-                    eventInstanceId,
-                    diagnostics,
-                    cancellationToken).ConfigureAwait(false);
-                if (fullScan is not null)
-                {
-                    return fullScan;
-                }
+            BracketMatch? fullScan = await ScanRangeAsync(
+                0,
+                MaxBracketIndex,
+                checkedIndexes,
+                allyCode,
+                playerId,
+                leagueToken,
+                eventInstanceId,
+                diagnostics,
+                cancellationToken).ConfigureAwait(false);
+            if (fullScan is not null)
+            {
+                return fullScan;
             }
         }
 
@@ -356,7 +401,7 @@ internal sealed class SwgohComlinkGacOpponentSource(
             pending.Clear();
             if (index < end)
             {
-                await Task.Delay(BracketBatchDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(GetBracketBatchDelay(diagnostics), cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -391,6 +436,7 @@ internal sealed class SwgohComlinkGacOpponentSource(
             if (playerIndex >= 0)
             {
                 diagnostics.FoundBracket = bracket.BracketId;
+                RememberBracketLocation(allyCode, eventInstanceId, leagueToken, bracket.BracketIndex);
                 return new BracketMatch(eventInstanceId, bracket.BracketId, bracket.Players, playerIndex);
             }
         }
@@ -461,7 +507,7 @@ internal sealed class SwgohComlinkGacOpponentSource(
                     .Where(value => value is not null)
                     .Select(value => value!)
             ];
-            return players.Length == 0 ? null : new BracketData(bracketId, players);
+            return players.Length == 0 ? null : new BracketData(bracketIndex, bracketId, players);
         }
 
         throw new InvalidOperationException("The Comlink GAC bracket retry loop completed unexpectedly.");
@@ -476,6 +522,9 @@ internal sealed class SwgohComlinkGacOpponentSource(
         int jitterMs = (bracketIndex % BracketBatchSize) * 20;
         return TimeSpan.FromMilliseconds(exponentialDelayMs + jitterMs);
     }
+
+    private static TimeSpan GetBracketBatchDelay(LookupDiagnostics diagnostics) =>
+        diagnostics.RateLimits > 0 ? RateLimitedBracketBatchDelay : NormalBracketBatchDelay;
 
     private static bool TryGetLeaderboardPlayers(JsonElement root, out JsonElement players)
     {
@@ -931,9 +980,46 @@ internal sealed class SwgohComlinkGacOpponentSource(
         return separator > 0 ? eventInstanceId[..separator] : null;
     }
 
+    private bool TryGetCachedBracketIndex(string key, out int bracketIndex)
+    {
+        bracketIndex = default;
+        if (!bracketLocations.TryGetValue(key, out BracketLocationCacheEntry? cached))
+        {
+            return false;
+        }
+
+        if (cached.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+        {
+            bracketLocations.TryRemove(key, out _);
+            return false;
+        }
+
+        bracketIndex = cached.BracketIndex;
+        return true;
+    }
+
+    private void RememberBracketLocation(
+        long allyCode,
+        string eventInstanceId,
+        string leagueToken,
+        int bracketIndex)
+    {
+        bracketLocations[BracketLocationKey(allyCode, eventInstanceId, leagueToken)] =
+            new BracketLocationCacheEntry(bracketIndex, DateTimeOffset.UtcNow.Add(BracketLocationCacheDuration));
+        lastKnownBracketIndexes[LastKnownBracketKey(allyCode, leagueToken)] = bracketIndex;
+    }
+
+    private static string BracketLocationKey(long allyCode, string eventInstanceId, string leagueToken) =>
+        $"{allyCode}:{eventInstanceId}:{leagueToken}";
+
+    private static string LastKnownBracketKey(long allyCode, string leagueToken) =>
+        $"{allyCode}:{leagueToken}";
+
     private static bool IsValidAllyCode(long allyCode) => allyCode is >= 100_000_000 and <= 999_999_999;
 
     private sealed record CacheEntry(CurrentGacOpponentLookup Lookup, DateTimeOffset ExpiresAtUtc);
+
+    private sealed record BracketLocationCacheEntry(int BracketIndex, DateTimeOffset ExpiresAtUtc);
 
     private sealed class LookupDiagnostics(long allyCode, GacFormat? formatOverride)
     {
@@ -945,6 +1031,7 @@ internal sealed class SwgohComlinkGacOpponentSource(
         public TimeSpan TotalElapsed { get; set; }
         public int? Rank { get; set; }
         public int? EstimatedBracket { get; set; }
+        public bool BracketCacheHit { get; set; }
         public int Batches { get; set; }
         public int LeaderboardRequests { get; set; }
         public int RateLimits { get; set; }
@@ -975,6 +1062,7 @@ internal sealed class SwgohComlinkGacOpponentSource(
         string? PlayerId);
 
     private sealed record BracketData(
+        int BracketIndex,
         string BracketId,
         Participant[] Players);
 
