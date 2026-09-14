@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 
+using Swgoh.Application.Abstractions;
 using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
 using Swgoh.Domain.Players;
@@ -22,7 +23,8 @@ internal sealed class CurrentGacScoutingService(
     IPlayerProfileService playerProfileService,
     IPlayerRosterService playerRosterService,
     IGacHistorySyncService historySyncService,
-    IGacCounterStatisticsService counterStatisticsService) : ICurrentGacScoutingService
+    IGacCounterStatisticsService counterStatisticsService,
+    IClock? clock = null) : ICurrentGacScoutingService
 {
     private const int MaxRounds = 200;
     private const int CounterSourceRoundLimit = 2_000;
@@ -30,6 +32,7 @@ internal sealed class CurrentGacScoutingService(
     private const int TopCharacterLimit = 20;
     private const int TopShipLimit = 12;
     private const int OmicronScoutLimit = 30;
+    private static readonly TimeSpan ProfileFreshnessWindow = TimeSpan.FromMinutes(10);
 
     public async Task<CurrentGacScoutingResult> GetAsync(
         long allyCode,
@@ -206,8 +209,15 @@ internal sealed class CurrentGacScoutingService(
         ConcurrentQueue<string> warnings,
         CancellationToken cancellationToken)
     {
+        PlayerProfile? persisted = null;
         try
         {
+            persisted = await playerProfileService.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            if (IsFreshPersistedProfile(persisted))
+            {
+                return persisted;
+            }
+
             return await playerProfileService.RefreshFromGameAsync(allyCode, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -217,6 +227,11 @@ internal sealed class CurrentGacScoutingService(
         catch (Exception)
         {
             warnings.Enqueue($"No se ha podido refrescar el perfil del {label}; se usarán los últimos datos persistidos disponibles.");
+            if (persisted is not null)
+            {
+                return persisted;
+            }
+
             try
             {
                 return await playerProfileService.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
@@ -231,6 +246,14 @@ internal sealed class CurrentGacScoutingService(
                 return null;
             }
         }
+    }
+
+    private bool IsFreshPersistedProfile(PlayerProfile? profile)
+    {
+        DateTimeOffset now = clock?.UtcNow ?? DateTimeOffset.UtcNow;
+        return profile is not null
+            && !string.IsNullOrWhiteSpace(profile.PlayerId)
+            && profile.UpdatedAtUtc >= now - ProfileFreshnessWindow;
     }
 
     private async Task<PlayerRosterSnapshot?> TrySnapshotAsync(
