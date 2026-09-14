@@ -167,8 +167,8 @@
 
             <div class="gac-execution-form">
                 <div class="gac-result-toggle" role="group" aria-label="Resultado del ataque">
-                    <button type="button" class="@(ExecutionStatus == "Won" ? "active won" : string.Empty)" @onclick="() => ExecutionStatus = "Won"">✓ Gané</button>
-                    <button type="button" class="@(ExecutionStatus == "Failed" ? "active failed" : string.Empty)" @onclick="() => ExecutionStatus = "Failed"">× Fallé</button>
+                    <button type="button" class="@(ExecutionStatus == "Won" ? "active won" : string.Empty)" @onclick="SelectWon">✓ Gané</button>
+                    <button type="button" class="@(ExecutionStatus == "Failed" ? "active failed" : string.Empty)" @onclick="SelectFailed">× Fallé</button>
                 </div>
                 <label>
                     <span>Banners</span>
@@ -344,6 +344,10 @@
         ExecutionNotes = string.Empty;
         ExecutionError = null;
     }
+
+    private void SelectWon() => ExecutionStatus = "Won";
+
+    private void SelectFailed() => ExecutionStatus = "Failed";
 
     private async Task SubmitExecutionAsync()
     {
