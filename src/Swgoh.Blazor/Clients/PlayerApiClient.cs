@@ -5,6 +5,9 @@ namespace Swgoh.Blazor.Clients;
 
 public sealed class PlayerApiClient(HttpClient httpClient)
 {
+    private const int LegacyRosterGridPageSize = 24;
+    private const int CompactRosterGridPageSize = 28;
+
     public async Task RefreshAsync(long allyCode, CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response = await httpClient.PostAsync(
@@ -53,8 +56,12 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         string? faction = null,
         CancellationToken cancellationToken = default)
     {
+        int effectivePageSize = pageSize == LegacyRosterGridPageSize
+            ? CompactRosterGridPageSize
+            : pageSize;
+
         var query = new StringBuilder(
-            $"?page={page}&pageSize={pageSize}&type={Uri.EscapeDataString(type)}&orderBy={Uri.EscapeDataString(orderBy)}&direction={Uri.EscapeDataString(direction)}");
+            $"?page={page}&pageSize={effectivePageSize}&type={Uri.EscapeDataString(type)}&orderBy={Uri.EscapeDataString(orderBy)}&direction={Uri.EscapeDataString(direction)}");
 
         if (!string.IsNullOrWhiteSpace(search))
         {
