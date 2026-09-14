@@ -61,6 +61,12 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         using JsonDocument roster = await ReadJsonAsync(rosterResponse, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, rosterResponse.StatusCode);
+        Assert.Equal("Aberronko", roster.RootElement.GetProperty("playerName").GetString());
+        Assert.Equal(100_000, roster.RootElement.GetProperty("galacticPower").GetInt64());
+        Assert.Equal(2, roster.RootElement.GetProperty("rosterCount").GetInt32());
+        Assert.Contains(
+            "Galactic Republic",
+            roster.RootElement.GetProperty("availableFactions").EnumerateArray().Select(item => item.GetString()));
         Assert.Equal(1, roster.RootElement.GetProperty("total").GetInt32());
         Assert.Equal(1, roster.RootElement.GetProperty("page").GetInt32());
         Assert.Equal(1, roster.RootElement.GetProperty("pageSize").GetInt32());
@@ -76,6 +82,19 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         Assert.False(rosterUnit.GetProperty("isShip").GetBoolean());
         Assert.Equal(2, rosterUnit.GetProperty("zetaCount").GetInt32());
         Assert.Equal(1, rosterUnit.GetProperty("omicronCount").GetInt32());
+
+        using HttpResponseMessage factionResponse = await client.GetAsync(
+            $"/api/v1/players/{AllyCode}/roster?type=Character&faction=Galactic%20Republic",
+            cancellationToken);
+        using JsonDocument factionRoster = await ReadJsonAsync(factionResponse, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, factionResponse.StatusCode);
+        Assert.Equal(1, factionRoster.RootElement.GetProperty("total").GetInt32());
+        Assert.Equal(
+            "CHARACTER",
+            Assert.Single(factionRoster.RootElement.GetProperty("items").EnumerateArray().ToArray())
+                .GetProperty("definitionId")
+                .GetString());
 
         using HttpResponseMessage analysisResponse = await client.GetAsync(
             $"/api/v1/players/{AllyCode}/analysis",
@@ -203,7 +222,7 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
 
     private sealed class SwgohApiFactory(
         ISwgohPlayerClient playerClient,
-        ISwgohGameDataCatalog gameDataCatalog) : WebApplicationFactory<global::Program>
+        FakeGameDataCatalog gameDataCatalog) : WebApplicationFactory<global::Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -212,8 +231,10 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
             {
                 services.RemoveAll<ISwgohPlayerClient>();
                 services.RemoveAll<ISwgohGameDataCatalog>();
+                services.RemoveAll<IRosterGameDataCatalog>();
                 services.AddSingleton(playerClient);
-                services.AddSingleton(gameDataCatalog);
+                services.AddSingleton<ISwgohGameDataCatalog>(gameDataCatalog);
+                services.AddSingleton<IRosterGameDataCatalog>(gameDataCatalog);
             });
         }
     }
@@ -234,10 +255,14 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         }
     }
 
-    private sealed class FakeGameDataCatalog(GameDataCatalog catalog) : ISwgohGameDataCatalog
+    private sealed class FakeGameDataCatalog(GameDataCatalog catalog)
+        : ISwgohGameDataCatalog, IRosterGameDataCatalog
     {
         public Task<GameDataCatalog> GetAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(catalog);
+
+        public Task<IReadOnlyDictionary<string, GameUnitDefinition>> GetUnitsAsync(
+            CancellationToken cancellationToken = default) => Task.FromResult(catalog.Units);
     }
 
     private sealed class EnvironmentVariableScope : IDisposable
