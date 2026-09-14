@@ -1,0 +1,466 @@
+/* Tactical battle lanes for the GAC Planner.
+ * This layer only changes presentation. Planner state and actions remain unchanged.
+ */
+
+.planner-enemy-board {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ds-space-4);
+}
+
+.planner-enemy-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(205px, .9fr) minmax(235px, 1.05fr) minmax(235px, 1fr) minmax(220px, .95fr);
+    grid-template-areas:
+        "header header header header"
+        "defense counter plan result";
+    gap: 0;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-lg);
+    background: rgba(7, 16, 24, .66);
+    box-shadow: var(--ds-shadow-sm);
+    transition: border-color var(--ds-transition), box-shadow var(--ds-transition), transform var(--ds-transition);
+}
+
+.planner-enemy-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(85, 215, 255, .28);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .24);
+}
+
+.planner-enemy-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 2;
+    width: 3px;
+    background: linear-gradient(180deg, var(--ds-accent), rgba(157, 140, 255, .32));
+}
+
+.planner-enemy-card.planner-enemy-defeated::before {
+    background: var(--ds-success);
+}
+
+.planner-enemy-card-top {
+    grid-area: header;
+    min-height: 70px;
+    padding: 14px 16px 13px 18px;
+    border-bottom: 1px solid var(--ds-border);
+    background:
+        linear-gradient(90deg, rgba(85, 215, 255, .055), transparent 46%),
+        rgba(10, 23, 34, .66);
+}
+
+.planner-enemy-card-top > div {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 3px;
+    width: 100%;
+}
+
+.planner-enemy-card-top h3 {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ds-text);
+    font-size: 1.08rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.planner-enemy-card-top small {
+    grid-column: 2 / -1;
+}
+
+.planner-enemy-card-top .planner-zone-pill {
+    grid-row: 1;
+}
+
+.planner-enemy-defeated .planner-enemy-card-top {
+    background:
+        linear-gradient(90deg, var(--ds-success-soft), transparent 48%),
+        rgba(10, 23, 34, .66);
+}
+
+.planner-enemy-defeated .planner-enemy-card-top h3::after {
+    content: " · DERROTADA";
+    color: var(--ds-success);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .08em;
+}
+
+/* Step 1: enemy defense */
+.planner-enemy-card > .rich-squad {
+    grid-area: defense;
+    position: relative;
+    align-content: start;
+    align-items: flex-start;
+    min-width: 0;
+    min-height: 188px;
+    padding: 48px 14px 16px 18px;
+    border-right: 1px solid var(--ds-border);
+    background: rgba(255, 127, 145, .025);
+}
+
+.planner-enemy-card > .rich-squad::before {
+    content: "01 · DEFENSA RIVAL";
+    position: absolute;
+    top: 16px;
+    left: 18px;
+    color: var(--ds-danger);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .11em;
+}
+
+.planner-enemy-card > .rich-squad::after,
+.planner-counter-hint::after,
+.planner-attack-designer::after {
+    content: "›";
+    position: absolute;
+    top: 50%;
+    right: -10px;
+    z-index: 4;
+    display: grid;
+    width: 20px;
+    height: 28px;
+    place-items: center;
+    transform: translateY(-50%);
+    border: 1px solid var(--ds-border);
+    border-radius: 999px;
+    background: var(--ds-bg-elevated);
+    color: var(--ds-muted-2);
+    font-size: 1.05rem;
+    font-weight: 900;
+}
+
+/* Step 2: recommendation */
+.planner-enemy-card > .planner-counter-hint {
+    grid-area: counter;
+    position: relative;
+    min-width: 0;
+    min-height: 188px;
+    margin: 0;
+    padding: 48px 16px 16px;
+    border: 0;
+    border-right: 1px solid var(--ds-border);
+    border-radius: 0;
+    background: linear-gradient(180deg, rgba(105, 229, 165, .055), rgba(105, 229, 165, .018));
+}
+
+.planner-enemy-card > .planner-counter-hint::before {
+    content: "02 · COUNTER";
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    color: var(--ds-success);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .11em;
+}
+
+.planner-counter-hint-heading {
+    align-items: center;
+}
+
+.planner-counter-hint-heading span {
+    color: var(--ds-text-soft);
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.planner-counter-hint-heading strong {
+    padding: 3px 7px;
+    border: 1px solid rgba(105, 229, 165, .2);
+    border-radius: 999px;
+    background: var(--ds-success-soft);
+    color: var(--ds-success);
+    font-size: var(--ds-text-xs);
+}
+
+.planner-counter-hint .rich-squad {
+    margin-block: 4px;
+}
+
+.planner-hint-action {
+    width: 100%;
+    justify-content: center;
+    margin-top: auto;
+}
+
+/* Step 3: choose / commit the attack */
+.planner-enemy-card > .planner-attack-designer {
+    grid-area: plan;
+    position: relative;
+    min-width: 0;
+    min-height: 188px;
+    margin: 0;
+    padding: 48px 16px 16px;
+    border: 0;
+    border-right: 1px solid var(--ds-border);
+    border-radius: 0;
+    background: linear-gradient(180deg, rgba(85, 215, 255, .05), rgba(85, 215, 255, .015));
+}
+
+.planner-enemy-card > .planner-attack-designer::before {
+    content: "03 · TU PLAN";
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    color: var(--ds-accent);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .11em;
+}
+
+.planner-attack-designer-title {
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.planner-attack-designer-title strong {
+    color: var(--ds-text);
+}
+
+.planner-attack-designer-title span {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: var(--ds-accent-soft);
+    color: var(--ds-accent);
+    font-size: var(--ds-text-xs);
+    font-weight: 800;
+}
+
+.planner-attack-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+}
+
+.planner-attack-row .secondary-button {
+    width: 100%;
+    justify-content: center;
+}
+
+/* Step 4: execution / previous attempts */
+.planner-enemy-card > .planner-attempt-list {
+    grid-area: result;
+    position: relative;
+    display: grid;
+    align-content: start;
+    min-width: 0;
+    min-height: 188px;
+    margin: 0;
+    padding: 48px 16px 16px;
+    gap: 9px;
+    background: rgba(157, 140, 255, .025);
+}
+
+.planner-enemy-card > .planner-attempt-list::before {
+    content: "04 · EJECUCIÓN";
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    color: var(--ds-violet);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .11em;
+}
+
+.planner-attempt {
+    padding: 10px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm);
+    background: rgba(4, 12, 19, .38);
+}
+
+.planner-attempt > div:first-child {
+    min-width: 0;
+}
+
+.planner-attempt > div:first-child > span {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+    font-weight: 800;
+}
+
+.planner-attempt > div:first-child > strong {
+    display: block;
+    overflow: hidden;
+    color: var(--ds-text);
+    font-size: var(--ds-text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.planner-attempt-planned {
+    border-color: rgba(85, 215, 255, .22);
+    background: var(--ds-accent-soft);
+}
+
+.planner-attempt-win,
+.planner-attempt-won,
+.planner-attempt-success {
+    border-color: rgba(105, 229, 165, .28);
+    background: var(--ds-success-soft);
+}
+
+.planner-attempt-loss,
+.planner-attempt-lost,
+.planner-attempt-failed {
+    border-color: rgba(255, 127, 145, .25);
+    background: var(--ds-danger-soft);
+}
+
+.planner-attempt-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.planner-attempt-actions .button-link {
+    min-height: 36px;
+    justify-content: center;
+    padding-inline: 9px;
+    font-size: var(--ds-text-xs);
+}
+
+.planner-attempt-actions button:not(.button-link) {
+    width: 36px;
+    min-height: 36px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm);
+    background: var(--ds-surface-soft);
+    color: var(--ds-muted);
+    cursor: pointer;
+}
+
+.planner-attempt-actions button:not(.button-link):hover {
+    border-color: rgba(255, 127, 145, .32);
+    background: var(--ds-danger-soft);
+    color: var(--ds-danger);
+}
+
+/* If there are no hints/attempts the existing controls still sit in their fixed tactical phase,
+   making missing information obvious instead of collapsing the whole card. */
+.planner-enemy-card:not(:has(.planner-counter-hint)) > .planner-attack-designer {
+    grid-column: 2 / 4;
+}
+
+.planner-enemy-card:not(:has(.planner-attempt-list)) > .planner-attack-designer {
+    border-right: 0;
+}
+
+.planner-enemy-card:not(:has(.planner-attempt-list))::after {
+    content: "04 · SIN RESULTADOS";
+    grid-area: result;
+    align-self: stretch;
+    display: grid;
+    min-height: 188px;
+    padding: 48px 16px 16px;
+    place-items: start;
+    color: var(--ds-muted-2);
+    font-size: var(--ds-text-xs);
+    font-weight: 850;
+    letter-spacing: .1em;
+    background: rgba(157, 140, 255, .018);
+}
+
+.planner-enemy-card.planner-enemy-defeated:not(:has(.planner-attempt-list))::after {
+    content: "04 · COMPLETADA";
+    color: var(--ds-success);
+    background: var(--ds-success-soft);
+}
+
+/* Keep portraits readable inside narrower tactical columns. */
+.planner-enemy-card .rich-squad {
+    flex-wrap: wrap;
+    row-gap: 8px;
+}
+
+.planner-enemy-card .rich-unit-portrait {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 1380px) {
+    .planner-enemy-card {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+            "header header"
+            "defense counter"
+            "plan result";
+    }
+
+    .planner-enemy-card > .rich-squad,
+    .planner-enemy-card > .planner-counter-hint {
+        border-bottom: 1px solid var(--ds-border);
+    }
+
+    .planner-enemy-card > .planner-counter-hint,
+    .planner-enemy-card > .planner-attempt-list {
+        border-right: 0;
+    }
+
+    .planner-enemy-card > .planner-attack-designer {
+        border-right: 1px solid var(--ds-border);
+    }
+
+    .planner-counter-hint::after {
+        display: none;
+    }
+
+    .planner-enemy-card:not(:has(.planner-counter-hint)) > .planner-attack-designer {
+        grid-column: auto;
+    }
+}
+
+@media (max-width: 760px) {
+    .planner-enemy-card {
+        display: block;
+    }
+
+    .planner-enemy-card-top {
+        min-height: 0;
+    }
+
+    .planner-enemy-card > .rich-squad,
+    .planner-enemy-card > .planner-counter-hint,
+    .planner-enemy-card > .planner-attack-designer,
+    .planner-enemy-card > .planner-attempt-list,
+    .planner-enemy-card:not(:has(.planner-attempt-list))::after {
+        min-height: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--ds-border);
+    }
+
+    .planner-enemy-card > .planner-attempt-list,
+    .planner-enemy-card:not(:has(.planner-attempt-list))::after {
+        border-bottom: 0;
+    }
+
+    .planner-enemy-card > .rich-squad::after,
+    .planner-counter-hint::after,
+    .planner-attack-designer::after {
+        top: auto;
+        right: 50%;
+        bottom: -11px;
+        width: 28px;
+        height: 20px;
+        transform: translateX(50%) rotate(90deg);
+    }
+
+    .planner-enemy-card-top > div {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .planner-enemy-card-top small {
+        grid-column: 1 / -1;
+    }
+}
