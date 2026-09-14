@@ -1,3 +1,5 @@
+using System.Threading.Channels;
+
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Swgoh.Application.Gac;
@@ -56,6 +58,39 @@ public sealed class BackgroundGacOpponentSourceTests
         }
     }
 
+    [Fact]
+    public async Task Invalidate_DiscardsResultFromOlderGeneration()
+    {
+        var provider = new SequencedDeferredSource();
+        using var worker = new BackgroundGacOpponentSource(provider, NullLogger<BackgroundGacOpponentSource>.Instance);
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await worker.StartAsync(token);
+        try
+        {
+            Assert.Equal(CurrentGacOpponentStatus.Pending, (await worker.GetAsync(476825771, null, token)).Status);
+            SequencedDeferredSource.Invocation first = await provider.ReadNextAsync(token);
+
+            worker.Invalidate(476825771);
+            Assert.Equal(CurrentGacOpponentStatus.Pending, (await worker.GetAsync(476825771, null, token)).Status);
+
+            var stale = CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.PlayerNotJoined, "Stale result");
+            first.Result.SetResult(stale);
+
+            SequencedDeferredSource.Invocation second = await provider.ReadNextAsync(token);
+            var fresh = CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.NoActiveEvent, "Fresh result");
+            second.Result.SetResult(fresh);
+
+            CurrentGacOpponentLookup actual = await WaitForResultAsync(worker, token).WaitAsync(TimeSpan.FromSeconds(5), token);
+            Assert.Same(fresh, actual);
+            Assert.NotSame(stale, actual);
+            Assert.Equal(2, provider.Calls);
+        }
+        finally
+        {
+            await worker.StopAsync(token);
+        }
+    }
+
     private static async Task<CurrentGacOpponentLookup> WaitForResultAsync(BackgroundGacOpponentSource worker, CancellationToken token)
     {
         while (true)
@@ -84,5 +119,29 @@ public sealed class BackgroundGacOpponentSourceTests
             Started.SetResult();
             return Result.Task.WaitAsync(cancellationToken);
         }
+    }
+
+    private sealed class SequencedDeferredSource : ICurrentGacOpponentSource
+    {
+        private readonly Channel<Invocation> invocations = Channel.CreateUnbounded<Invocation>();
+        private int calls;
+
+        public int Calls => Volatile.Read(ref calls);
+
+        public Task<CurrentGacOpponentLookup> GetAsync(
+            long allyCode,
+            GacFormat? formatOverride,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref calls);
+            var invocation = new Invocation(new TaskCompletionSource<CurrentGacOpponentLookup>(TaskCreationOptions.RunContinuationsAsynchronously));
+            invocations.Writer.TryWrite(invocation);
+            return invocation.Result.Task.WaitAsync(cancellationToken);
+        }
+
+        public ValueTask<Invocation> ReadNextAsync(CancellationToken cancellationToken) =>
+            invocations.Reader.ReadAsync(cancellationToken);
+
+        public sealed record Invocation(TaskCompletionSource<CurrentGacOpponentLookup> Result);
     }
 }
