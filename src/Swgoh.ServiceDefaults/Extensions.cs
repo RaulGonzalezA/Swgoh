@@ -12,6 +12,8 @@ namespace Microsoft.Extensions.Hosting;
 
 public static class Extensions
 {
+    private const string GacTelemetryName = "Swgoh.Gac";
+
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         bool useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
@@ -31,6 +33,7 @@ public static class Extensions
             .WithMetrics(metrics =>
             {
                 metrics
+                    .AddMeter(GacTelemetryName)
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation();
@@ -43,6 +46,7 @@ public static class Extensions
             .WithTracing(tracing =>
             {
                 tracing
+                    .AddSource(GacTelemetryName)
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
 
