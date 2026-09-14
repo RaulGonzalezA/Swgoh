@@ -53,6 +53,7 @@ internal static class PlayerEndpoints
         int? minRelic,
         bool? hasZeta,
         bool? hasOmicron,
+        string? faction,
         PlayerRosterSortField? orderBy,
         PlayerRosterSortDirection? direction,
         IPlayerRosterService service,
@@ -61,16 +62,17 @@ internal static class PlayerEndpoints
         try
         {
             var query = new PlayerRosterQuery(
-                page ?? 1,
-                pageSize ?? 50,
-                search,
-                type ?? PlayerRosterUnitType.All,
-                minRarity,
-                minRelic,
-                hasZeta,
-                hasOmicron,
-                orderBy ?? PlayerRosterSortField.GalacticPower,
-                direction ?? PlayerRosterSortDirection.Descending);
+                Page: page ?? 1,
+                PageSize: pageSize ?? 50,
+                Search: search,
+                Type: type ?? PlayerRosterUnitType.All,
+                MinRarity: minRarity,
+                MinRelic: minRelic,
+                HasZeta: hasZeta,
+                HasOmicron: hasOmicron,
+                OrderBy: orderBy ?? PlayerRosterSortField.GalacticPower,
+                Direction: direction ?? PlayerRosterSortDirection.Descending,
+                Faction: faction);
 
             PlayerRosterPage? roster = await service.GetAsync(allyCode, query, cancellationToken);
             return roster is null ? Results.NotFound() : Results.Ok(RosterPageResponse.From(roster));
@@ -182,7 +184,11 @@ internal static class PlayerEndpoints
         int Page,
         int PageSize,
         int TotalPages,
-        IReadOnlyCollection<EnrichedRosterUnitResponse> Items)
+        IReadOnlyCollection<EnrichedRosterUnitResponse> Items,
+        string? PlayerName,
+        long GalacticPower,
+        int RosterCount,
+        IReadOnlyCollection<string> AvailableFactions)
     {
         public static RosterPageResponse From(PlayerRosterPage roster) => new(
             roster.AllyCode,
@@ -191,7 +197,11 @@ internal static class PlayerEndpoints
             roster.Page,
             roster.PageSize,
             roster.TotalPages,
-            [.. roster.Items.Select(EnrichedRosterUnitResponse.From)]);
+            [.. roster.Items.Select(EnrichedRosterUnitResponse.From)],
+            roster.PlayerName,
+            roster.GalacticPower,
+            roster.RosterCount,
+            roster.FactionOptions);
     }
 
     internal sealed record EnrichedRosterUnitResponse(
