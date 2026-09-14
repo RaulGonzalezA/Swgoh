@@ -13,6 +13,7 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<PlayerRefreshLock>();
+        services.AddSingleton<PlayerRosterSnapshotCache>();
         services.AddScoped<IPlayerProfileService, PlayerProfileService>();
         services.AddScoped<IPlayerAnalysisService, PlayerAnalysisService>();
         services.AddScoped<IPlayerHistoryService, PlayerHistoryService>();
