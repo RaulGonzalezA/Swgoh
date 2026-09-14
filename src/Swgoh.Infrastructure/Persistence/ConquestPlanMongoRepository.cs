@@ -113,6 +113,11 @@ internal sealed class ConquestPlanMongoRepository(
                 DiskIds = [.. loadout.DiskIds.Select(id => id.ToString("D"))]
             })
         ],
+        AvailableEnergy = plan.AvailableEnergy,
+        EnergyCostPerBattle = plan.EnergyCostPerBattle,
+        CurrentRewardPoints = plan.CurrentRewardPoints,
+        TargetRewardPoints = plan.TargetRewardPoints,
+        RewardTargetName = plan.RewardTargetName,
         CreatedAtUtc = plan.CreatedAtUtc,
         UpdatedAtUtc = plan.UpdatedAtUtc
     };
@@ -164,6 +169,12 @@ internal sealed class ConquestPlanMongoRepository(
                 Guid.ParseExact(loadout.Id, "D"),
                 loadout.Name,
                 loadout.DiskIds.Select(id => Guid.ParseExact(id, "D")))));
+        plan.RestoreDailyGoal(
+            document.AvailableEnergy,
+            document.EnergyCostPerBattle ?? ConquestPlan.DefaultEnergyCostPerBattle,
+            document.CurrentRewardPoints ?? 0,
+            document.TargetRewardPoints,
+            document.RewardTargetName);
         return plan;
     }
 }
