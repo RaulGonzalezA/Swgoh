@@ -17,12 +17,15 @@ internal static class GacScoutingCacheEndpoints
         group.MapPost(
                 "/players/{allyCode:long}/current-opponent/scouting/refresh",
                 RefreshScouting)
-            .WithSummary("Invalidate cached scouting for the active GAC matchup");
+            .WithSummary("Invalidate cached opponent and scouting data for the active GAC matchup");
 
         return endpoints;
     }
 
-    private static IResult RefreshScouting(long allyCode, ICurrentGacScoutingCache cache)
+    private static IResult RefreshScouting(
+        long allyCode,
+        ICurrentGacScoutingCache scoutingCache,
+        ICurrentGacOpponentCache opponentCache)
     {
         if (allyCode is < 100_000_000 or > 999_999_999)
         {
@@ -32,7 +35,8 @@ internal static class GacScoutingCacheEndpoints
             });
         }
 
-        cache.Invalidate(allyCode);
+        opponentCache.Invalidate(allyCode);
+        scoutingCache.Invalidate(allyCode);
         return Results.NoContent();
     }
 }
