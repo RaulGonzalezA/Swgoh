@@ -31,7 +31,7 @@
     @if (_loadingProfile)
     {
         <UiLoadingState Title="Cargando roster…"
-                        Description="Perfil, análisis y contexto de Gran Arena"
+                        Description="Unidades, análisis y contexto de Gran Arena"
                         Class="roster-inline-state" />
     }
     else if (_error is not null)
@@ -78,7 +78,7 @@
 
         <UiCard Kicker="Explorar"
                 Title="Filtra el roster"
-                Subtitle="Busca por nombre, tipo, reliquia o habilidades sin perder el contexto táctico de cada unidad."
+                Subtitle="Busca por nombre, tipo, facción, reliquia o habilidades sin perder el contexto táctico de cada unidad."
                 Class="roster-filter-card">
             <HeaderActions>
                 @if (_roster is not null)
@@ -98,6 +98,19 @@
                             <option value="All">Todo</option>
                             <option value="Character">Personajes</option>
                             <option value="Ship">Naves</option>
+                        </select>
+                    </label>
+                    <label for="unitFaction">
+                        <span>Facción</span>
+                        <select id="unitFaction" @bind="_faction">
+                            <option value="">Todas</option>
+                            @if (_roster is not null)
+                            {
+                                @foreach (string faction in _roster.FactionOptions)
+                                {
+                                    <option value="@faction">@faction</option>
+                                }
+                            }
                         </select>
                     </label>
                     <label for="minRelic">
@@ -214,13 +227,14 @@
     [Parameter]
     public long AllyCode { get; set; }
 
-    private PlayerApiClient.PlayerViewModel? _player;
+    private RosterPlayerSummary? _player;
     private PlayerApiClient.PlayerRosterAnalysisViewModel? _analysis;
     private PlayerApiClient.RosterPageViewModel? _roster;
     private GacApiClient.CurrentGacBattlePlanViewModel? _currentGacPlan;
     private PlayerApiClient.RosterUnitViewModel? _selectedUnit;
     private string _search = string.Empty;
     private string _type = "All";
+    private string _faction = string.Empty;
     private string _minRelic = string.Empty;
     private string _abilityFilter = "All";
     private string _orderBy = "GalacticPower";
@@ -240,6 +254,7 @@
     private bool HasActiveFilters =>
         !string.IsNullOrWhiteSpace(_search) ||
         _type != "All" ||
+        !string.IsNullOrWhiteSpace(_faction) ||
         !string.IsNullOrWhiteSpace(_minRelic) ||
         _abilityFilter != "All" ||
         _orderBy != "GalacticPower" ||
@@ -253,6 +268,11 @@
             if (_type != "All")
             {
                 parts.Add(_type == "Ship" ? "naves" : "personajes");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_faction))
+            {
+                parts.Add(_faction);
             }
 
             if (!string.IsNullOrWhiteSpace(_minRelic))
@@ -276,28 +296,24 @@
         _error = null;
         _selectedUnit = null;
         _currentGacPlan = null;
-        try
-        {
-            _player = await PlayerClient.GetAsync(AllyCode);
-            if (_player is null)
-            {
-                return;
-            }
+        _player = null;
+        _roster = null;
+        _page = 1;
 
-            _loadingProfile = false;
-            await InvokeAsync(StateHasChanged);
-            _ = LoadAnalysisAsync();
-            _ = LoadRosterAsync();
-            _ = LoadCurrentGacContextAsync();
-        }
-        catch (HttpRequestException)
+        _ = LoadAnalysisAsync();
+        _ = LoadCurrentGacContextAsync();
+
+        await LoadRosterAsync();
+        if (_roster is not null)
         {
-            _error = "La API no está disponible en este momento.";
+            _player = new RosterPlayerSummary(
+                _roster.AllyCode,
+                _roster.PlayerName ?? $"Jugador #{FormatAllyCode(_roster.AllyCode)}",
+                _roster.GalacticPower,
+                _roster.RosterCount);
         }
-        finally
-        {
-            _loadingProfile = false;
-        }
+
+        _loadingProfile = false;
     }
 
     private async Task LoadCurrentGacContextAsync()
@@ -339,6 +355,7 @@
     {
         _search = string.Empty;
         _type = "All";
+        _faction = string.Empty;
         _minRelic = string.Empty;
         _abilityFilter = "All";
         _orderBy = "GalacticPower";
@@ -387,7 +404,8 @@
                 hasZeta: hasZeta,
                 hasOmicron: hasOmicron,
                 orderBy: _orderBy,
-                direction: _direction);
+                direction: _direction,
+                faction: _faction);
         }
         catch (HttpRequestException)
         {
@@ -509,4 +527,10 @@
         string value = allyCode.ToString("000000000");
         return $"{value[..3]}-{value[3..6]}-{value[6..]}";
     }
+
+    private sealed record RosterPlayerSummary(
+        long AllyCode,
+        string Name,
+        long GalacticPower,
+        int RosterCount);
 }
