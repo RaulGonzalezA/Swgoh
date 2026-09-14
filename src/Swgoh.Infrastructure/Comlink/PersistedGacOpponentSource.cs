@@ -14,7 +14,7 @@ internal sealed class PersistedGacOpponentSource(
     BackgroundGacOpponentSource fallback,
     IGacBracketLocationRepository locations,
     IHttpClientFactory httpClientFactory,
-    ILogger<PersistedGacOpponentSource> logger) : ICurrentGacOpponentSource
+    ILogger<PersistedGacOpponentSource> logger) : ICurrentGacOpponentSource, ICurrentGacOpponentCache
 {
     private static readonly TimeSpan ResultCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PersistedAttemptDuration = TimeSpan.FromMinutes(1);
@@ -94,6 +94,23 @@ internal sealed class PersistedGacOpponentSource(
         }
 
         return lookup;
+    }
+
+    public void Invalidate(long allyCode)
+    {
+        string prefix = $"{allyCode}:";
+        foreach (string key in resultCache.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            resultCache.TryRemove(key, out _);
+        }
+
+        foreach (string key in persistedAttempts.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            persistedAttempts.TryRemove(key, out _);
+        }
+
+        fallback.Invalidate(allyCode);
+        logger.LogInformation("Invalidated GAC opponent caches for {AllyCode}", allyCode);
     }
 
     private async Task<CurrentGacOpponentLookup?> TryResolvePersistedAsync(
