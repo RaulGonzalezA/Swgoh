@@ -29,22 +29,16 @@ jobs:
           docker logs comlink
           exit 1
 
-      - name: Compare playerArena payloads
+      - name: Compare player context payloads
         run: |
           python3 - <<'PY'
           import json
           import urllib.request
 
-          def post(details_only):
-              data = json.dumps({
-                  "payload": {
-                      "allyCode": "476825771",
-                      "playerDetailsOnly": details_only,
-                  },
-                  "enums": False,
-              }).encode()
+          def post(path, payload):
+              data = json.dumps({"payload": payload, "enums": False}).encode()
               request = urllib.request.Request(
-                  "http://127.0.0.1:3000/playerArena",
+                  f"http://127.0.0.1:3000/{path}",
                   data=data,
                   headers={"Content-Type": "application/json"},
                   method="POST",
@@ -53,15 +47,30 @@ jobs:
                   return json.load(response)
 
           for details_only in (True, False):
-              value = post(details_only)
+              value = post("playerArena", {
+                  "allyCode": "476825771",
+                  "playerDetailsOnly": details_only,
+              })
               seasons = value.get("seasonStatus") or []
               print(json.dumps({
+                  "source": "playerArena",
                   "playerDetailsOnly": details_only,
                   "rootKeys": sorted(value.keys()),
                   "playerRating": value.get("playerRating"),
                   "seasonStatusCount": len(seasons) if isinstance(seasons, list) else 1,
                   "seasonStatus": seasons,
               }, indent=2))
+
+          player = post("player", {"allyCode": "476825771"})
+          seasons = player.get("seasonStatus") or []
+          print(json.dumps({
+              "source": "player",
+              "rootKeys": sorted(player.keys()),
+              "playerRating": player.get("playerRating"),
+              "seasonStatusCount": len(seasons) if isinstance(seasons, list) else 1,
+              "seasonStatus": seasons,
+              "rosterUnitCount": len(player.get("rosterUnit") or []),
+          }, indent=2))
           PY
 
       - name: Cleanup
