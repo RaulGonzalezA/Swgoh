@@ -63,61 +63,47 @@ internal sealed class CurrentGacScoutingService(
             historyRoundLimit,
             warnings,
             cancellationToken);
-        Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = TryCounterStatisticsAsync(
-            opponent.Format,
-            warnings,
-            cancellationToken);
-        Task<PlayerProfile?> refreshedOpponentTask = RefreshOrFallbackAsync(
-            opponent.OpponentAllyCode,
-            "rival",
-            warnings,
-            cancellationToken);
-        Task<PlayerProfile?> refreshedPlayerTask = RefreshOrFallbackAsync(
-            allyCode,
-            "jugador",
-            warnings,
-            cancellationToken);
-
-        await Task.WhenAll(refreshedOpponentTask, refreshedPlayerTask).ConfigureAwait(false);
-
-        PlayerProfile? refreshedOpponent = await refreshedOpponentTask.ConfigureAwait(false);
-        PlayerProfile? refreshedPlayer = await refreshedPlayerTask.ConfigureAwait(false);
-
-        Task<PlayerRosterSnapshot?> opponentSnapshotTask = TrySnapshotAsync(
-            opponent.OpponentAllyCode,
-            "rival",
-            warnings,
-            cancellationToken);
-        Task<PlayerRosterSnapshot?> playerSnapshotTask = TrySnapshotAsync(
-            allyCode,
-            "jugador",
-            warnings,
-            cancellationToken);
         Task<OpponentScoutingReport?> historicalScoutingTask = TryHistoricalScoutingAfterSyncAsync(
             opponent,
             historyRoundLimit,
             historySyncTask,
             warnings,
             cancellationToken);
+        Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = TryCounterStatisticsAsync(
+            opponent.Format,
+            warnings,
+            cancellationToken);
+        Task<PlayerRosterContext> opponentDataTask = RefreshAndSnapshotAsync(
+            opponent.OpponentAllyCode,
+            "rival",
+            warnings,
+            cancellationToken);
+        Task<PlayerRosterContext> playerDataTask = RefreshAndSnapshotAsync(
+            allyCode,
+            "jugador",
+            warnings,
+            cancellationToken);
 
         await Task.WhenAll(
             historySyncTask,
+            historicalScoutingTask,
             counterStatisticsTask,
-            opponentSnapshotTask,
-            playerSnapshotTask,
-            historicalScoutingTask).ConfigureAwait(false);
+            opponentDataTask,
+            playerDataTask).ConfigureAwait(false);
 
         GacHistorySyncResult? historySync = await historySyncTask.ConfigureAwait(false);
-        IReadOnlyCollection<GacCounterStatistics> counterStatistics = await counterStatisticsTask.ConfigureAwait(false);
-        PlayerRosterSnapshot? opponentSnapshot = await opponentSnapshotTask.ConfigureAwait(false);
-        PlayerRosterSnapshot? playerSnapshot = await playerSnapshotTask.ConfigureAwait(false);
         OpponentScoutingReport? historicalScouting = await historicalScoutingTask.ConfigureAwait(false);
+        IReadOnlyCollection<GacCounterStatistics> counterStatistics = await counterStatisticsTask.ConfigureAwait(false);
+        PlayerRosterContext opponentData = await opponentDataTask.ConfigureAwait(false);
+        PlayerRosterContext playerData = await playerDataTask.ConfigureAwait(false);
 
-        CurrentOpponentRosterScouting? rosterScouting = BuildRosterScouting(refreshedOpponent, opponentSnapshot);
+        CurrentOpponentRosterScouting? rosterScouting = BuildRosterScouting(
+            opponentData.Profile,
+            opponentData.Snapshot);
         CurrentGacBattlePlan? battlePlan = BuildBattlePlan(
             opponent,
-            refreshedPlayer,
-            playerSnapshot,
+            playerData.Profile,
+            playerData.Snapshot,
             rosterScouting,
             historicalScouting,
             counterStatistics,
@@ -130,6 +116,27 @@ internal sealed class CurrentGacScoutingService(
             battlePlan,
             historySync,
             [.. warnings]);
+    }
+
+    private async Task<PlayerRosterContext> RefreshAndSnapshotAsync(
+        long allyCode,
+        string label,
+        ConcurrentQueue<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        PlayerProfile? profile = await RefreshOrFallbackAsync(
+            allyCode,
+            label,
+            warnings,
+            cancellationToken).ConfigureAwait(false);
+
+        PlayerRosterSnapshot? snapshot = await TrySnapshotAsync(
+            allyCode,
+            label,
+            warnings,
+            cancellationToken).ConfigureAwait(false);
+
+        return new PlayerRosterContext(profile, snapshot);
     }
 
     private async Task<PlayerProfile?> RefreshOrFallbackAsync(
@@ -361,4 +368,6 @@ internal sealed class CurrentGacScoutingService(
 
     private static bool IsGalacticLegend(PlayerRosterUnit unit) =>
         unit.Tags.Any(tag => tag.Contains("galactic_legend", StringComparison.OrdinalIgnoreCase));
+
+    private sealed record PlayerRosterContext(PlayerProfile? Profile, PlayerRosterSnapshot? Snapshot);
 }
