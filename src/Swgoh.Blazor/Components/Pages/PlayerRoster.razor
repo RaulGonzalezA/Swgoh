@@ -5,252 +5,201 @@
 
 <PageTitle>@(_player is null ? "Roster" : $"{_player.Name} · Roster") · SWGOH Planner</PageTitle>
 
-<div class="page-heading-row roster-heading">
-    <div>
-        <a class="back-link" href="/">← Dashboard</a>
-        <span class="eyebrow">Roster explorer</span>
-        <h1>@(_player?.Name ?? "Roster del jugador")</h1>
-        @if (_player is not null)
-        {
-            <p class="page-lead">@_player.GalacticPower.ToString("N0") GP · @_player.RosterCount unidades · #@FormatAllyCode(_player.AllyCode)</p>
-        }
-    </div>
-    @if (_analysis is not null)
-    {
-        <div class="heading-stat">
-            <span>R7+</span>
-            <strong>@_analysis.Relic7Plus</strong>
-            <small>@_analysis.Omicrons omicrons</small>
-        </div>
-    }
-</div>
-
-@if (_player is not null)
-{
-    <nav class="player-subnav" aria-label="Secciones del jugador">
-        <a class="active" href="@($"/player/{AllyCode}")">Roster</a>
-        <a href="@($"/gac/{AllyCode}")">Gran Arena</a>
-    </nav>
-}
-
-@if (_loadingProfile)
-{
-    <div class="loading-panel"><span class="spinner"></span> Cargando roster…</div>
-}
-else if (_error is not null)
-{
-    <div class="status-card status-error" role="alert">
-        <span class="status-icon">!</span>
-        <div><strong>No se ha podido cargar el roster</strong><p>@_error</p></div>
-    </div>
-}
-else if (_player is null)
-{
-    <div class="status-card"><span class="status-icon">?</span><div><strong>Jugador no encontrado</strong><p>Vuelve al dashboard y comprueba el Ally Code.</p></div></div>
-}
-else
-{
-    @if (_analysis is not null)
-    {
-        <section class="roster-overview" aria-label="Resumen del roster">
-            <div>
-                <span>Personajes</span>
-                <strong>@_analysis.CharacterCount</strong>
-                <small>@CompactNumber(_analysis.CharacterGalacticPower) GP</small>
-            </div>
-            <div>
-                <span>Naves</span>
-                <strong>@_analysis.ShipCount</strong>
-                <small>@CompactNumber(_analysis.ShipGalacticPower) GP</small>
-            </div>
-            <div>
-                <span>Reliquias</span>
-                <strong>@_analysis.RelicCharacters</strong>
-                <small>@_analysis.Relic9Plus R9+ · @_analysis.Relic10 R10</small>
-            </div>
-            <div>
-                <span>Habilidades</span>
-                <strong>@_analysis.Omicrons O</strong>
-                <small>@_analysis.Zetas zetas</small>
-            </div>
-            <div>
-                <span>Mods completos</span>
-                <strong>@_analysis.FullyModdedCharacters</strong>
-                <small>@_analysis.UnmoddedCharacters sin mods</small>
-            </div>
-        </section>
-    }
-
-    <section class="roster-toolbar roster-toolbar-v2">
-        <form class="roster-filters roster-filters-v2" @onsubmit="LoadFirstPageAsync" @onsubmit:preventDefault>
-            <div class="filter-search filter-search-wide">
-                <label for="unitSearch">Buscar</label>
-                <input id="unitSearch" placeholder="Nombre de personaje o nave…" @bind="_search" />
-            </div>
-            <div class="filter-select">
-                <label for="unitType">Tipo</label>
-                <select id="unitType" @bind="_type">
-                    <option value="All">Todo</option>
-                    <option value="Character">Personajes</option>
-                    <option value="Ship">Naves</option>
-                </select>
-            </div>
-            <div class="filter-select">
-                <label for="minRelic">Reliquia mínima</label>
-                <select id="minRelic" @bind="_minRelic">
-                    <option value="">Cualquiera</option>
-                    <option value="1">R1+</option>
-                    <option value="5">R5+</option>
-                    <option value="7">R7+</option>
-                    <option value="8">R8+</option>
-                    <option value="9">R9+</option>
-                    <option value="10">R10</option>
-                </select>
-            </div>
-            <div class="filter-select">
-                <label for="abilityFilter">Habilidad</label>
-                <select id="abilityFilter" @bind="_abilityFilter">
-                    <option value="All">Todas</option>
-                    <option value="Zeta">Con zeta</option>
-                    <option value="Omicron">Con omicron</option>
-                </select>
-            </div>
-            <div class="filter-select">
-                <label for="sortBy">Ordenar</label>
-                <select id="sortBy" @bind="_orderBy">
-                    <option value="GalacticPower">Poder galáctico</option>
-                    <option value="RelicTier">Reliquia</option>
-                    <option value="Rarity">Estrellas</option>
-                    <option value="GearTier">Gear</option>
-                    <option value="Name">Nombre</option>
-                </select>
-            </div>
-            <div class="filter-select filter-direction">
-                <label for="sortDirection">Dirección</label>
-                <select id="sortDirection" @bind="_direction">
-                    <option value="Descending">Mayor primero</option>
-                    <option value="Ascending">Menor primero</option>
-                </select>
-            </div>
-            <div class="filter-actions">
-                <button class="secondary-button" type="submit" disabled="@_loadingRoster">Aplicar</button>
-                @if (HasActiveFilters)
-                {
-                    <button class="ghost-button" type="button" @onclick="ResetFiltersAsync" disabled="@_loadingRoster">Limpiar</button>
-                }
-            </div>
-        </form>
-
-        <div class="roster-result-summary">
-            @if (_roster is not null)
+<section class="roster-page">
+    <UiPageHeader Kicker="Roster explorer"
+                  Title="@(_player?.Name ?? "Roster del jugador")"
+                  Description="@RosterDescription"
+                  BackHref="/"
+                  BackText="Inicio">
+        <Actions>
+            @if (_analysis is not null)
             {
-                <strong>@_roster.Total.ToString("N0")</strong>
-                <span>resultados</span>
-                <small>@ActiveFilterSummary</small>
+                <UiStatusPill Label="@($"R7+ · {_analysis.Relic7Plus}")" Tone="accent" ShowDot="true" />
+                <UiStatusPill Label="@($"{_analysis.Omicrons} omicrons")" Tone="neutral" />
             }
-        </div>
-    </section>
+        </Actions>
+    </UiPageHeader>
 
-    @if (_loadingRoster)
+    @if (_player is not null)
     {
-        <div class="loading-panel"><span class="spinner"></span> Actualizando resultados…</div>
+        <nav class="player-subnav" aria-label="Secciones del jugador">
+            <a class="active" href="@($"/player/{AllyCode}")">Roster</a>
+            <a href="@($"/gac/{AllyCode}")">Gran Arena</a>
+        </nav>
     }
-    else if (_roster is null || _roster.Items.Count == 0)
+
+    @if (_loadingProfile)
     {
-        <div class="empty-state">
-            <span class="empty-icon">⌕</span>
-            <h2>Sin resultados</h2>
-            <p>No hay unidades que coincidan con estos filtros. Limpia alguno o prueba otra búsqueda.</p>
-            @if (HasActiveFilters)
-            {
-                <button class="secondary-button" type="button" @onclick="ResetFiltersAsync">Limpiar filtros</button>
-            }
-        </div>
+        <UiLoadingState Title="Cargando roster…"
+                        Description="Perfil, análisis y contexto de Gran Arena"
+                        Class="roster-inline-state" />
+    }
+    else if (_error is not null)
+    {
+        <UiAlert Tone="danger"
+                 Icon="!"
+                 Title="No se ha podido cargar el roster"
+                 Description="@_error" />
+    }
+    else if (_player is null)
+    {
+        <UiEmptyState Icon="?"
+                      Title="Jugador no encontrado"
+                      Description="Vuelve al inicio y comprueba el Ally Code.">
+            <Actions>
+                <a class="primary-button" href="/">Volver al inicio</a>
+            </Actions>
+        </UiEmptyState>
     }
     else
     {
-        <div class="collection-heading-row">
-            <div>
-                <span class="section-kicker">Colección</span>
-                <h2>Unidades del roster</h2>
+        @if (_analysis is not null)
+        {
+            <div class="roster-metrics" aria-label="Resumen del roster">
+                <UiMetric Label="Personajes"
+                          Value="@(_analysis.CharacterCount.ToString("N0"))"
+                          Hint="@($"{CompactNumber(_analysis.CharacterGalacticPower)} GP")"
+                          Tone="accent" />
+                <UiMetric Label="Naves"
+                          Value="@(_analysis.ShipCount.ToString("N0"))"
+                          Hint="@($"{CompactNumber(_analysis.ShipGalacticPower)} GP")" />
+                <UiMetric Label="Reliquias"
+                          Value="@(_analysis.RelicCharacters.ToString("N0"))"
+                          Hint="@($"{_analysis.Relic9Plus} R9+ · {_analysis.Relic10} R10")" />
+                <UiMetric Label="Habilidades"
+                          Value="@($"{_analysis.Omicrons} O")"
+                          Hint="@($"{_analysis.Zetas} zetas")" />
+                <UiMetric Label="Mods completos"
+                          Value="@(_analysis.FullyModdedCharacters.ToString("N0"))"
+                          Hint="@($"{_analysis.UnmoddedCharacters} sin mods")"
+                          Tone="success" />
             </div>
-            <small>Abre una ficha para ver progreso y contexto de Gran Arena.</small>
-        </div>
+        }
 
-        <div class="roster-grid roster-grid-v2 roster-collection-grid">
-            @foreach (PlayerApiClient.RosterUnitViewModel unit in _roster.Items)
-            {
-                string? portraitUrl = GetPortraitUrl(unit.ThumbnailName);
-                <article class="unit-card unit-card-v2 unit-card-collection" @key="unit.Id">
-                    <div class="unit-portrait-shell @(unit.IsShip ? "unit-portrait-ship" : string.Empty)">
-                        <span class="unit-portrait-fallback" aria-hidden="true">@Initial(unit.Name)</span>
-                        @if (portraitUrl is not null)
+        <UiCard Kicker="Explorar"
+                Title="Filtra el roster"
+                Subtitle="Busca por nombre, tipo, reliquia o habilidades sin perder el contexto táctico de cada unidad."
+                Class="roster-filter-card">
+            <HeaderActions>
+                @if (_roster is not null)
+                {
+                    <UiStatusPill Label="@($"{_roster.Total:N0} resultados")" Tone="accent" />
+                }
+            </HeaderActions>
+            <ChildContent>
+                <form class="roster-filters" @onsubmit="LoadFirstPageAsync" @onsubmit:preventDefault>
+                    <label class="roster-search" for="unitSearch">
+                        <span>Buscar</span>
+                        <input id="unitSearch" placeholder="Nombre de personaje o nave…" @bind="_search" />
+                    </label>
+                    <label for="unitType">
+                        <span>Tipo</span>
+                        <select id="unitType" @bind="_type">
+                            <option value="All">Todo</option>
+                            <option value="Character">Personajes</option>
+                            <option value="Ship">Naves</option>
+                        </select>
+                    </label>
+                    <label for="minRelic">
+                        <span>Reliquia mínima</span>
+                        <select id="minRelic" @bind="_minRelic">
+                            <option value="">Cualquiera</option>
+                            <option value="1">R1+</option>
+                            <option value="5">R5+</option>
+                            <option value="7">R7+</option>
+                            <option value="8">R8+</option>
+                            <option value="9">R9+</option>
+                            <option value="10">R10</option>
+                        </select>
+                    </label>
+                    <label for="abilityFilter">
+                        <span>Habilidad</span>
+                        <select id="abilityFilter" @bind="_abilityFilter">
+                            <option value="All">Todas</option>
+                            <option value="Zeta">Con zeta</option>
+                            <option value="Omicron">Con omicron</option>
+                        </select>
+                    </label>
+                    <label for="sortBy">
+                        <span>Ordenar</span>
+                        <select id="sortBy" @bind="_orderBy">
+                            <option value="GalacticPower">Poder galáctico</option>
+                            <option value="RelicTier">Reliquia</option>
+                            <option value="Rarity">Estrellas</option>
+                            <option value="GearTier">Gear</option>
+                            <option value="Name">Nombre</option>
+                        </select>
+                    </label>
+                    <label for="sortDirection">
+                        <span>Dirección</span>
+                        <select id="sortDirection" @bind="_direction">
+                            <option value="Descending">Mayor primero</option>
+                            <option value="Ascending">Menor primero</option>
+                        </select>
+                    </label>
+                    <div class="roster-filter-actions">
+                        <button class="secondary-button" type="submit" disabled="@_loadingRoster">Aplicar</button>
+                        @if (HasActiveFilters)
                         {
-                            <img class="unit-portrait"
-                                 src="@portraitUrl"
-                                 alt="Retrato de @unit.Name"
-                                 loading="lazy"
-                                 decoding="async"
-                                 referrerpolicy="no-referrer"
-                                 onerror="this.style.display='none'" />
-                        }
-                        <span class="unit-kind-chip">@(unit.IsShip ? "Nave" : "Personaje")</span>
-                        @if (unit.RelicTier > 0)
-                        {
-                            <span class="portrait-progress portrait-relic">R@unit.RelicTier</span>
-                        }
-                        else
-                        {
-                            <span class="portrait-progress">G@unit.GearTier</span>
+                            <button class="ghost-button" type="button" @onclick="ResetFiltersAsync" disabled="@_loadingRoster">Limpiar</button>
                         }
                     </div>
+                </form>
 
-                    <div class="unit-main unit-collection-main">
-                        <div class="unit-title-row">
-                            <h2 title="@unit.Name">@unit.Name</h2>
-                        </div>
-                        <div class="unit-stars" aria-label="@unit.Rarity estrellas">@RarityLabel(unit.Rarity)</div>
-                        <div class="unit-meta unit-meta-v2">
-                            <span class="gp-value">@unit.GalacticPower.ToString("N0") GP</span>
-                            @if (!unit.IsShip)
-                            {
-                                <span class="mod-chip @(unit.EquippedModCount >= 6 ? "mod-chip-complete" : string.Empty)">@unit.EquippedModCount/6 mods</span>
-                            }
-                            @if (unit.ZetaCount > 0)
-                            {
-                                <span class="ability-chip">Z @unit.ZetaCount</span>
-                            }
-                            @if (unit.OmicronCount > 0)
-                            {
-                                <span class="ability-chip ability-chip-omi">O @unit.OmicronCount</span>
-                            }
-                        </div>
-                        @if (unit.Factions.Count > 0)
-                        {
-                            <div class="faction-row">
-                                @foreach (string faction in unit.Factions.Take(2))
-                                {
-                                    <span title="@faction">@faction</span>
-                                }
-                                @if (unit.Factions.Count > 2)
-                                {
-                                    <span>+@(unit.Factions.Count - 2)</span>
-                                }
-                            </div>
-                        }
-                        <button class="unit-detail-trigger" type="button" @onclick="() => OpenUnitDetails(unit)">Ver ficha y uso GAC →</button>
+                @if (_roster is not null)
+                {
+                    <div class="roster-filter-summary">
+                        <span>Vista actual</span>
+                        <strong>@ActiveFilterSummary</strong>
                     </div>
-                </article>
-            }
-        </div>
+                }
+            </ChildContent>
+        </UiCard>
 
-        <nav class="pagination" aria-label="Paginación del roster">
-            <button class="ghost-button" @onclick="PreviousPageAsync" disabled="@(_roster.Page <= 1 || _loadingRoster)">← Anterior</button>
-            <span>Página <strong>@_roster.Page</strong> de <strong>@_roster.TotalPages</strong></span>
-            <button class="ghost-button" @onclick="NextPageAsync" disabled="@(_roster.Page >= _roster.TotalPages || _loadingRoster)">Siguiente →</button>
-        </nav>
+        @if (_loadingRoster)
+        {
+            <UiLoadingState Title="Actualizando resultados…"
+                            Description="Aplicando filtros y ordenación"
+                            Class="roster-inline-state" />
+        }
+        else if (_roster is null || _roster.Items.Count == 0)
+        {
+            <UiEmptyState Icon="⌕"
+                          Title="Sin resultados"
+                          Description="No hay unidades que coincidan con estos filtros. Limpia alguno o prueba otra búsqueda.">
+                <Actions>
+                    @if (HasActiveFilters)
+                    {
+                        <button class="secondary-button" type="button" @onclick="ResetFiltersAsync">Limpiar filtros</button>
+                    }
+                </Actions>
+            </UiEmptyState>
+        }
+        else
+        {
+            <header class="roster-section-heading">
+                <div>
+                    <span class="ui-kicker">Colección</span>
+                    <h2>Unidades del roster</h2>
+                </div>
+                <p>Abre una ficha para ver progreso y contexto de Gran Arena.</p>
+            </header>
+
+            <div class="roster-collection-grid">
+                @foreach (PlayerApiClient.RosterUnitViewModel unit in _roster.Items)
+                {
+                    <RosterUnitCard Unit="unit" OpenDetails="OpenUnitDetails" @key="unit.Id" />
+                }
+            </div>
+
+            <nav class="roster-pagination" aria-label="Paginación del roster">
+                <button class="ghost-button" type="button" @onclick="PreviousPageAsync" disabled="@(_roster.Page <= 1 || _loadingRoster)">← Anterior</button>
+                <span>Página <strong>@_roster.Page</strong> de <strong>@_roster.TotalPages</strong></span>
+                <button class="ghost-button" type="button" @onclick="NextPageAsync" disabled="@(_roster.Page >= _roster.TotalPages || _loadingRoster)">Siguiente →</button>
+            </nav>
+        }
     }
-}
+</section>
 
 <UnitDetailDrawer Unit="_selectedUnit"
                   Eyebrow="Ficha de roster"
@@ -262,8 +211,6 @@ else
                   OnClose="CloseUnitDetails" />
 
 @code {
-    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
-
     [Parameter]
     public long AllyCode { get; set; }
 
@@ -282,6 +229,10 @@ else
     private bool _loadingProfile = true;
     private bool _loadingRoster;
     private int _page = 1;
+
+    private string RosterDescription => _player is null
+        ? "Explora personajes, naves, mods y contexto táctico desde un único roster."
+        : $"{_player.GalacticPower:N0} GP · {_player.RosterCount:N0} unidades · #{FormatAllyCode(_player.AllyCode)}";
 
     private IReadOnlyCollection<string> SelectedUnitTacticalNotes =>
         _selectedUnit is null ? [] : BuildUnitTacticalNotes(_selectedUnit);
@@ -525,30 +476,8 @@ else
         _ => confidence
     };
 
-    private static string? GetPortraitUrl(string? thumbnailName)
-    {
-        if (string.IsNullOrWhiteSpace(thumbnailName))
-        {
-            return null;
-        }
-
-        string assetName = thumbnailName.Trim();
-        if (!assetName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-        {
-            assetName += ".png";
-        }
-
-        return AssetBaseUrl + Uri.EscapeDataString(assetName);
-    }
-
     private static int? ParseOptionalInt(string value) =>
         int.TryParse(value, out int parsed) ? parsed : null;
-
-    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
-        ? "?"
-        : char.ToUpperInvariant(name.Trim()[0]).ToString();
-
-    private static string RarityLabel(int rarity) => new('★', Math.Clamp(rarity, 0, 7));
 
     private static string CompactNumber(long value) => value switch
     {

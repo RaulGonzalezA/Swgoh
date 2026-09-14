@@ -1,0 +1,96 @@
+@using Swgoh.Blazor.Clients
+
+<article class="roster-unit-card">
+    <div class="roster-unit-portrait @(Unit.IsShip ? "ship" : string.Empty)">
+        <span class="roster-unit-fallback" aria-hidden="true">@Initial(Unit.Name)</span>
+        @if (PortraitUrl is not null)
+        {
+            <img src="@PortraitUrl"
+                 alt="Retrato de @Unit.Name"
+                 loading="lazy"
+                 decoding="async"
+                 referrerpolicy="no-referrer"
+                 onerror="this.style.display='none'" />
+        }
+        <span class="roster-unit-kind">@(Unit.IsShip ? "Nave" : "Personaje")</span>
+        <span class="roster-unit-progress @(Unit.RelicTier > 0 ? "relic" : string.Empty)">
+            @(Unit.RelicTier > 0 ? $"R{Unit.RelicTier}" : $"G{Unit.GearTier}")
+        </span>
+    </div>
+
+    <div class="roster-unit-body">
+        <div class="roster-unit-title">
+            <h2 title="@Unit.Name">@Unit.Name</h2>
+            <span class="roster-unit-stars" aria-label="@Unit.Rarity estrellas">@RarityLabel(Unit.Rarity)</span>
+        </div>
+
+        <div class="roster-unit-meta">
+            <span class="roster-unit-gp">@Unit.GalacticPower.ToString("N0") GP</span>
+            @if (!Unit.IsShip)
+            {
+                <span class="roster-unit-chip @(Unit.EquippedModCount >= 6 ? "ready" : "warning")">M @Unit.EquippedModCount/6</span>
+            }
+            @if (Unit.ZetaCount > 0)
+            {
+                <span class="roster-unit-chip">Z @Unit.ZetaCount</span>
+            }
+            @if (Unit.OmicronCount > 0)
+            {
+                <span class="roster-unit-chip accent">O @Unit.OmicronCount</span>
+            }
+        </div>
+
+        @if (Unit.Factions.Count > 0)
+        {
+            <div class="roster-unit-factions">
+                @foreach (string faction in Unit.Factions.Take(2))
+                {
+                    <span title="@faction">@faction</span>
+                }
+                @if (Unit.Factions.Count > 2)
+                {
+                    <span>+@(Unit.Factions.Count - 2)</span>
+                }
+            </div>
+        }
+
+        <button class="secondary-button roster-unit-action" type="button" @onclick="OpenAsync">Ver ficha y uso GAC →</button>
+    </div>
+</article>
+
+@code {
+    private const string AssetBaseUrl = "https://swgoh.gg/static/img/assets/";
+
+    [Parameter, EditorRequired]
+    public PlayerApiClient.RosterUnitViewModel Unit { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<PlayerApiClient.RosterUnitViewModel> OpenDetails { get; set; }
+
+    private string? PortraitUrl
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Unit.ThumbnailName))
+            {
+                return null;
+            }
+
+            string assetName = Unit.ThumbnailName.Trim();
+            if (!assetName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            {
+                assetName += ".png";
+            }
+
+            return AssetBaseUrl + Uri.EscapeDataString(assetName);
+        }
+    }
+
+    private Task OpenAsync() => OpenDetails.InvokeAsync(Unit);
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name)
+        ? "?"
+        : char.ToUpperInvariant(name.Trim()[0]).ToString();
+
+    private static string RarityLabel(int rarity) => new('★', Math.Clamp(rarity, 0, 7));
+}
