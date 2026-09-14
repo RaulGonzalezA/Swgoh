@@ -6,4 +6,8 @@ public interface IPlayerRosterService
         long allyCode,
         PlayerRosterQuery query,
         CancellationToken cancellationToken = default);
+
+    Task<PlayerRosterSnapshot?> GetSnapshotAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default);
 }
