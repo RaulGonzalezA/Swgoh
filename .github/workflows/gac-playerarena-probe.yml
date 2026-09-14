@@ -1,32 +1,115 @@
-name: GAC PlayerArena Probe
+name: GAC Fast Lookup Validation
 on:
   push:
     branches: [ main ]
     paths: [ .github/workflows/gac-playerarena-probe.yml ]
 permissions:
   contents: read
+  packages: read
 jobs:
-  probe:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-      - name: Start Comlink
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Authenticate GitHub Packages
+        run: >-
+          dotnet nuget update source github-rga
+          --username "${{ github.actor }}"
+          --password "${{ secrets.NUGET_PAT }}"
+          --store-password-in-clear-text
+          --configfile NuGet.config
+
+      - name: Restore and build API
         run: |
-          docker run -d --name comlink -p 3000:3000 -e APP_NAME=swgoh-playerarena-probe -e PORT=3000 ghcr.io/swgoh-utils/swgoh-comlink:latest
-          for i in {1..60}; do curl -fsS http://127.0.0.1:3000/ >/dev/null && exit 0 || true; sleep 2; done
+          dotnet restore Swgoh.sln
+          dotnet build src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-restore
+
+      - name: Start dependencies and API
+        env:
+          ASPNETCORE_URLS: http://127.0.0.1:5080
+          ConnectionStrings__swgoh: mongodb://127.0.0.1:27017/swgoh
+          Swgoh__Comlink__BaseUrl: http://127.0.0.1:3000
+          Swgoh__Stats__BaseUrl: http://127.0.0.1:3223
+        run: |
+          set -euo pipefail
+          docker run -d --name mongodb -p 27017:27017 mongo:8
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-fast-gac-validation \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+
+          for attempt in {1..60}; do
+            curl -fsS http://127.0.0.1:3000/ >/dev/null && break || true
+            sleep 2
+          done
+
+          mkdir -p validation-results
+          dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj \
+            --configuration Release --no-build --no-restore \
+            > validation-results/api.log 2>&1 &
+          echo $! > validation-results/api.pid
+
+          for attempt in {1..60}; do
+            curl -fsS http://127.0.0.1:5080/health >/dev/null && exit 0 || true
+            sleep 2
+          done
+          cat validation-results/api.log
           exit 1
-      - name: Inspect PVP profile
+
+      - name: Resolve current GAC opponent
         run: |
-          python3 - <<'PY'
-          import json,urllib.request
-          def post(path,payload):
-            req=urllib.request.Request('http://127.0.0.1:3000/'+path,data=json.dumps({'payload':payload,'enums':False}).encode(),headers={'Content-Type':'application/json'},method='POST')
-            with urllib.request.urlopen(req,timeout=30) as r:return json.load(r)
-          arena=post('playerArena',{'allyCode':'476825771','playerDetailsOnly':True})
-          player=post('player',{'allyCode':'476825771'})
-          print(json.dumps({'arenaPvpProfile':arena.get('pvpProfile'),'playerPvpProfile':player.get('pvpProfile'),'seasonStatus':player.get('seasonStatus'),'playerRating':player.get('playerRating')},indent=2))
-          PY
+          set -euo pipefail
+          url="http://127.0.0.1:5080/api/v1/gac/players/476825771/current-opponent/scouting?maxRounds=10"
+          started=$(date +%s)
+          final_status=""
+
+          for attempt in {1..24}; do
+            status=$(curl --silent --show-error \
+              "$url" \
+              --output validation-results/current-gac.json \
+              --write-out '%{http_code}')
+            echo "attempt=${attempt} status=${status} elapsed=$(( $(date +%s) - started ))s"
+
+            if [[ "$status" == "200" ]]; then
+              final_status="$status"
+              break
+            fi
+
+            if [[ "$status" != "202" ]]; then
+              echo "Unexpected GAC status: $status"
+              cat validation-results/current-gac.json
+              cat validation-results/api.log
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          elapsed=$(( $(date +%s) - started ))
+          echo "final_status=${final_status:-timeout} elapsed=${elapsed}s"
+          cat validation-results/current-gac.json
+          echo '--- fast lookup diagnostics ---'
+          grep 'Fast GAC lookup' validation-results/api.log || true
+
+          test "$final_status" = "200"
+          jq -e '.opponent.playerAllyCode == 476825771' validation-results/current-gac.json >/dev/null
+          jq -e '.opponent.opponentAllyCode > 0' validation-results/current-gac.json >/dev/null
+          jq -e '.opponent.league == "Kyber" and .opponent.format == "3v3"' validation-results/current-gac.json >/dev/null
+          grep -q 'Fast GAC lookup' validation-results/api.log
+          grep -q 'KYBER:4178' validation-results/api.log
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          cat validation-results/api.log || true
+          docker logs comlink || true
+
       - name: Cleanup
         if: always()
-        run: docker rm -f comlink 2>/dev/null || true
+        run: docker rm -f comlink mongodb 2>/dev/null || true
