@@ -1,0 +1,28 @@
+@using Swgoh.Blazor.Clients
+
+<aside class="planner-matchup-rating planner-risk-@Assessment.Tone" aria-label="Valoración rápida del enfrentamiento">
+    <div class="planner-rating-title">
+        <span>Lectura rápida</span>
+        <strong>@Assessment.Label</strong>
+        <small>@Assessment.Caption</small>
+    </div>
+    <div class="planner-rating-metrics">
+        <span class="planner-rating-metric planner-rating-win"><strong>@FormatPercent(Assessment.WinRate)</strong><small>win</small></span>
+        <span class="planner-rating-metric planner-rating-oneshot"><strong>@FormatPercent(Assessment.OneShotRate)</strong><small>one-shot</small></span>
+        <span class="planner-rating-metric planner-rating-samples"><strong>@FormatSamples(Assessment.Uses)</strong><small>muestras</small></span>
+    </div>
+</aside>
+
+@code {
+    [Parameter]
+    public GacPlannerApiClient.CounterHintViewModel? Hint { get; set; }
+
+    [Parameter]
+    public bool Defeated { get; set; }
+
+    private GacMatchupRiskAssessment Assessment => GacMatchupRiskEvaluator.Evaluate(Hint, Defeated);
+
+    private static string FormatPercent(decimal? value) => value is null ? "—" : $"{value:0.#}%";
+
+    private static string FormatSamples(int? value) => value?.ToString("N0") ?? "—";
+}
