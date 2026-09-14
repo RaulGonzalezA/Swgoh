@@ -4,11 +4,84 @@ namespace Swgoh.Blazor.Clients;
 
 public sealed class GacApiClient(HttpClient httpClient)
 {
+    private const int LookupAttempts = 25;
+    private static readonly TimeSpan PollDelay = TimeSpan.FromSeconds(2);
+
+    public async Task<CurrentGacOpponentResult> GetCurrentOpponentLookupAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        for (int attempt = 0; attempt < LookupAttempts; attempt++)
+        {
+            using HttpResponseMessage response = await httpClient.GetAsync(
+                $"/api/v1/gac/players/{allyCode}/current-opponent",
+                cancellationToken);
+
+            if (response.StatusCode == HttpStatusCode.Accepted)
+            {
+                CurrentGacUnavailableViewModel? pending =
+                    await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
+                if (pending?.Status == "Pending")
+                {
+                    await Task.Delay(PollDelay, cancellationToken);
+                    continue;
+                }
+
+                return new CurrentGacOpponentResult(
+                    null,
+                    pending?.Message ?? "La búsqueda del rival continúa en segundo plano.");
+            }
+
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
+            {
+                CurrentGacUnavailableViewModel? unavailable =
+                    await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
+                if (unavailable?.Status == "Pending")
+                {
+                    await Task.Delay(PollDelay, cancellationToken);
+                    continue;
+                }
+
+                return new CurrentGacOpponentResult(
+                    null,
+                    unavailable?.Message ?? "No hay un enfrentamiento de Gran Arena disponible.");
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                CurrentGacOpponentViewModel? opponent =
+                    await response.Content.ReadFromJsonAsync<CurrentGacOpponentViewModel>(cancellationToken);
+                return opponent is null
+                    ? new CurrentGacOpponentResult(null, "El rival todavía no tiene datos completos.")
+                    : new CurrentGacOpponentResult(opponent, null);
+            }
+
+            response.EnsureSuccessStatusCode();
+        }
+
+        return new CurrentGacOpponentResult(
+            null,
+            "La búsqueda del rival está tardando más de lo esperado. Puedes volver a consultar en unos segundos.");
+    }
+
     public async Task<CurrentGacResult> GetCurrentOpponentAsync(
         long allyCode,
         CancellationToken cancellationToken = default)
     {
-        for (int attempt = 0; attempt < 210; attempt++)
+        CurrentGacOpponentResult lookup = await GetCurrentOpponentLookupAsync(allyCode, cancellationToken);
+        if (lookup.Opponent is null)
+        {
+            return new CurrentGacResult(null, lookup.Message);
+        }
+
+        return await GetCurrentScoutingAsync(allyCode, cancellationToken);
+    }
+
+    public async Task<CurrentGacResult> GetCurrentScoutingAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        for (int attempt = 0; attempt < 4; attempt++)
         {
             using HttpResponseMessage response = await httpClient.GetAsync(
                 $"/api/v1/gac/players/{allyCode}/current-opponent/scouting",
@@ -20,25 +93,17 @@ public sealed class GacApiClient(HttpClient httpClient)
                     await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
                 if (pending?.Status == "Pending")
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    await Task.Delay(PollDelay, cancellationToken);
                     continue;
                 }
 
-                return new CurrentGacResult(
-                    null,
-                    pending?.Message ?? "La búsqueda del rival continúa en segundo plano.");
+                return new CurrentGacResult(null, pending?.Message);
             }
 
             if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
             {
                 CurrentGacUnavailableViewModel? unavailable =
                     await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
-                if (unavailable?.Status == "Pending")
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-                    continue;
-                }
-
                 return new CurrentGacResult(
                     null,
                     unavailable?.Message ?? "No hay un enfrentamiento de Gran Arena disponible.");
@@ -59,13 +124,14 @@ public sealed class GacApiClient(HttpClient httpClient)
             }
 
             response.EnsureSuccessStatusCode();
-            return new CurrentGacResult(null, "No se ha podido consultar la Gran Arena.");
         }
 
         return new CurrentGacResult(
             null,
-            "La búsqueda continúa en segundo plano. Puedes volver a consultar más tarde.");
+            "El rival está localizado, pero el scouting sigue preparándose.");
     }
+
+    public sealed record CurrentGacOpponentResult(CurrentGacOpponentViewModel? Opponent, string? Message);
 
     public sealed record CurrentGacResult(CurrentGacScoutingViewModel? Scouting, string? Message);
 
@@ -75,7 +141,11 @@ public sealed class GacApiClient(HttpClient httpClient)
         CurrentGacOpponentViewModel Opponent,
         OpponentScoutingViewModel? Scouting,
         CurrentOpponentRosterScoutingViewModel? RosterScouting,
-        CurrentGacBattlePlanViewModel? BattlePlan);
+        CurrentGacBattlePlanViewModel? BattlePlan,
+        IReadOnlyCollection<string>? Warnings = null)
+    {
+        public IReadOnlyCollection<string> DegradationWarnings => Warnings ?? [];
+    }
 
     public sealed record CurrentGacOpponentViewModel(
         long PlayerAllyCode,
