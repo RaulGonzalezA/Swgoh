@@ -16,54 +16,48 @@ jobs:
           docker run -d --name comlink -p 3000:3000 -e APP_NAME=gac-rank-probe -e PORT=3000 ghcr.io/swgoh-utils/swgoh-comlink:latest
           for i in {1..60}; do curl -fsS http://127.0.0.1:3000/ >/dev/null && exit 0 || true; sleep 2; done
           exit 1
-      - name: Probe rank estimate
+      - name: Probe bracket divisions
         run: |
           python3 - <<'PY'
-          import json, time, urllib.request, urllib.error
+          import json,time,urllib.request,urllib.error
           BASE='http://127.0.0.1:3000'; ALLY='476825771'
           def post(path,payload):
             req=urllib.request.Request(BASE+'/'+path,data=json.dumps({'payload':payload,'enums':False}).encode(),headers={'Content-Type':'application/json'},method='POST')
             try:
-              with urllib.request.urlopen(req,timeout=20) as r: return r.status,json.load(r)
+              with urllib.request.urlopen(req,timeout=20) as r:return r.status,json.load(r)
             except urllib.error.HTTPError as e:
-              try: return e.code,json.loads(e.read().decode())
-              except: return e.code,{}
+              try:return e.code,json.loads(e.read().decode())
+              except:return e.code,{}
           def players(v):
-            p=v.get('player') if isinstance(v,dict) else None
-            if isinstance(p,list) and p: return p
-            lbs=v.get('leaderboard') if isinstance(v,dict) else None
-            if isinstance(lbs,dict): lbs=[lbs]
-            for lb in lbs or []:
+            if not isinstance(v,dict):return []
+            p=v.get('player')
+            if isinstance(p,list) and p:return p
+            lbs=v.get('leaderboard'); lbs=[lbs] if isinstance(lbs,dict) else (lbs or [])
+            for lb in lbs:
               p=lb.get('player') if isinstance(lb,dict) else None
-              if isinstance(p,list) and p: return p
+              if isinstance(p,list) and p:return p
             return []
           _,player=post('player',{'allyCode':ALLY}); _,events=post('getEvents',{})
-          pid=player.get('playerId') or player.get('id')
-          season=max(player.get('seasonStatus') or [],key=lambda s:int(s.get('endTime') or 0))
-          rank=int(season['rank']); estimate=(rank-1)//8; league=str(season['league']).upper()
-          now=int(time.time()*1000); event_instance=None
+          season=max(player.get('seasonStatus') or [],key=lambda s:int(s.get('endTime') or 0)); now=int(time.time()*1000)
+          event_instance=None
           for e in events.get('gameEvent') or []:
-            if str(e.get('type'))!='10': continue
+            if str(e.get('type'))!='10':continue
             for i in e.get('instance') or []:
-              start=int(i.get('startTime') or 0); end=int(i.get('endTime') or 0)
-              if start <= now <= end:
-                event_instance=f"{e['id']}:{i['id']}"; break
-            if event_instance: break
-          print(json.dumps({'rank':rank,'estimate':estimate,'league':league,'eventInstanceId':event_instance}))
-          checked=0
-          for token in (league,league.lower()):
-            for delta in [0]+[x for n in range(1,65) for x in (-n,n)]:
-              index=estimate+delta
-              if index<0: continue
-              gid=f'{event_instance}:{token}:{index}'
-              status,value=post('getLeaderboard',{'leaderboardType':4,'eventInstanceId':event_instance,'groupId':gid})
-              checked+=1; ps=players(value)
-              if ps:
-                print(json.dumps({'nonEmpty':index,'token':token,'count':len(ps)}))
-              if any((p.get('id') or p.get('playerId'))==pid or str(p.get('allyCode') or '')==ALLY for p in ps):
-                print(json.dumps({'FOUND':True,'index':index,'token':token,'requests':checked,'groupId':gid,'players':ps},indent=2)); raise SystemExit(0)
-              time.sleep(.12)
-          print(json.dumps({'FOUND':False,'requests':checked}))
+              if int(i.get('startTime') or 0)<=now<=int(i.get('endTime') or 0):event_instance=f"{e['id']}:{i['id']}";break
+            if event_instance:break
+          print(json.dumps({'season':season,'eventInstanceId':event_instance}))
+          for index in [0,50,100,193,250,500,750,1000,1250,1500,2000,2500,3000,4000,5000,6000,8000,10000,12000,15000,18000,20000]:
+            gid=f'{event_instance}:KYBER:{index}'
+            status,value=post('getLeaderboard',{'leaderboardType':4,'eventInstanceId':event_instance,'groupId':gid})
+            ps=players(value); divisions=[]; scores=[]
+            for p in ps:
+              rating=(p.get('playerRating') or {}).get('playerRankStatus') or {}
+              div=rating.get('divisionId')
+              if div is not None:divisions.append(div)
+              score=(p.get('pvpStatus') or {}).get('score')
+              if score is not None:scores.append(score)
+            print(json.dumps({'index':index,'status':status,'count':len(ps),'divisions':sorted(set(divisions)),'scoreRange':[min(scores),max(scores)] if scores else None}))
+            time.sleep(.25)
           PY
       - name: Cleanup
         if: always()
