@@ -1,0 +1,144 @@
+/* Quick matchup rating for tactical GAC lanes. */
+
+.planner-enemy-card-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px 14px;
+}
+
+.planner-enemy-card-top > div:first-child {
+    min-width: 0;
+}
+
+.planner-enemy-card-top > .planner-icon-button {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.planner-matchup-rating {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(150px, .7fr) minmax(0, 1.3fr);
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm);
+    background: rgba(4, 12, 19, .45);
+}
+
+.planner-rating-title {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.planner-rating-title > span,
+.planner-rating-title > small {
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+}
+
+.planner-rating-title > span {
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.planner-rating-title > strong {
+    font-size: var(--ds-text-md);
+    line-height: 1.2;
+}
+
+.planner-rating-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.planner-rating-metric {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--ds-border);
+    border-radius: 9px;
+    background: rgba(10, 23, 34, .66);
+}
+
+.planner-rating-metric strong {
+    color: var(--ds-text);
+    font-size: .95rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.planner-rating-metric small {
+    color: var(--ds-muted);
+    font-size: .64rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.planner-risk-low {
+    border-color: rgba(105, 229, 165, .26);
+    background: linear-gradient(90deg, var(--ds-success-soft), rgba(4, 12, 19, .48));
+}
+
+.planner-risk-low .planner-rating-title > strong {
+    color: var(--ds-success);
+}
+
+.planner-risk-medium {
+    border-color: rgba(255, 211, 106, .26);
+    background: linear-gradient(90deg, var(--ds-warning-soft), rgba(4, 12, 19, .48));
+}
+
+.planner-risk-medium .planner-rating-title > strong {
+    color: var(--ds-warning);
+}
+
+.planner-risk-high {
+    border-color: rgba(255, 127, 145, .28);
+    background: linear-gradient(90deg, var(--ds-danger-soft), rgba(4, 12, 19, .48));
+}
+
+.planner-risk-high .planner-rating-title > strong {
+    color: var(--ds-danger);
+}
+
+.planner-risk-unknown .planner-rating-title > strong {
+    color: var(--ds-muted);
+}
+
+.planner-risk-complete {
+    border-color: rgba(105, 229, 165, .24);
+    background: var(--ds-success-soft);
+}
+
+.planner-risk-complete .planner-rating-title > strong {
+    color: var(--ds-success);
+}
+
+@media (max-width: 980px) {
+    .planner-matchup-rating {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 620px) {
+    .planner-enemy-card-top {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .planner-rating-metrics {
+        grid-template-columns: repeat(3, minmax(76px, 1fr));
+        overflow-x: auto;
+        padding-bottom: 2px;
+    }
+
+    .planner-rating-metric {
+        min-width: 76px;
+    }
+}
