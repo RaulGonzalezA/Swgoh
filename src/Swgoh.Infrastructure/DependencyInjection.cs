@@ -248,6 +248,7 @@ public static class DependencyInjection
             provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BackgroundGacOpponentSource>>()));
         services.AddSingleton<PersistedGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource>(provider => provider.GetRequiredService<PersistedGacOpponentSource>());
+        services.AddSingleton<ICurrentGacOpponentCache>(provider => provider.GetRequiredService<PersistedGacOpponentSource>());
         services.AddHostedService(provider => provider.GetRequiredService<BackgroundGacOpponentSource>());
         return services;
     }
