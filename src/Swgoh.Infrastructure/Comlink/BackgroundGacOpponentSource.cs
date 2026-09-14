@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 
 using Microsoft.Extensions.Hosting;
@@ -24,6 +25,7 @@ internal sealed class BackgroundGacOpponentSource(
             throw new ArgumentOutOfRangeException(nameof(allyCode));
         }
 
+        Stopwatch stopwatch = Stopwatch.StartNew();
         lock (gate)
         {
             foreach (var expired in entries.Where(item => item.Value.ExpiresAt <= DateTimeOffset.UtcNow).Select(item => item.Key).ToArray())
@@ -34,17 +36,25 @@ internal sealed class BackgroundGacOpponentSource(
             var key = (allyCode, formatOverride);
             if (entries.TryGetValue(key, out Entry? existing))
             {
+                stopwatch.Stop();
+                GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, existing.Result.Status, cacheHit: true, "background-cache");
                 return Task.FromResult(existing.Result);
             }
 
             var pending = CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.Pending, "Buscando rival de Gran Arena en segundo plano…");
             if (!queue.Writer.TryWrite(key))
             {
-                return Task.FromResult(CurrentGacOpponentLookup.Unavailable(
-                    CurrentGacOpponentStatus.OpponentUnavailable, "Hay demasiadas búsquedas pendientes. Inténtalo más tarde."));
+                CurrentGacOpponentLookup unavailable = CurrentGacOpponentLookup.Unavailable(
+                    CurrentGacOpponentStatus.OpponentUnavailable,
+                    "Hay demasiadas búsquedas pendientes. Inténtalo más tarde.");
+                stopwatch.Stop();
+                GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, unavailable.Status, cacheHit: false, "background-queue-full");
+                return Task.FromResult(unavailable);
             }
 
             entries[key] = new Entry(pending, DateTimeOffset.MaxValue);
+            stopwatch.Stop();
+            GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, pending.Status, cacheHit: false, "background-queued");
             return Task.FromResult(pending);
         }
     }
@@ -54,6 +64,7 @@ internal sealed class BackgroundGacOpponentSource(
         await foreach (var key in queue.Reader.ReadAllAsync(stoppingToken))
         {
             CurrentGacOpponentLookup result;
+            Stopwatch stopwatch = Stopwatch.StartNew();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             deadline.CancelAfter(TimeSpan.FromMinutes(6));
             try
@@ -67,9 +78,21 @@ internal sealed class BackgroundGacOpponentSource(
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "GAC background lookup failed for player {AllyCode}", key.AllyCode);
-                result = CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.OpponentUnavailable,
+                result = CurrentGacOpponentLookup.Unavailable(
+                    CurrentGacOpponentStatus.OpponentUnavailable,
                     "No se ha podido resolver el rival de Gran Arena. Inténtalo de nuevo en un minuto.");
             }
+            finally
+            {
+                stopwatch.Stop();
+            }
+
+            GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, result.Status, cacheHit: false, "provider");
+            logger.LogInformation(
+                "GAC background provider completed for {AllyCode} with {Status} in {ElapsedMs} ms",
+                key.AllyCode,
+                result.Status,
+                stopwatch.Elapsed.TotalMilliseconds);
 
             lock (gate)
             {
