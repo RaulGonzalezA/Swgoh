@@ -10,7 +10,8 @@ public sealed record PlayerRosterQuery(
     bool? HasZeta = null,
     bool? HasOmicron = null,
     PlayerRosterSortField OrderBy = PlayerRosterSortField.GalacticPower,
-    PlayerRosterSortDirection Direction = PlayerRosterSortDirection.Descending);
+    PlayerRosterSortDirection Direction = PlayerRosterSortDirection.Descending,
+    string? Faction = null);
 
 public enum PlayerRosterUnitType
 {
