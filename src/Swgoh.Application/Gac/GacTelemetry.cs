@@ -41,13 +41,7 @@ public static class GacTelemetry
         ArgumentNullException.ThrowIfNull(operation);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        using Activity? activity = ActivitySource.StartActivity($"gac.{phase}", ActivityKind.Internal);
-        activity?.SetTag("gac.phase", phase);
-        if (!string.IsNullOrWhiteSpace(format))
-        {
-            activity?.SetTag("gac.format", format);
-        }
-
+        using Activity? activity = StartPhaseActivity(phase, format);
         try
         {
             T result = await operation().ConfigureAwait(false);
@@ -62,14 +56,35 @@ public static class GacTelemetry
         finally
         {
             stopwatch.Stop();
-            TagList tags = default;
-            tags.Add("gac.phase", phase);
-            if (!string.IsNullOrWhiteSpace(format))
-            {
-                tags.Add("gac.format", format);
-            }
+            RecordPhase(phase, format, stopwatch.Elapsed);
+        }
+    }
 
-            PhaseDuration.Record(stopwatch.Elapsed.TotalMilliseconds, tags);
+    public static T MeasurePhase<T>(
+        string phase,
+        Func<T> operation,
+        string? format = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(phase);
+        ArgumentNullException.ThrowIfNull(operation);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        using Activity? activity = StartPhaseActivity(phase, format);
+        try
+        {
+            T result = operation();
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            return result;
+        }
+        catch (Exception exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            throw;
+        }
+        finally
+        {
+            stopwatch.Stop();
+            RecordPhase(phase, format, stopwatch.Elapsed);
         }
     }
 
@@ -106,5 +121,29 @@ public static class GacTelemetry
         tags.Add("gac.lookup_source", source);
         OpponentLookupDuration.Record(elapsed.TotalMilliseconds, tags);
         OpponentLookupRequests.Add(1, tags);
+    }
+
+    private static Activity? StartPhaseActivity(string phase, string? format)
+    {
+        Activity? activity = ActivitySource.StartActivity($"gac.{phase}", ActivityKind.Internal);
+        activity?.SetTag("gac.phase", phase);
+        if (!string.IsNullOrWhiteSpace(format))
+        {
+            activity?.SetTag("gac.format", format);
+        }
+
+        return activity;
+    }
+
+    private static void RecordPhase(string phase, string? format, TimeSpan elapsed)
+    {
+        TagList tags = default;
+        tags.Add("gac.phase", phase);
+        if (!string.IsNullOrWhiteSpace(format))
+        {
+            tags.Add("gac.format", format);
+        }
+
+        PhaseDuration.Record(elapsed.TotalMilliseconds, tags);
     }
 }
