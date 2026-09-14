@@ -55,7 +55,7 @@ jobs:
 
       - name: Authenticate GitHub Packages
         run: >-
-          dotnet nuget update source github-raulgonzaleza
+          dotnet nuget update source github-rga
           --username "${{ github.actor }}"
           --password "${{ secrets.NUGET_PAT }}"
           --store-password-in-clear-text
@@ -181,6 +181,9 @@ jobs:
               if jq -e '.scouting != null' smoke-results/current-gac.json > /dev/null; then
                 jq -e '.scouting.format == .opponent.format' smoke-results/current-gac.json > /dev/null
               fi
+              ;;
+            202)
+              jq -e '.status == "Pending" and (.message | type == "string" and length > 0)' smoke-results/current-gac.json > /dev/null
               ;;
             404|409)
               jq -e '.status | type == "string" and length > 0' smoke-results/current-gac.json > /dev/null
