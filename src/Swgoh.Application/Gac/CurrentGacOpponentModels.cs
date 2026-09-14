@@ -124,4 +124,8 @@ public sealed record CurrentGacScoutingResult(
     OpponentScoutingReport? Scouting,
     CurrentOpponentRosterScouting? RosterScouting,
     CurrentGacBattlePlan? BattlePlan,
-    GacHistorySyncResult? HistorySync = null);
+    GacHistorySyncResult? HistorySync = null,
+    IReadOnlyCollection<string>? Warnings = null)
+{
+    public IReadOnlyCollection<string> DegradationWarnings => Warnings ?? [];
+}
