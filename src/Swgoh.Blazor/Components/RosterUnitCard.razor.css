@@ -11,7 +11,7 @@
 }
 
 .roster-unit-card:hover {
-    transform: translateY(-3px);
+    transform: translateY(-2px);
     border-color: var(--ds-border-strong);
     box-shadow: var(--ds-shadow-md);
 }
@@ -19,28 +19,28 @@
 .roster-unit-portrait {
     position: relative;
     width: 100%;
-    aspect-ratio: 1;
+    height: 132px;
     overflow: hidden;
     display: grid;
     place-items: center;
     border-bottom: 1px solid var(--ds-border);
     background:
-        radial-gradient(circle at 50% 32%, rgba(85, 215, 255, .2), transparent 34%),
+        radial-gradient(circle at 50% 36%, rgba(85, 215, 255, .2), transparent 36%),
         linear-gradient(145deg, #153346, #09151f 72%);
 }
 
 .roster-unit-portrait::after {
     position: absolute;
     inset: auto 0 0;
-    height: 42%;
+    height: 34%;
     content: "";
     pointer-events: none;
-    background: linear-gradient(to top, rgba(4, 12, 18, .86), transparent);
+    background: linear-gradient(to top, rgba(4, 12, 18, .78), transparent);
 }
 
 .roster-unit-portrait.ship {
     background:
-        radial-gradient(circle at 50% 35%, rgba(157, 140, 255, .24), transparent 35%),
+        radial-gradient(circle at 50% 38%, rgba(157, 140, 255, .24), transparent 37%),
         linear-gradient(145deg, #29244c, #10131f 72%);
 }
 
@@ -48,23 +48,36 @@
     position: absolute;
     z-index: 0;
     color: var(--ds-text-soft);
-    font-size: clamp(2rem, 4vw, 3.6rem);
+    font-size: 2.5rem;
     font-weight: 950;
 }
 
 .roster-unit-portrait img {
-    position: absolute;
-    inset: 0;
+    position: relative;
     z-index: 1;
-    width: 100%;
-    height: 100%;
+    width: 102px;
+    height: 102px;
+    max-width: calc(100% - 28px);
+    max-height: calc(100% - 20px);
     object-fit: cover;
-    transition: transform 220ms ease, filter 220ms ease;
+    border: 1px solid rgba(224, 244, 255, .12);
+    border-radius: 16px;
+    box-shadow: 0 9px 24px rgba(0, 0, 0, .32);
+    transition: transform 220ms ease, filter 220ms ease, border-color 220ms ease;
+}
+
+.roster-unit-portrait.ship img {
+    width: 112px;
+    height: 88px;
+    object-fit: contain;
+    border-radius: 14px;
+    background: rgba(2, 8, 14, .22);
 }
 
 .roster-unit-card:hover .roster-unit-portrait img {
     transform: scale(1.035);
     filter: brightness(1.06);
+    border-color: rgba(224, 244, 255, .22);
 }
 
 .roster-unit-kind,
@@ -75,25 +88,25 @@
     color: var(--ds-text);
     background: rgba(5, 15, 22, .76);
     backdrop-filter: blur(8px);
-    font-size: var(--ds-text-xs);
+    font-size: .58rem;
     font-weight: 850;
 }
 
 .roster-unit-kind {
-    top: var(--ds-space-3);
-    left: var(--ds-space-3);
-    padding: 5px 8px;
+    top: 8px;
+    left: 8px;
+    padding: 4px 6px;
     border-radius: 999px;
-    letter-spacing: .06em;
+    letter-spacing: .05em;
     text-transform: uppercase;
 }
 
 .roster-unit-progress {
-    right: var(--ds-space-3);
-    bottom: var(--ds-space-3);
-    min-width: 38px;
-    min-height: 30px;
-    padding: 0 8px;
+    right: 8px;
+    bottom: 8px;
+    min-width: 34px;
+    min-height: 26px;
+    padding: 0 7px;
     border-radius: var(--ds-radius-xs);
     display: grid;
     place-items: center;
@@ -106,8 +119,8 @@
 }
 
 .roster-unit-body {
-    min-height: 162px;
-    padding: var(--ds-space-4);
+    min-height: 138px;
+    padding: 12px;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -121,41 +134,41 @@
     margin: 0;
     overflow: hidden;
     color: var(--ds-text);
-    font-size: 1rem;
-    line-height: 1.25;
+    font-size: .9rem;
+    line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .roster-unit-stars {
     display: block;
-    margin-top: 5px;
+    margin-top: 3px;
     color: var(--ds-warning);
-    font-size: .72rem;
-    letter-spacing: .06em;
+    font-size: .64rem;
+    letter-spacing: .05em;
 }
 
 .roster-unit-meta {
-    margin-top: var(--ds-space-3);
+    margin-top: 8px;
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 4px;
     align-items: center;
 }
 
 .roster-unit-gp {
     color: var(--ds-text-soft);
-    font-size: var(--ds-text-sm);
+    font-size: .74rem;
     font-weight: 800;
 }
 
 .roster-unit-chip {
-    padding: 3px 6px;
+    padding: 2px 5px;
     border: 1px solid var(--ds-border);
     border-radius: var(--ds-radius-xs);
     color: var(--ds-muted);
     background: rgba(255, 255, 255, .035);
-    font-size: .62rem;
+    font-size: .56rem;
     font-weight: 800;
 }
 
@@ -178,44 +191,67 @@
 }
 
 .roster-unit-factions {
-    margin-top: var(--ds-space-2);
+    margin-top: 7px;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 3px;
 }
 
 .roster-unit-factions span {
-    max-width: 118px;
-    padding: 2px 6px;
+    max-width: 96px;
+    padding: 2px 5px;
     overflow: hidden;
     border: 1px solid var(--ds-border);
     border-radius: 999px;
     color: var(--ds-muted-2);
     background: rgba(255, 255, 255, .025);
-    font-size: .6rem;
+    font-size: .54rem;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
 .roster-unit-action {
-    margin-top: auto;
+    margin-top: 9px;
     width: 100%;
+    min-height: 32px;
+    padding: 6px 8px;
     justify-content: center;
+    font-size: .72rem;
+}
+
+@media (max-width: 680px) {
+    .roster-unit-portrait {
+        height: 122px;
+    }
+
+    .roster-unit-portrait img {
+        width: 92px;
+        height: 92px;
+    }
+
+    .roster-unit-portrait.ship img {
+        width: 102px;
+        height: 80px;
+    }
 }
 
 @media (max-width: 520px) {
+    .roster-unit-portrait {
+        height: 112px;
+    }
+
+    .roster-unit-portrait img {
+        width: 82px;
+        height: 82px;
+    }
+
+    .roster-unit-portrait.ship img {
+        width: 92px;
+        height: 72px;
+    }
+
     .roster-unit-body {
-        min-height: 150px;
-        padding: var(--ds-space-3);
-    }
-
-    .roster-unit-kind {
-        top: var(--ds-space-2);
-        left: var(--ds-space-2);
-    }
-
-    .roster-unit-progress {
-        right: var(--ds-space-2);
-        bottom: var(--ds-space-2);
+        min-height: 128px;
+        padding: 10px;
     }
 }
