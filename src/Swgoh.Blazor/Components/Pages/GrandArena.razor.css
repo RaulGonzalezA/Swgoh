@@ -1,0 +1,507 @@
+.gac-page {
+    display: grid;
+    gap: var(--ds-space-5);
+}
+
+.gac-inline-state {
+    margin-top: var(--ds-space-2);
+}
+
+.gac-matchup-card,
+.gac-command-card,
+.gac-zone-card {
+    overflow: hidden;
+}
+
+.gac-matchup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--ds-space-5);
+    align-items: center;
+}
+
+.gac-combatant {
+    min-width: 0;
+    padding: var(--ds-space-4);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-md);
+    display: grid;
+    gap: 4px;
+    background: var(--ds-surface-soft);
+}
+
+.gac-combatant > span,
+.gac-combatant > small,
+.gac-versus > span {
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+}
+
+.gac-combatant > span {
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.gac-combatant > strong {
+    overflow: hidden;
+    font-size: 1.08rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gac-combatant-opponent {
+    text-align: right;
+}
+
+.gac-versus {
+    min-width: 86px;
+    display: grid;
+    place-items: center;
+    gap: 5px;
+    text-align: center;
+}
+
+.gac-versus > strong {
+    color: var(--ds-accent);
+    font-size: 1.55rem;
+    letter-spacing: .08em;
+}
+
+.gac-scouting-metrics,
+.gac-comparison-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--ds-space-3);
+}
+
+.gac-command-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--ds-space-2);
+}
+
+.gac-command-link {
+    min-width: 0;
+    padding: var(--ds-space-4);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm);
+    display: flex;
+    flex-direction: column;
+    color: var(--ds-text);
+    text-decoration: none;
+    background: var(--ds-surface-soft);
+    transition: transform var(--ds-transition), border-color var(--ds-transition), background var(--ds-transition);
+}
+
+.gac-command-link:hover {
+    transform: translateY(-2px);
+    border-color: var(--ds-border-strong);
+    background: var(--ds-surface-hover);
+}
+
+.gac-command-link > span {
+    color: var(--ds-muted);
+    font-size: var(--ds-text-xs);
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.gac-command-link > strong {
+    margin-top: 4px;
+    font-size: 1.4rem;
+}
+
+.gac-command-link > small {
+    overflow: hidden;
+    color: var(--ds-muted-2);
+    font-size: .65rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gac-command-risk > strong {
+    color: var(--ds-warning);
+}
+
+.gac-command-counter > strong {
+    color: var(--ds-success);
+}
+
+.gac-zone {
+    scroll-margin-top: 92px;
+    display: grid;
+    gap: var(--ds-space-3);
+}
+
+.gac-zone-last {
+    margin-bottom: var(--ds-space-3);
+}
+
+.gac-zone-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: var(--ds-space-6);
+}
+
+.gac-zone-heading h2 {
+    margin: 4px 0;
+    font-size: 1.45rem;
+    letter-spacing: -.025em;
+}
+
+.gac-zone-heading p {
+    max-width: 760px;
+    margin: 0;
+    color: var(--ds-muted);
+    font-size: var(--ds-text-sm);
+    line-height: 1.5;
+}
+
+.gac-zone-heading > span {
+    color: color-mix(in srgb, var(--ds-accent) 20%, transparent);
+    font-size: 2.6rem;
+    font-weight: 950;
+    line-height: .9;
+}
+
+.gac-warning p {
+    margin: 4px 0 0;
+}
+
+.gac-threat-grid,
+.gac-defense-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--ds-space-3);
+}
+
+.gac-threat-card,
+.gac-reserve-card,
+.gac-defense-card,
+.gac-counter-card {
+    min-width: 0;
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-md);
+    background: var(--ds-surface-soft);
+}
+
+.gac-threat-card,
+.gac-reserve-card {
+    padding: var(--ds-space-4);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--ds-space-4);
+    align-items: start;
+}
+
+.gac-portrait-button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: block;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.gac-portrait-button:focus-visible {
+    border-radius: var(--ds-radius-sm);
+    outline: 2px solid var(--ds-accent);
+    outline-offset: 3px;
+}
+
+.gac-threat-copy,
+.gac-reserve-copy {
+    min-width: 0;
+}
+
+.gac-card-title,
+.gac-defense-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--ds-space-3);
+}
+
+.gac-card-title > strong,
+.gac-defense-header strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gac-card-meta {
+    margin-top: 5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.gac-card-meta > span {
+    padding: 2px 6px;
+    border: 1px solid var(--ds-border);
+    border-radius: 999px;
+    color: var(--ds-muted);
+    font-size: .62rem;
+}
+
+.gac-threat-copy p,
+.gac-reserve-copy p,
+.gac-counter-team p {
+    margin: var(--ds-space-2) 0 0;
+    color: var(--ds-muted);
+    font-size: .75rem;
+    line-height: 1.48;
+}
+
+.gac-reserve-copy > span {
+    display: block;
+    margin-top: 4px;
+    color: var(--ds-muted);
+    font-size: .7rem;
+}
+
+.gac-detail-link {
+    margin-top: var(--ds-space-2);
+    padding: 0;
+    border: 0;
+    color: var(--ds-accent);
+    background: transparent;
+    font: inherit;
+    font-size: .7rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.gac-detail-link:hover,
+.gac-detail-link:focus-visible {
+    color: var(--ds-text);
+    outline: none;
+    text-decoration: underline;
+}
+
+.gac-defense-card {
+    padding: var(--ds-space-4);
+    display: grid;
+    gap: var(--ds-space-3);
+}
+
+.gac-defense-header span {
+    display: block;
+    margin-top: 3px;
+    color: var(--ds-muted);
+    font-size: .68rem;
+}
+
+.gac-defense-squad,
+.gac-counter-squad {
+    gap: 8px;
+}
+
+.gac-probability {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 5px 10px;
+    align-items: center;
+}
+
+.gac-probability > span {
+    color: var(--ds-muted);
+    font-size: .68rem;
+}
+
+.gac-probability > div {
+    grid-column: 1 / -1;
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .06);
+}
+
+.gac-probability > div > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--ds-accent);
+}
+
+.gac-reserve-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--ds-space-3);
+}
+
+.gac-counter-grid {
+    display: grid;
+    gap: var(--ds-space-3);
+}
+
+.gac-counter-card {
+    padding: var(--ds-space-4);
+    display: grid;
+    grid-template-columns: minmax(110px, .5fr) auto minmax(320px, 1.5fr) auto;
+    gap: var(--ds-space-4);
+    align-items: center;
+    border-left: 3px solid color-mix(in srgb, var(--ds-accent) 32%, transparent);
+}
+
+.gac-counter-observed {
+    border-left-color: color-mix(in srgb, var(--ds-success) 72%, transparent);
+    background: linear-gradient(100deg, var(--ds-success-soft), var(--ds-surface-soft));
+}
+
+.gac-counter-target,
+.gac-counter-team {
+    min-width: 0;
+}
+
+.gac-counter-target > span,
+.gac-counter-team > span {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--ds-muted);
+    font-size: .63rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}
+
+.gac-counter-badges {
+    margin-top: var(--ds-space-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.gac-counter-arrow {
+    color: var(--ds-accent);
+    font-size: 1.4rem;
+    font-weight: 900;
+}
+
+.gac-counter-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(58px, 1fr));
+    gap: 6px;
+}
+
+.gac-counter-stats > div {
+    min-width: 0;
+    padding: 7px 9px;
+    border-radius: var(--ds-radius-xs);
+    text-align: center;
+    background: rgba(255, 255, 255, .03);
+}
+
+.gac-counter-stats strong,
+.gac-counter-stats span {
+    display: block;
+}
+
+.gac-counter-stats strong {
+    font-size: .86rem;
+}
+
+.gac-counter-stats span {
+    color: var(--ds-muted);
+    font-size: .58rem;
+}
+
+@media (max-width: 1080px) {
+    .gac-reserve-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .gac-counter-card {
+        grid-template-columns: minmax(100px, .45fr) auto minmax(260px, 1.3fr);
+    }
+
+    .gac-counter-stats {
+        grid-column: 3;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .gac-scouting-metrics,
+    .gac-comparison-metrics,
+    .gac-command-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .gac-threat-grid,
+    .gac-defense-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gac-counter-card {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .gac-counter-arrow {
+        transform: rotate(90deg);
+        justify-self: center;
+    }
+
+    .gac-counter-stats {
+        grid-column: auto;
+    }
+}
+
+@media (max-width: 680px) {
+    .gac-matchup {
+        grid-template-columns: 1fr;
+    }
+
+    .gac-combatant-opponent {
+        text-align: left;
+    }
+
+    .gac-versus {
+        min-width: 0;
+        grid-template-columns: auto auto;
+        justify-content: center;
+    }
+
+    .gac-reserve-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gac-zone-heading {
+        align-items: start;
+    }
+
+    .gac-zone-heading > span {
+        display: none;
+    }
+}
+
+@media (max-width: 520px) {
+    .gac-scouting-metrics,
+    .gac-comparison-metrics,
+    .gac-command-nav {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .gac-threat-card,
+    .gac-reserve-card {
+        grid-template-columns: 1fr;
+    }
+
+    .gac-counter-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 380px) {
+    .gac-scouting-metrics,
+    .gac-comparison-metrics,
+    .gac-command-nav {
+        grid-template-columns: 1fr;
+    }
+}
