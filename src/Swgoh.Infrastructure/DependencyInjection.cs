@@ -175,6 +175,10 @@ public static class DependencyInjection
             new SwgohGameDataCatalogClient(
                 serviceProvider.GetRequiredService<IHttpClientFactory>(),
                 gameDataLocale));
+        services.AddSingleton<IRosterGameDataCatalog>(serviceProvider =>
+            new SwgohRosterGameDataCatalogClient(
+                serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                gameDataLocale));
 
         string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
         services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>
