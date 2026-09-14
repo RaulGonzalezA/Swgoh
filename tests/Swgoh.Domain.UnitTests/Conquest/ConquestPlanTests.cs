@@ -89,4 +89,96 @@ public sealed class ConquestPlanTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ConquestUnitStamina.Create("UNIT", 101));
         Assert.Throws<ArgumentOutOfRangeException>(() => ConquestUnitStamina.Create("UNIT", -1));
     }
+
+    [Fact]
+    public void DailyGoal_DefaultsDoNotLimitEnergyOrSetRewardTarget()
+    {
+        DateTimeOffset now = new(2026, 9, 14, 5, 0, 0, TimeSpan.Zero);
+        ConquestPlan plan = ConquestPlan.Create(
+            123_456_789,
+            "event-goal-defaults",
+            "Conquista",
+            ConquestDifficulty.Hard,
+            [],
+            now);
+
+        Assert.Null(plan.AvailableEnergy);
+        Assert.Equal(ConquestPlan.DefaultEnergyCostPerBattle, plan.EnergyCostPerBattle);
+        Assert.Equal(0, plan.CurrentRewardPoints);
+        Assert.Null(plan.TargetRewardPoints);
+        Assert.Null(plan.RewardTargetName);
+        Assert.False(plan.HasRewardTarget);
+        Assert.False(plan.RewardTargetReached);
+    }
+
+    [Fact]
+    public void ReplaceDailyGoal_StoresEnergyAndRewardTarget()
+    {
+        DateTimeOffset now = new(2026, 9, 14, 5, 0, 0, TimeSpan.Zero);
+        ConquestPlan plan = ConquestPlan.Create(
+            123_456_789,
+            "event-goal",
+            "Conquista",
+            ConquestDifficulty.Hard,
+            [],
+            now);
+
+        plan.ReplaceDailyGoal(
+            availableEnergy: 120,
+            energyCostPerBattle: 20,
+            currentRewardPoints: 520,
+            targetRewardPoints: 530,
+            rewardTargetName: "Caja roja",
+            now.AddMinutes(1));
+
+        Assert.Equal(120, plan.AvailableEnergy);
+        Assert.Equal(20, plan.EnergyCostPerBattle);
+        Assert.Equal(520, plan.CurrentRewardPoints);
+        Assert.Equal(530, plan.TargetRewardPoints);
+        Assert.Equal("Caja roja", plan.RewardTargetName);
+        Assert.True(plan.HasRewardTarget);
+        Assert.False(plan.RewardTargetReached);
+    }
+
+    [Fact]
+    public void ReplaceDailyGoal_RejectsInvalidEnergyAndPoints()
+    {
+        DateTimeOffset now = new(2026, 9, 14, 5, 0, 0, TimeSpan.Zero);
+        ConquestPlan plan = ConquestPlan.Create(
+            123_456_789,
+            "event-goal-invalid",
+            "Conquista",
+            ConquestDifficulty.Hard,
+            [],
+            now);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => plan.ReplaceDailyGoal(
+            -1,
+            20,
+            0,
+            null,
+            null,
+            now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => plan.ReplaceDailyGoal(
+            100,
+            0,
+            0,
+            null,
+            null,
+            now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => plan.ReplaceDailyGoal(
+            100,
+            20,
+            -1,
+            null,
+            null,
+            now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => plan.ReplaceDailyGoal(
+            100,
+            20,
+            0,
+            -1,
+            null,
+            now));
+    }
 }
