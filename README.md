@@ -96,7 +96,7 @@ OpenAPI documents are generated per API version. The v1 document is available at
 
 ## Runtime dependencies
 
-GAC opponent discovery runs in a bounded in-memory background queue. Repeated requests for the same player and format reuse the pending lookup. The API returns `Pending` (HTTP 409) while the worker runs; the Blazor clients poll every two seconds and update the screen on completion. Leaving the page cancels polling, not the server job. Jobs have a six-minute deadline, and pending jobs are lost when the API restarts. Provider failures become an unavailable result rather than an unhandled HTTP failure.
+GAC opponent discovery runs in a bounded in-memory background queue. Repeated requests for the same player and format reuse the pending lookup. The API returns `202 Accepted` with status `Pending` while the worker runs; `409 Conflict` is reserved for real unavailable/conflict states. The Blazor clients poll every two seconds and update the screen on completion. Leaving the page cancels polling, not the server job. Jobs have a six-minute deadline, and pending jobs are lost when the API restarts. Provider failures become an unavailable result rather than an unhandled HTTP failure.
 
 Aspire orchestrates the local development stack automatically:
 
@@ -123,7 +123,7 @@ Game Data, category metadata and localization are cached in-process for six hour
 GitHub Actions uses two separate workflows:
 
 - `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
-- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, GAC defense rules and league transitions, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis, Galactic Legend progress, squad definitions and a synthetic historical GAC import/opponent-scout flow.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, GAC defense rules and league transitions, accepts `202 Pending` while current-opponent discovery runs, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis, Galactic Legend progress, squad definitions and a synthetic historical GAC import/opponent-scout flow.
 
 A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
 
