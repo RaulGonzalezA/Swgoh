@@ -187,9 +187,7 @@ public sealed class SwgohComlinkFastGacOpponentSourceTests
                     _ => 0
                 }
                 : 0;
-            return $$"""
-                {"id":"{{playerId}}","name":"{{name}}","level":85,"power":12000000,"pvpStatus":{"rank":{{slot + 1}},"rankDelta":0,"score":{{score}},"scoreDelta":0,"tier":0}}
-                """;
+            return $"{{\"id\":\"{playerId}\",\"name\":\"{name}\",\"level\":85,\"power\":12000000,\"pvpStatus\":{{\"rank\":{slot + 1},\"rankDelta\":0,\"score\":{score},\"scoreDelta\":0,\"tier\":0}}}}";
         }
 
         private static HttpResponseMessage Profile(string playerId, long allyCode, string name, int skillRating) => Json($$"""
