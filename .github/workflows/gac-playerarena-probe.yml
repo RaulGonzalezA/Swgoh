@@ -1,0 +1,69 @@
+name: GAC PlayerArena Probe
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/gac-playerarena-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start Comlink
+        run: |
+          docker run -d --name comlink -p 3000:3000 \
+            -e APP_NAME=swgoh-playerarena-probe \
+            -e PORT=3000 \
+            ghcr.io/swgoh-utils/swgoh-comlink:latest
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs comlink
+          exit 1
+
+      - name: Compare playerArena payloads
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+
+          def post(details_only):
+              data = json.dumps({
+                  "payload": {
+                      "allyCode": "476825771",
+                      "playerDetailsOnly": details_only,
+                  },
+                  "enums": False,
+              }).encode()
+              request = urllib.request.Request(
+                  "http://127.0.0.1:3000/playerArena",
+                  data=data,
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+
+          for details_only in (True, False):
+              value = post(details_only)
+              seasons = value.get("seasonStatus") or []
+              print(json.dumps({
+                  "playerDetailsOnly": details_only,
+                  "rootKeys": sorted(value.keys()),
+                  "playerRating": value.get("playerRating"),
+                  "seasonStatusCount": len(seasons) if isinstance(seasons, list) else 1,
+                  "seasonStatus": seasons,
+              }, indent=2))
+          PY
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f comlink 2>/dev/null || true
