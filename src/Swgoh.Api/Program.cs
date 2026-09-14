@@ -99,6 +99,7 @@ app.MapConquestDailyPlanEndpoints();
 app.MapGacEndpoints();
 app.MapGacPlannerEndpoints();
 app.MapGacPlannerOptimizationEndpoints();
+app.MapGacAttackExecutionEndpoints();
 app.MapGacDataEndpoints();
 app.MapOpenApi().WithDocumentPerVersion();
 app.MapScalarApiReference("/scalar", options =>

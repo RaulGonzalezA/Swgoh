@@ -1,0 +1,109 @@
+using Asp.Versioning;
+
+using Swgoh.Application.Gac;
+using Swgoh.Domain.Gac;
+
+namespace Swgoh.Api.Endpoints;
+
+internal static class GacAttackExecutionEndpoints
+{
+    public static IEndpointRouteBuilder MapGacAttackExecutionEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var versionedApi = endpoints.NewVersionedApi("GAC Attack Execution");
+        RouteGroupBuilder group = versionedApi
+            .MapGroup("/api/v{version:apiVersion}/gac/players/{allyCode:long}/planner/current/attacks")
+            .HasApiVersion(1.0)
+            .WithTags("GAC Planner");
+
+        group.MapPost("/{attackId:guid}/result", ExecuteAsync)
+            .WithSummary("Record a GAC attack result, learn from it and recalculate the next attack");
+
+        return endpoints;
+    }
+
+    private static async Task<IResult> ExecuteAsync(
+        long allyCode,
+        Guid attackId,
+        ExecuteAttackRequest request,
+        IGacAttackExecutionService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            GacAttackExecutionLookup lookup = await service.ExecuteAsync(
+                allyCode,
+                attackId,
+                new ExecuteGacAttackResult(
+                    ParseStatus(request.Status),
+                    request.Banners,
+                    request.Notes),
+                cancellationToken);
+            return ToResult(lookup);
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["execution"] = [exception.Message] });
+        }
+    }
+
+    private static IResult ToResult(GacAttackExecutionLookup lookup)
+    {
+        if (lookup.IsAvailable && lookup.Execution is not null)
+        {
+            GacAttackExecutionResult execution = lookup.Execution;
+            return Results.Ok(new ExecutionEnvelope(
+                GacPlannerEndpoints.GacPlannerResponse.From(execution.State),
+                execution.Optimization is null
+                    ? null
+                    : GacPlannerOptimizationEndpoints.OptimizationResponse.From(execution.Optimization),
+                new ExecutedAttackResponse(
+                    execution.AttackId,
+                    execution.Status.ToString(),
+                    execution.Banners,
+                    execution.Notes),
+                execution.NextRecommendation is null
+                    ? null
+                    : GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse.From(
+                        execution.NextRecommendation)));
+        }
+
+        var unavailable = new GacPlannerEndpoints.PlannerUnavailableResponse(
+            lookup.Status.ToString(),
+            lookup.Message);
+        return lookup.Status switch
+        {
+            CurrentGacOpponentStatus.NoActiveEvent or CurrentGacOpponentStatus.PlayerNotJoined =>
+                Results.NotFound(unavailable),
+            CurrentGacOpponentStatus.OpponentUnavailable or CurrentGacOpponentStatus.FormatUnavailable =>
+                Results.Conflict(unavailable),
+            _ => Results.Problem(statusCode: StatusCodes.Status502BadGateway)
+        };
+    }
+
+    private static GacAttackPlanStatus ParseStatus(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "won" => GacAttackPlanStatus.Won,
+            "failed" => GacAttackPlanStatus.Failed,
+            _ => throw new ArgumentException("Execution status must be Won or Failed.", nameof(value))
+        };
+    }
+
+    internal sealed record ExecuteAttackRequest(string Status, int? Banners, string? Notes);
+
+    internal sealed record ExecutionEnvelope(
+        GacPlannerEndpoints.GacPlannerResponse Planner,
+        GacPlannerOptimizationEndpoints.OptimizationResponse? Optimization,
+        ExecutedAttackResponse Execution,
+        GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse? NextRecommendation);
+
+    internal sealed record ExecutedAttackResponse(
+        Guid AttackId,
+        string Status,
+        int? Banners,
+        string? Notes);
+}
