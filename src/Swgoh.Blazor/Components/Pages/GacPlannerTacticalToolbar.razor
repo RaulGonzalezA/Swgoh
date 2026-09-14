@@ -11,12 +11,12 @@
     </div>
 
     <div class="planner-tactical-filters" role="group" aria-label="Filtrar defensas">
-        <button class="@FilterClass("All")" type="button" @onclick="() => ChangeFilterAsync("All")">Todas</button>
-        <button class="@FilterClass("Low")" type="button" @onclick="() => ChangeFilterAsync("Low")">Riesgo bajo</button>
-        <button class="@FilterClass("Medium")" type="button" @onclick="() => ChangeFilterAsync("Medium")">Medio</button>
-        <button class="@FilterClass("High")" type="button" @onclick="() => ChangeFilterAsync("High")">Alto</button>
-        <button class="@FilterClass("NoCounter")" type="button" @onclick="() => ChangeFilterAsync("NoCounter")">Sin counter</button>
-        <button class="@FilterClass("Unplanned")" type="button" @onclick="() => ChangeFilterAsync("Unplanned")">Sin plan</button>
+        <button class="@AllClass" type="button" @onclick="ShowAllAsync">Todas</button>
+        <button class="@LowClass" type="button" @onclick="ShowLowAsync">Riesgo bajo</button>
+        <button class="@MediumClass" type="button" @onclick="ShowMediumAsync">Medio</button>
+        <button class="@HighClass" type="button" @onclick="ShowHighAsync">Alto</button>
+        <button class="@NoCounterClass" type="button" @onclick="ShowNoCounterAsync">Sin counter</button>
+        <button class="@UnplannedClass" type="button" @onclick="ShowUnplannedAsync">Sin plan</button>
     </div>
 
     <span class="planner-tactical-count"><strong>@VisibleCount</strong> / @TotalCount visibles</span>
@@ -41,10 +41,22 @@
     [Parameter]
     public int TotalCount { get; set; }
 
+    private string AllClass => FilterClass("All");
+    private string LowClass => FilterClass("Low");
+    private string MediumClass => FilterClass("Medium");
+    private string HighClass => FilterClass("High");
+    private string NoCounterClass => FilterClass("NoCounter");
+    private string UnplannedClass => FilterClass("Unplanned");
+
     private Task ChangeSortAsync(ChangeEventArgs args) =>
         SortChanged.InvokeAsync(args.Value?.ToString() ?? "Recommended");
 
-    private Task ChangeFilterAsync(string filter) => FilterChanged.InvokeAsync(filter);
+    private Task ShowAllAsync() => FilterChanged.InvokeAsync("All");
+    private Task ShowLowAsync() => FilterChanged.InvokeAsync("Low");
+    private Task ShowMediumAsync() => FilterChanged.InvokeAsync("Medium");
+    private Task ShowHighAsync() => FilterChanged.InvokeAsync("High");
+    private Task ShowNoCounterAsync() => FilterChanged.InvokeAsync("NoCounter");
+    private Task ShowUnplannedAsync() => FilterChanged.InvokeAsync("Unplanned");
 
     private string FilterClass(string filter) =>
         string.Equals(Filter, filter, StringComparison.Ordinal) ? "active" : string.Empty;
