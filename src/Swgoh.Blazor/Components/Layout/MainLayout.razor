@@ -82,6 +82,13 @@
             </div>
             @if (Session.AllyCode is long currentAllyCode)
             {
+                @if (IsGacWarRoom)
+                {
+                    <a class="command-player-chip" href="@($"/gac/{currentAllyCode}/refresh")" title="Actualizar datos de Gran Arena">
+                        <span>↻</span>
+                        <small>Actualizar GAC</small>
+                    </a>
+                }
                 <a class="command-player-chip" href="/settings" title="Jugador y ajustes">
                     <span>@PlayerInitials(Session.PlayerName)</span>
                     <small>#@FormatAllyCode(currentAllyCode)</small>
@@ -152,6 +159,20 @@
 @code {
     private bool contextRestored;
     private bool _showMobileMore;
+
+    private bool IsGacWarRoom
+    {
+        get
+        {
+            if (Session.AllyCode is not long allyCode)
+            {
+                return false;
+            }
+
+            string path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+            return path.Equals($"/gac/{allyCode}", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     private bool MobileMoreActive
     {
