@@ -24,6 +24,7 @@ Use these instead of recreating the pattern in a page:
 - `UiAlert`: info/success/warning/error feedback.
 - `RichUnitPortrait`: SWGOH unit recognition surface (portrait, relic, speed, mods and datacron verification state).
 - `RosterUnitCard`: roster-specific unit surface with isolated styling and a details action.
+- `UnitDetailDrawer`: shared roster/GAC unit detail surface with isolated styling.
 
 ## Tokens
 
@@ -49,6 +50,7 @@ Token groups:
 7. Prefer portraits over unit-name lists for GAC/Conquest recognition; keep names available as captions/tooltips/details.
 8. Home is an assistant, not a navigation dashboard: one primary action should win, with only a short queue and minimum supporting context.
 9. Do not leave page-specific CSS in the global bundle when CSS isolation can own it safely.
+10. War Room visuals must degrade gracefully: missing enriched roster visuals must not block scouting or battle-plan data.
 
 ## Migration strategy
 
@@ -57,5 +59,6 @@ When touching a legacy page, replace duplicated generic markup with `Ui*` compon
 The intended migration order is Home → Roster → GAC → Planner → Conquista.
 
 - Home: migrated to the assistant-first `Ui*` pattern.
-- Roster: migrated to `UiPageHeader`, `UiMetric`, `UiCard`, `UiStatusPill`, `UiLoadingState`, `UiAlert` and `UiEmptyState`. Page layout now lives in `PlayerRoster.razor.css`; unit cards live in `RosterUnitCard.razor` + isolated CSS. Legacy `player-roster.css` and `roster-collection.css` are removed. Shared GAC/player navigation lives in `player-gac-shared.css`, while War Room owns `war-room.css`.
-- GAC / Planner / Conquista: next migration targets.
+- Roster: migrated to `UiPageHeader`, `UiMetric`, `UiCard`, `UiStatusPill`, `UiLoadingState`, `UiAlert` and `UiEmptyState`. Page layout lives in `PlayerRoster.razor.css`; unit cards live in `RosterUnitCard.razor` + isolated CSS. Legacy `player-roster.css` and `roster-collection.css` are removed.
+- GAC / War Room: migrated to the same `Ui*` primitives with portrait-first threat, defense, reserve and counter surfaces. Page layout now lives in `GrandArena.razor.css`; `UnitDetailDrawer` owns its isolated CSS. Global `war-room.css` and `unit-detail.css` are removed. `player-gac-shared.css` now owns only the shared Roster / War Room / Planner sub-navigation.
+- Planner / Conquista: next migration targets.
