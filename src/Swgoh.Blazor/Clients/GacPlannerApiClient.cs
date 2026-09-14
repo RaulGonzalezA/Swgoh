@@ -226,7 +226,8 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         TeamPresetViewModel Team,
         int Attempt,
         string Status,
-        string? Notes);
+        string? Notes,
+        int? Banners);
 
     public sealed record ConflictViewModel(
         string Code,
