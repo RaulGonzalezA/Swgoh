@@ -1,0 +1,51 @@
+<div class="planner-tactical-toolbar" aria-label="Orden y filtros del tablero rival">
+    <div class="planner-tactical-sort">
+        <label for="planner-sort">Orden</label>
+        <select id="planner-sort" value="@Sort" @onchange="ChangeSortAsync">
+            <option value="Recommended">Recomendado</option>
+            <option value="Safest">Más seguro</option>
+            <option value="Hardest">Más difícil</option>
+            <option value="Zone">Zona</option>
+            <option value="Unplanned">Sin plan primero</option>
+        </select>
+    </div>
+
+    <div class="planner-tactical-filters" role="group" aria-label="Filtrar defensas">
+        <button class="@FilterClass("All")" type="button" @onclick="() => ChangeFilterAsync("All")">Todas</button>
+        <button class="@FilterClass("Low")" type="button" @onclick="() => ChangeFilterAsync("Low")">Riesgo bajo</button>
+        <button class="@FilterClass("Medium")" type="button" @onclick="() => ChangeFilterAsync("Medium")">Medio</button>
+        <button class="@FilterClass("High")" type="button" @onclick="() => ChangeFilterAsync("High")">Alto</button>
+        <button class="@FilterClass("NoCounter")" type="button" @onclick="() => ChangeFilterAsync("NoCounter")">Sin counter</button>
+        <button class="@FilterClass("Unplanned")" type="button" @onclick="() => ChangeFilterAsync("Unplanned")">Sin plan</button>
+    </div>
+
+    <span class="planner-tactical-count"><strong>@VisibleCount</strong> / @TotalCount visibles</span>
+</div>
+
+@code {
+    [Parameter]
+    public string Sort { get; set; } = "Recommended";
+
+    [Parameter]
+    public EventCallback<string> SortChanged { get; set; }
+
+    [Parameter]
+    public string Filter { get; set; } = "All";
+
+    [Parameter]
+    public EventCallback<string> FilterChanged { get; set; }
+
+    [Parameter]
+    public int VisibleCount { get; set; }
+
+    [Parameter]
+    public int TotalCount { get; set; }
+
+    private Task ChangeSortAsync(ChangeEventArgs args) =>
+        SortChanged.InvokeAsync(args.Value?.ToString() ?? "Recommended");
+
+    private Task ChangeFilterAsync(string filter) => FilterChanged.InvokeAsync(filter);
+
+    private string FilterClass(string filter) =>
+        string.Equals(Filter, filter, StringComparison.Ordinal) ? "active" : string.Empty;
+}
