@@ -1,1 +1,0 @@
-dotnet run --project src/Swgoh.Api/Swgoh.Api.csproj --configuration Release --no-build --no-restore --no-launch-profile > smoke-results/api.log 2>&1 &
