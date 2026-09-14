@@ -57,7 +57,12 @@ public sealed record GacBattleUnit(
     int ZetaCount,
     int OmicronCount,
     bool IsShip,
-    bool IsGalacticLegend);
+    bool IsGalacticLegend,
+    string? ThumbnailName = null,
+    decimal? Speed = null,
+    int? EquippedMods = null,
+    int? SixDotMods = null,
+    decimal? ModSpeedBonus = null);
 
 public sealed record GacBattleRosterComparison(
     long PlayerGalacticPower,
