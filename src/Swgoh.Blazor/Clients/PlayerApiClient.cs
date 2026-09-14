@@ -50,6 +50,7 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         bool? hasOmicron = null,
         string orderBy = "GalacticPower",
         string direction = "Descending",
+        string? faction = null,
         CancellationToken cancellationToken = default)
     {
         var query = new StringBuilder(
@@ -58,6 +59,11 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         if (!string.IsNullOrWhiteSpace(search))
         {
             query.Append("&search=").Append(Uri.EscapeDataString(search.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(faction))
+        {
+            query.Append("&faction=").Append(Uri.EscapeDataString(faction.Trim()));
         }
 
         AppendOptional(query, "minRarity", minRarity);
@@ -129,7 +135,14 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         int Page,
         int PageSize,
         int TotalPages,
-        IReadOnlyCollection<RosterUnitViewModel> Items);
+        IReadOnlyCollection<RosterUnitViewModel> Items,
+        string? PlayerName = null,
+        long GalacticPower = 0,
+        int RosterCount = 0,
+        IReadOnlyCollection<string>? AvailableFactions = null)
+    {
+        public IReadOnlyCollection<string> FactionOptions => AvailableFactions ?? [];
+    }
 
     public sealed record RosterUnitViewModel(
         string Id,
