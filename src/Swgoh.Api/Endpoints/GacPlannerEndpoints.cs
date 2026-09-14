@@ -331,7 +331,8 @@ internal static class GacPlannerEndpoints
         TeamPresetResponse Team,
         int Attempt,
         string Status,
-        string? Notes)
+        string? Notes,
+        int? Banners)
     {
         public static AttackResponse From(GacAttackAssignmentDetails attack) => new(
             attack.Id,
@@ -339,7 +340,8 @@ internal static class GacPlannerEndpoints
             TeamPresetResponse.From(attack.Team),
             attack.Attempt,
             attack.Status.ToString(),
-            attack.Notes);
+            attack.Notes,
+            attack.Banners);
     }
 
     internal sealed record ConflictResponse(
