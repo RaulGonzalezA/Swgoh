@@ -225,8 +225,9 @@ public static class DependencyInjection
         services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
         services.AddSingleton<SwgohComlinkGacOpponentSource>();
         services.AddSingleton<SwgohComlinkCurrentRoundOpponentSource>();
+        services.AddSingleton<SwgohComlinkFastGacOpponentSource>();
         services.AddSingleton(provider => new BackgroundGacOpponentSource(
-            provider.GetRequiredService<SwgohComlinkCurrentRoundOpponentSource>(),
+            provider.GetRequiredService<SwgohComlinkFastGacOpponentSource>(),
             provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BackgroundGacOpponentSource>>()));
         services.AddSingleton<ICurrentGacOpponentSource>(provider => provider.GetRequiredService<BackgroundGacOpponentSource>());
         services.AddHostedService(provider => provider.GetRequiredService<BackgroundGacOpponentSource>());
