@@ -217,7 +217,18 @@ internal sealed class CurrentGacScoutingService(
             {
                 return persisted;
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // A failed cache read must not prevent a live refresh.
+        }
 
+        try
+        {
             return await playerProfileService.RefreshFromGameAsync(allyCode, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
