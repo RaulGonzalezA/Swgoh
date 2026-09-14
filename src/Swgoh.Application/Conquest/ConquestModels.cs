@@ -45,7 +45,12 @@ public sealed record SaveConquestPlan(
     IReadOnlyCollection<SaveConquestUnitStamina>? Stamina = null,
     int DiskCapacityLimit = ConquestPlan.DefaultDiskCapacityLimit,
     IReadOnlyCollection<SaveConquestDataDisk>? DataDisks = null,
-    IReadOnlyCollection<SaveConquestDiskLoadout>? DiskLoadouts = null);
+    IReadOnlyCollection<SaveConquestDiskLoadout>? DiskLoadouts = null,
+    int? AvailableEnergy = null,
+    int EnergyCostPerBattle = ConquestPlan.DefaultEnergyCostPerBattle,
+    int CurrentRewardPoints = 0,
+    int? TargetRewardPoints = null,
+    string? RewardTargetName = null);
 
 public sealed record ConquestFeatDetails(
     Guid Id,
@@ -77,6 +82,11 @@ public sealed record ConquestPlanDetails(
     int DiskCapacityLimit,
     IReadOnlyCollection<ConquestDataDisk> DataDisks,
     IReadOnlyCollection<ConquestDiskLoadout> DiskLoadouts,
+    int? AvailableEnergy,
+    int EnergyCostPerBattle,
+    int CurrentRewardPoints,
+    int? TargetRewardPoints,
+    string? RewardTargetName,
     DateTimeOffset UpdatedAtUtc);
 
 public sealed record ConquestOptimizationUnit(
