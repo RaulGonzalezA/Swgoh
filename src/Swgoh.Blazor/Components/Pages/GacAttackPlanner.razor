@@ -217,6 +217,13 @@ else
         }
     </section>
 
+    <GacExecutionPanel AllyCode="@AllyCode"
+                       Planner="@Planner"
+                       Optimization="@Optimization"
+                       OwnRoster="@ExecutionOwnRoster"
+                       OpponentRoster="@ExecutionOpponentRoster"
+                       Executed="@HandleAttackExecutedAsync" />
+
     @if (Planner.Plan.Conflicts.Count > 0)
     {
         <section class="planner-conflict-strip" aria-label="Conflictos del plan">
@@ -552,7 +559,7 @@ else
                                                 </div>
                                                 @if (attack.Status == "Planned")
                                                 {
-                                                    <div class="planner-attempt-actions"><button type="button" title="Victoria" @onclick="() => MarkAttackWonAsync(attack.Id)">✓</button><button type="button" title="Fallo" @onclick="() => MarkAttackFailedAsync(attack.Id)">×</button><button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button></div>
+                                                    <div class="planner-attempt-actions"><a class="secondary-button button-link" href="#gac-execution">Registrar resultado</a><button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button></div>
                                                 }
                                             </div>
                                         }
