@@ -6,7 +6,7 @@
 <div class="page-heading-row planner-page-heading">
     <div>
         <a class="back-link" href="@($"/gac/{AllyCode}")">← War Room</a>
-        <span class="eyebrow">GAC Attack Planner</span>
+        <span class="eyebrow">GAC Planner 2.0</span>
         <h1>Diseña la ronda antes de atacar</h1>
         @if (Planner is not null)
         {
@@ -37,26 +37,25 @@
 
 @if (Loading)
 {
-    <div class="loading-panel gac-loading">
-        <span class="spinner"></span>
-        <div><strong>Preparando el tablero</strong><small>Rosters, equipos guardados y ronda actual</small></div>
-    </div>
+    <UiLoadingState Title="Preparando el tablero"
+                    Description="Rosters, equipos guardados y ronda actual" />
 }
 else if (Error is not null)
 {
-    <div class="status-card status-error" role="alert">
-        <span class="status-icon">!</span>
-        <div><strong>No se ha podido abrir el planificador</strong><p>@Error</p></div>
-    </div>
+    <UiAlert Tone="danger"
+             Icon="!"
+             Title="No se ha podido abrir el planificador"
+             Description="@Error" />
 }
 else if (Planner is null)
 {
-    <div class="empty-state empty-state-wide">
-        <span class="empty-icon">P</span>
-        <h2>No hay una ronda activa que planificar</h2>
-        <p>@(UnavailableMessage ?? "Cuando se detecte un rival activo podrás preparar aquí toda la secuencia de ataques.")</p>
-        <a class="secondary-button button-link" href="@($"/gac/{AllyCode}")">Volver a War Room</a>
-    </div>
+    <UiEmptyState Icon="P"
+                  Title="No hay una ronda activa que planificar"
+                  Description="@(UnavailableMessage ?? "Cuando se detecte un rival activo podrás preparar aquí toda la secuencia de ataques.")">
+        <Actions>
+            <a class="secondary-button" href="@($"/gac/{AllyCode}")">Volver a War Room</a>
+        </Actions>
+    </UiEmptyState>
 }
 else
 {
@@ -182,14 +181,6 @@ else
                                 @if (recommendation.OneShotRate is decimal optimizerOneShot)
                                 {
                                     <span>1-shot <strong>@Percent(optimizerOneShot)</strong></span>
-                                }
-                                @if (recommendation.TeamAverageSpeed is decimal teamSpeed)
-                                {
-                                    <span>SPD ataque <strong>@teamSpeed.ToString("0")</strong></span>
-                                }
-                                @if (recommendation.DefenseAverageSpeed is decimal defenseSpeed)
-                                {
-                                    <span>SPD rival <strong>@defenseSpeed.ToString("0")</strong></span>
                                 }
                             </div>
                             <p>@recommendation.Rationale</p>
@@ -351,6 +342,7 @@ else
                     </label>
                     <button class="secondary-button" type="button" @onclick="AddOwnDefenseAsync" disabled="@(Saving || string.IsNullOrWhiteSpace(OwnDefensePresetId))">Añadir</button>
                 </div>
+
                 @if (OwnDefenses.Count == 0)
                 {
                     <div class="planner-board-empty">Todavía no has indicado tu defensa. El optimizador no podrá reservar esas unidades hasta que la registres.</div>
@@ -395,10 +387,10 @@ else
 
             <section class="planner-board-section planner-enemy-section">
                 <div class="planner-section-heading">
-                    <div><span class="section-kicker">Tablero rival</span><h2>Defensas visibles</h2></div>
+                    <div><span class="section-kicker">Tablero rival</span><h2>Carriles tácticos</h2></div>
                     <button class="ghost-button" type="button" @onclick="ToggleEnemyBuilder">@(ShowEnemyBuilder ? "Cerrar" : "+ Defensa visible")</button>
                 </div>
-                <p class="planner-section-copy">Añade únicamente equipos que ya puedas ver en el juego. El optimizador cruza esos equipos con tus counters y presets disponibles.</p>
+                <p class="planner-section-copy">Ordena la ronda por riesgo y estado del plan. Cada carril mantiene defensa, counter, equipo elegido y ejecución en una sola lectura.</p>
 
                 @if (ShowEnemyBuilder)
                 {
@@ -444,130 +436,145 @@ else
                 }
                 else
                 {
-                    <div class="planner-enemy-board">
-                        @foreach (VisibleDefenseDraft defense in VisibleDefenses.OrderBy(item => item.Zone))
-                        {
-                            GacPlannerApiClient.VisibleDefenseViewModel? details = FindVisibleDefense(defense.Id);
-                            GacPlannerApiClient.CounterHintViewModel? hint = FindCounterHint(defense.Id);
-                            IReadOnlyCollection<AttackDraft> defenseAttacks = AttacksFor(defense.Id);
-                            <article class="planner-enemy-card @(details?.Defeated == true ? "planner-enemy-defeated" : string.Empty)">
-                                <div class="planner-enemy-card-top">
-                                    <div><span class="planner-zone-pill">@defense.Zone</span><h3>@EnemyLeaderName(defense, details)</h3>@if (!string.IsNullOrWhiteSpace(defense.Label)) { <small>@defense.Label</small> }</div>
-                                    <button class="planner-icon-button" type="button" title="Quitar defensa visible" @onclick="() => RemoveVisibleDefenseAsync(defense.Id)">×</button>
-                                </div>
+                    <GacPlannerTacticalToolbar Sort="@TacticalSort"
+                                               SortChanged="SetTacticalSort"
+                                               Filter="@TacticalFilter"
+                                               FilterChanged="SetTacticalFilter"
+                                               VisibleCount="@TacticalVisibleDefenses.Count"
+                                               TotalCount="@VisibleDefenses.Count" />
 
-                                @if (details is not null)
-                                {
-                                    <div class="rich-squad">
-                                        @{ bool enemyLeader = true; }
-                                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in details.Squad.AllUnits)
-                                        {
-                                            PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOpponentRosterUnit(unit.DefinitionId);
-                                            <RichUnitPortrait Name="@unit.Name"
-                                                              ThumbnailName="@unit.ThumbnailName"
-                                                              RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
-                                                              Speed="@rosterUnit?.Stats?.Speed"
-                                                              EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
-                                                              SixDotMods="@rosterUnit?.Mods?.SixDotCount"
-                                                              ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
-                                                              IsLeader="@enemyLeader" />
-                                            enemyLeader = false;
-                                        }
+                    @if (TacticalVisibleDefenses.Count == 0)
+                    {
+                        <div class="planner-board-empty planner-board-empty-large"><strong>No hay defensas con este filtro</strong><span>Cambia el filtro táctico para volver a mostrar enfrentamientos.</span></div>
+                    }
+                    else
+                    {
+                        <div class="planner-enemy-board">
+                            @foreach (VisibleDefenseDraft defense in TacticalVisibleDefenses)
+                            {
+                                GacPlannerApiClient.VisibleDefenseViewModel? details = FindVisibleDefense(defense.Id);
+                                GacPlannerApiClient.CounterHintViewModel? hint = FindCounterHint(defense.Id);
+                                IReadOnlyCollection<AttackDraft> defenseAttacks = AttacksFor(defense.Id);
+                                <article class="planner-enemy-card @(details?.Defeated == true ? "planner-enemy-defeated" : string.Empty)">
+                                    <div class="planner-enemy-card-top">
+                                        <div><span class="planner-zone-pill">@defense.Zone</span><h3>@EnemyLeaderName(defense, details)</h3>@if (!string.IsNullOrWhiteSpace(defense.Label)) { <small>@defense.Label</small> }</div>
+                                        <button class="planner-icon-button" type="button" title="Quitar defensa visible" @onclick="() => RemoveVisibleDefenseAsync(defense.Id)">×</button>
+                                        <GacMatchupRating Hint="@hint" Defeated="@(details?.Defeated == true)" />
                                     </div>
-                                }
 
-                                @if (hint is not null)
-                                {
-                                    <div class="planner-counter-hint">
-                                        <div class="planner-counter-hint-heading"><span>Counter sugerido</span><strong>@FriendlyConfidence(hint.Confidence)</strong></div>
-                                        <p>@hint.Rationale</p>
-                                        @if (hint.RecommendedTeam.Count > 0)
-                                        {
-                                            <div class="rich-squad">
-                                                @{ bool hintLeader = true; }
-                                                @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in hint.RecommendedTeam)
-                                                {
-                                                    PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
-                                                    <RichUnitPortrait Name="@unit.Name"
-                                                                      ThumbnailName="@unit.ThumbnailName"
-                                                                      RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
-                                                                      Speed="@rosterUnit?.Stats?.Speed"
-                                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
-                                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
-                                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
-                                                                      IsLeader="@hintLeader"
-                                                                      DatacronWarning="@(hintLeader && hint.RequiresDatacronVerification)"
-                                                                      Compact="true" />
-                                                    hintLeader = false;
-                                                }
-                                            </div>
-                                        }
-                                        <div class="planner-hint-stats">
-                                            @if (hint.WinRate is decimal winRate) { <span><strong>@Percent(winRate)</strong> win</span> }
-                                            @if (hint.OneShotRate is decimal oneShotRate) { <span><strong>@Percent(oneShotRate)</strong> one-shot</span> }
-                                            @if (hint.Uses is int uses) { <span><strong>@uses</strong> muestras</span> }
-                                        </div>
-                                        @if (hint.RequiresDatacronVerification) { <small class="datacron-note">DC? Verifica datacron antes de confirmar; los mods ya aparecen sobre los retratos.</small> }
-                                        @if (hint.MatchingTeamPresetId is Guid matchingPresetId) { <button class="secondary-button planner-hint-action" type="button" @onclick="() => PlanAttackAsync(defense.Id, matchingPresetId)">Usar mi equipo coincidente</button> }
-                                    </div>
-                                }
-
-                                <div class="planner-attack-designer">
-                                    <div class="planner-attack-designer-title"><strong>Diseñar ataque</strong><span>Intento @NextAttempt(defense.Id)</span></div>
-                                    <div class="planner-attack-row">
-                                        <select value="@SelectedAttackPreset(defense.Id)" @onchange="eventArgs => SetAttackPreset(defense.Id, eventArgs.Value?.ToString())">
-                                            <option value="">Selecciona tu equipo…</option>
-                                            @foreach (GacPlannerApiClient.TeamPresetViewModel preset in AttackPresetOptions(defense.IsFleet))
+                                    @if (details is not null)
+                                    {
+                                        <div class="rich-squad">
+                                            @{ bool enemyLeader = true; }
+                                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in details.Squad.AllUnits)
                                             {
-                                                <option value="@preset.Id.ToString()">@preset.Name · @FriendlyUse(preset.Use)</option>
+                                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOpponentRosterUnit(unit.DefinitionId);
+                                                <RichUnitPortrait Name="@unit.Name"
+                                                                  ThumbnailName="@unit.ThumbnailName"
+                                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                  Speed="@rosterUnit?.Stats?.Speed"
+                                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                  IsLeader="@enemyLeader" />
+                                                enemyLeader = false;
                                             }
-                                        </select>
-                                        <button class="secondary-button" type="button" @onclick="() => PlanSelectedAttackAsync(defense.Id)" disabled="@(Saving || string.IsNullOrWhiteSpace(SelectedAttackPreset(defense.Id)))">Planificar</button>
-                                    </div>
-                                </div>
+                                        </div>
+                                    }
 
-                                @if (defenseAttacks.Count > 0)
-                                {
-                                    <div class="planner-attempt-list">
-                                        @foreach (AttackDraft attack in defenseAttacks.OrderBy(item => item.Attempt))
-                                        {
-                                            GacPlannerApiClient.TeamPresetViewModel? attackTeam = FindPreset(attack.TeamPresetId);
-                                            <div class="planner-attempt planner-attempt-@attack.Status.ToLowerInvariant()">
-                                                <div>
-                                                    <span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span>
-                                                    <strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong>
-                                                    @if (attackTeam is not null)
+                                    @if (hint is not null)
+                                    {
+                                        <div class="planner-counter-hint">
+                                            <div class="planner-counter-hint-heading"><span>Counter sugerido</span><strong>@FriendlyConfidence(hint.Confidence)</strong></div>
+                                            <p>@hint.Rationale</p>
+                                            @if (hint.RecommendedTeam.Count > 0)
+                                            {
+                                                <div class="rich-squad">
+                                                    @{ bool hintLeader = true; }
+                                                    @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in hint.RecommendedTeam)
                                                     {
-                                                        <div class="rich-squad">
-                                                            @{ bool attemptLeader = true; }
-                                                            @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in attackTeam.Squad.AllUnits)
-                                                            {
-                                                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
-                                                                <RichUnitPortrait Name="@unit.Name"
-                                                                                  ThumbnailName="@unit.ThumbnailName"
-                                                                                  RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
-                                                                                  Speed="@rosterUnit?.Stats?.Speed"
-                                                                                  EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
-                                                                                  SixDotMods="@rosterUnit?.Mods?.SixDotCount"
-                                                                                  ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
-                                                                                  IsLeader="@attemptLeader"
-                                                                                  Compact="true" />
-                                                                attemptLeader = false;
-                                                            }
-                                                        </div>
+                                                        PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                                        <RichUnitPortrait Name="@unit.Name"
+                                                                          ThumbnailName="@unit.ThumbnailName"
+                                                                          RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                          Speed="@rosterUnit?.Stats?.Speed"
+                                                                          EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                          SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                          ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                          IsLeader="@hintLeader"
+                                                                          DatacronWarning="@(hintLeader && hint.RequiresDatacronVerification)"
+                                                                          Compact="true" />
+                                                        hintLeader = false;
                                                     }
                                                 </div>
-                                                @if (attack.Status == "Planned")
-                                                {
-                                                    <div class="planner-attempt-actions"><a class="secondary-button button-link" href="#gac-execution">Registrar resultado</a><button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button></div>
-                                                }
+                                            }
+                                            <div class="planner-hint-stats">
+                                                @if (hint.WinRate is decimal winRate) { <span><strong>@Percent(winRate)</strong> win</span> }
+                                                @if (hint.OneShotRate is decimal oneShotRate) { <span><strong>@Percent(oneShotRate)</strong> one-shot</span> }
+                                                @if (hint.Uses is int uses) { <span><strong>@uses</strong> muestras</span> }
                                             </div>
-                                        }
+                                            @if (hint.RequiresDatacronVerification) { <small class="datacron-note">DC? Verifica datacron antes de confirmar; los mods ya aparecen sobre los retratos.</small> }
+                                            @if (hint.MatchingTeamPresetId is Guid matchingPresetId) { <button class="secondary-button planner-hint-action" type="button" @onclick="() => PlanAttackAsync(defense.Id, matchingPresetId)">Usar mi equipo coincidente</button> }
+                                        </div>
+                                    }
+
+                                    <div class="planner-attack-designer">
+                                        <div class="planner-attack-designer-title"><strong>Diseñar ataque</strong><span>Intento @NextAttempt(defense.Id)</span></div>
+                                        <div class="planner-attack-row">
+                                            <select value="@SelectedAttackPreset(defense.Id)" @onchange="eventArgs => SetAttackPreset(defense.Id, eventArgs.Value?.ToString())">
+                                                <option value="">Selecciona tu equipo…</option>
+                                                @foreach (GacPlannerApiClient.TeamPresetViewModel preset in AttackPresetOptions(defense.IsFleet))
+                                                {
+                                                    <option value="@preset.Id.ToString()">@preset.Name · @FriendlyUse(preset.Use)</option>
+                                                }
+                                            </select>
+                                            <button class="secondary-button" type="button" @onclick="() => PlanSelectedAttackAsync(defense.Id)" disabled="@(Saving || string.IsNullOrWhiteSpace(SelectedAttackPreset(defense.Id)))">Planificar</button>
+                                        </div>
                                     </div>
-                                }
-                            </article>
-                        }
-                    </div>
+
+                                    @if (defenseAttacks.Count > 0)
+                                    {
+                                        <div class="planner-attempt-list">
+                                            @foreach (AttackDraft attack in defenseAttacks.OrderBy(item => item.Attempt))
+                                            {
+                                                GacPlannerApiClient.TeamPresetViewModel? attackTeam = FindPreset(attack.TeamPresetId);
+                                                <div class="planner-attempt planner-attempt-@attack.Status.ToLowerInvariant()">
+                                                    <div>
+                                                        <span>#@attack.Attempt · @FriendlyAttackStatus(attack.Status)</span>
+                                                        <strong>@(attackTeam?.Name ?? "Equipo eliminado")</strong>
+                                                        @if (attackTeam is not null)
+                                                        {
+                                                            <div class="rich-squad">
+                                                                @{ bool attemptLeader = true; }
+                                                                @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in attackTeam.Squad.AllUnits)
+                                                                {
+                                                                    PlayerApiClient.RosterUnitViewModel? rosterUnit = FindOwnRosterUnit(unit.DefinitionId);
+                                                                    <RichUnitPortrait Name="@unit.Name"
+                                                                                      ThumbnailName="@unit.ThumbnailName"
+                                                                                      RelicTier="@(rosterUnit?.RelicTier ?? unit.RelicTier)"
+                                                                                      Speed="@rosterUnit?.Stats?.Speed"
+                                                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                                                      IsLeader="@attemptLeader"
+                                                                                      Compact="true" />
+                                                                    attemptLeader = false;
+                                                                }
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                    @if (attack.Status == "Planned")
+                                                    {
+                                                        <div class="planner-attempt-actions"><a class="secondary-button button-link" href="#gac-execution">Registrar resultado</a><button type="button" title="Cancelar" @onclick="() => CancelAttackAsync(attack.Id)">—</button></div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </article>
+                            }
+                        </div>
+                    }
                 }
             </section>
         </main>
@@ -577,29 +584,4 @@ else
     {
         <div class="planner-saving-toast"><span class="spinner"></span> Guardando plan…</div>
     }
-}
-
-@code {
-    private PlayerApiClient.RosterUnitViewModel? FindOwnRosterUnit(string definitionId) =>
-        playerRoster.FirstOrDefault(unit => string.Equals(
-            unit.DefinitionId,
-            definitionId,
-            StringComparison.OrdinalIgnoreCase));
-
-    private PlayerApiClient.RosterUnitViewModel? FindOpponentRosterUnit(string definitionId) =>
-        opponentRoster.FirstOrDefault(unit => string.Equals(
-            unit.DefinitionId,
-            definitionId,
-            StringComparison.OrdinalIgnoreCase));
-
-    private static bool DatacronNeedsReview(string status) =>
-        !string.Equals(status, "NotRequired", StringComparison.OrdinalIgnoreCase);
-
-    private static string FriendlyDatacronStatus(string status) => status switch
-    {
-        "Level9AvailableUnverified" => "nivel 9 disponible; verifica afinidad",
-        "NoCandidate" => "no hay candidato claro",
-        "NotRequired" => "no requerido",
-        _ => "verifica aplicabilidad"
-    };
 }
