@@ -70,7 +70,7 @@ internal sealed partial class GacJointRoundOptimizerService(
     ICurrentGacScoutingService scoutingService,
     IGacPersonalLearningService personalLearningService,
     IPlayerProfileService playerProfileService,
-    GacRosterDefenseCandidateService rosterCandidateService,
+    IGacRosterDefenseCandidateProvider rosterCandidateProvider,
     GacOptimizationCoordinator? optimizationCoordinator = null) : IGacJointRoundOptimizerService
 {
     private const int HistoryRoundLimit = 30;
@@ -140,7 +140,7 @@ internal sealed partial class GacJointRoundOptimizerService(
             .SelectMany(attack => attack.Team.Squad.AllUnits)
             .Select(unit => unit.DefinitionId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        GacRosterDefenseCandidateSet rosterCandidates = await rosterCandidateService.BuildAsync(
+        GacRosterDefenseCandidateSet rosterCandidates = await rosterCandidateProvider.BuildAsync(
             allyCode,
             state.Plan.Format,
             strategy.Profile,
