@@ -138,10 +138,12 @@ internal sealed class GacTacticalOptimizationContext
             .Select(unit => unit.RelicTier)
             .DefaultIfEmpty(0)
             .Min();
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
         PlayerDatacron[] candidates =
         [
             .. playerDatacrons
                 .Where(datacron =>
+                    !datacron.IsExpired(nowUtc) &&
                     datacron.Tier >= 3 &&
                     (datacron.HighestRequiredRelicTier == 0 || datacron.HighestRequiredRelicTier <= minimumRelic))
                 .OrderByDescending(datacron => datacron.Tier)
