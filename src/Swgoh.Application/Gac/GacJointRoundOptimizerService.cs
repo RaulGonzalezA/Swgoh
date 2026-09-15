@@ -539,12 +539,12 @@ internal sealed class GacJointRoundOptimizerService(
 
     private static (decimal Defense, decimal Coverage, decimal Attack, decimal Banners, decimal Preservation) Weights(
         GacJointRoundOptimizationMode mode) => mode switch
-    {
-        GacJointRoundOptimizationMode.DefenseFirst => (0.52m, 0.18m, 0.15m, 0.05m, 0.10m),
-        GacJointRoundOptimizationMode.OffenseFirst => (0.18m, 0.32m, 0.30m, 0.08m, 0.12m),
-        GacJointRoundOptimizationMode.MaxBanners => (0.18m, 0.25m, 0.18m, 0.32m, 0.07m),
-        _ => (0.32m, 0.28m, 0.25m, 0.08m, 0.07m)
-    };
+        {
+            GacJointRoundOptimizationMode.DefenseFirst => (0.52m, 0.18m, 0.15m, 0.05m, 0.10m),
+            GacJointRoundOptimizationMode.OffenseFirst => (0.18m, 0.32m, 0.30m, 0.08m, 0.12m),
+            GacJointRoundOptimizationMode.MaxBanners => (0.18m, 0.25m, 0.18m, 0.32m, 0.07m),
+            _ => (0.32m, 0.28m, 0.25m, 0.08m, 0.07m)
+        };
 
     private sealed record DefenseScenario(
         string Id,
