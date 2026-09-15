@@ -51,6 +51,18 @@ public sealed class GacDefenseStrategyApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<SmartGenerationViewModel>(cancellationToken);
     }
 
+    public async Task<CleanupViewModel?> DeleteGeneratedDefenseTeamsAsync(
+        long allyCode,
+        string format,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.DeleteAsync(
+            $"/api/v1/gac/players/{allyCode}/planner/strategy/generated-defense-presets?format={Uri.EscapeDataString(format)}",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<CleanupViewModel>(cancellationToken);
+    }
+
     public sealed record StrategyViewModel(
         string Format,
         IReadOnlyCollection<StrategySlotViewModel> Slots,
@@ -118,6 +130,13 @@ public sealed class GacDefenseStrategyApiClient(HttpClient httpClient)
         int OpponentSamples,
         int PersonalSamples,
         IReadOnlyCollection<string> Reasons);
+
+    public sealed record CleanupViewModel(
+        string Format,
+        int DeletedPresets,
+        int RemovedDefenseAssignments,
+        IReadOnlyCollection<string> DeletedTeamNames,
+        IReadOnlyCollection<string> Warnings);
 
     private sealed record GenerateDefenseRequest(bool Apply);
 }
