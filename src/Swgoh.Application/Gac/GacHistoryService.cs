@@ -7,7 +7,7 @@ internal sealed class GacHistoryService(
     IGacHistoryRepository repository,
     ISwgohGameDataCatalog gameDataCatalog) : IGacHistoryService
 {
-    private const int MaxImportRounds = 100;
+    private const int MaxImportRounds = 200;
     private const int MaxQueryRounds = 200;
 
     public async Task<GacHistoryImportResult> ImportAsync(
