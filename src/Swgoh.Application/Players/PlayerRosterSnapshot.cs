@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using Swgoh.Application.Caching;
 
 namespace Swgoh.Application.Players;
 
@@ -11,17 +11,26 @@ public sealed record PlayerRosterSnapshot(
     IReadOnlyCollection<PlayerRosterUnit> Units,
     IReadOnlyCollection<string> AvailableFactions);
 
-internal sealed class PlayerRosterSnapshotCache
+internal sealed class PlayerRosterSnapshotCache : IDisposable
 {
-    private readonly ConcurrentDictionary<long, PlayerRosterSnapshot> snapshots = new();
+    private const long CacheSizeLimit = 128;
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
+
+    private readonly BoundedMemoryCache<long, PlayerRosterSnapshot> snapshots = new(
+        CacheSizeLimit,
+        defaultLifetime: CacheDuration);
 
     public bool TryGet(long allyCode, DateTimeOffset updatedAtUtc, out PlayerRosterSnapshot? snapshot)
     {
-        if (snapshots.TryGetValue(allyCode, out PlayerRosterSnapshot? cached)
-            && cached.UpdatedAtUtc == updatedAtUtc)
+        if (snapshots.TryGetValue(allyCode, out PlayerRosterSnapshot? cached))
         {
-            snapshot = cached;
-            return true;
+            if (cached.UpdatedAtUtc == updatedAtUtc)
+            {
+                snapshot = cached;
+                return true;
+            }
+
+            snapshots.Remove(allyCode);
         }
 
         snapshot = null;
@@ -33,4 +42,6 @@ internal sealed class PlayerRosterSnapshotCache
         ArgumentNullException.ThrowIfNull(snapshot);
         snapshots[snapshot.AllyCode] = snapshot;
     }
+
+    public void Dispose() => snapshots.Dispose();
 }
