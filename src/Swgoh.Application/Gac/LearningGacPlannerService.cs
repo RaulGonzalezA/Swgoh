@@ -158,6 +158,11 @@ internal sealed class LearningGacPlannerService(
             throw new ArgumentException($"Datacron '{normalized}' is not available in the player's current inventory.");
         }
 
+        if (datacron.IsExpired(DateTimeOffset.UtcNow))
+        {
+            throw new ArgumentException($"Datacron '{normalized}' has expired and cannot be assigned to GAC.");
+        }
+
         if (!GacDatacronRules.IsEligible(team, datacron))
         {
             throw new ArgumentException(
@@ -240,11 +245,23 @@ internal sealed class LearningGacPlannerService(
         GacRoundPlan? domainPlan = await domainPlanTask.ConfigureAwait(false);
         PlayerProfile? player = await playerTask.ConfigureAwait(false);
         PlayerProfile? opponent = await opponentTask.ConfigureAwait(false);
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
 
+        Dictionary<string, PlayerDatacron> inventory = (player?.Datacrons ?? [])
+            .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        var staleDatacronConflicts = new List<GacPlannerConflict>();
         Dictionary<Guid, string?> defenseDatacrons = domainPlan?.OwnDefenses
-            .ToDictionary(item => item.Id, item => item.DatacronId) ?? [];
+            .ToDictionary(
+                item => item.Id,
+                item => ResolveActiveAssignmentDatacron(item.Id, item.DatacronId, inventory, nowUtc, staleDatacronConflicts))
+            ?? [];
         Dictionary<Guid, string?> attackDatacrons = domainPlan?.Attacks
-            .ToDictionary(item => item.Id, item => item.DatacronId) ?? [];
+            .ToDictionary(
+                item => item.Id,
+                item => item.Status == GacAttackPlanStatus.Planned
+                    ? ResolveActiveAssignmentDatacron(item.Id, item.DatacronId, inventory, nowUtc, staleDatacronConflicts)
+                    : item.DatacronId)
+            ?? [];
 
         GacOwnDefenseAssignmentDetails[] defenses =
         [
@@ -256,7 +273,8 @@ internal sealed class LearningGacPlannerService(
         GacRoundPlanDetails plan = originalPlan with
         {
             Version = version,
-            OwnDefenses = defenses
+            OwnDefenses = defenses,
+            Conflicts = [.. originalPlan.Conflicts, .. staleDatacronConflicts]
         };
 
         if (plan.Attacks.Count > 0)
@@ -302,13 +320,17 @@ internal sealed class LearningGacPlannerService(
         ];
         GacPlannerDatacronDetails[] playerDatacrons =
         [
-            .. (player?.Datacrons ?? []).Select(GacDatacronRules.ToDetails)
+            .. (player?.Datacrons ?? [])
+                .Where(datacron => GacDatacronRules.IsActive(datacron, nowUtc))
+                .Select(GacDatacronRules.ToDetails)
                 .OrderByDescending(item => item.Tier)
                 .ThenBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
         ];
         GacPlannerDatacronDetails[] opponentDatacrons =
         [
-            .. (opponent?.Datacrons ?? []).Select(GacDatacronRules.ToDetails)
+            .. (opponent?.Datacrons ?? [])
+                .Where(datacron => GacDatacronRules.IsActive(datacron, nowUtc))
+                .Select(GacDatacronRules.ToDetails)
                 .OrderByDescending(item => item.Tier)
                 .ThenBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
         ];
@@ -323,6 +345,33 @@ internal sealed class LearningGacPlannerService(
                 OpponentDatacrons = opponentDatacrons
             }
         };
+    }
+
+    private static string? ResolveActiveAssignmentDatacron(
+        Guid assignmentId,
+        string? datacronId,
+        IReadOnlyDictionary<string, PlayerDatacron> inventory,
+        DateTimeOffset nowUtc,
+        ICollection<GacPlannerConflict> conflicts)
+    {
+        string? normalized = GacDatacronRules.NormalizeId(datacronId);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        if (inventory.TryGetValue(normalized, out PlayerDatacron? datacron) && !datacron.IsExpired(nowUtc))
+        {
+            return normalized;
+        }
+
+        conflicts.Add(new GacPlannerConflict(
+            "DATACRON_EXPIRED_OR_UNAVAILABLE",
+            "Error",
+            $"El datacron {normalized} asignado ya ha caducado o no está disponible; la reserva se ha liberado para recalcular el plan.",
+            [assignmentId],
+            []));
+        return null;
     }
 
     private static bool HasDatacronAssignments(SaveCurrentGacRoundPlan input) =>
