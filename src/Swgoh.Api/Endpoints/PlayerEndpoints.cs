@@ -18,7 +18,7 @@ internal static class PlayerEndpoints
             .WithTags("Players");
 
         group.MapGet("/{allyCode:long}", GetAsync)
-            .WithSummary("Get the persisted player profile");
+            .WithSummary("Get the persisted player summary");
         group.MapGet("/{allyCode:long}/roster", GetRosterAsync)
             .WithSummary("Get an enriched, filtered, sorted and paged player roster");
         group.MapGet("/{allyCode:long}/analysis", GetAnalysisAsync)
@@ -30,6 +30,7 @@ internal static class PlayerEndpoints
         group.MapPost("/{allyCode:long}/refresh", RefreshAsync)
             .WithSummary("Refresh a player from live SWGOH data")
             .RequireRateLimiting("player-refresh")
+            .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status429TooManyRequests);
         group.MapPut("/{allyCode:long}", PutAsync)
             .WithSummary("Create or update a player manually");
@@ -37,10 +38,13 @@ internal static class PlayerEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> GetAsync(long allyCode, IPlayerProfileService service, CancellationToken cancellationToken)
+    private static async Task<IResult> GetAsync(
+        long allyCode,
+        IPlayerProfileService service,
+        CancellationToken cancellationToken)
     {
         PlayerProfile? player = await service.GetAsync(allyCode, cancellationToken);
-        return player is null ? Results.NotFound() : Results.Ok(PlayerResponse.From(player));
+        return player is null ? Results.NotFound() : Results.Ok(PlayerSummaryResponse.From(player));
     }
 
     private static async Task<IResult> GetRosterAsync(
@@ -118,8 +122,8 @@ internal static class PlayerEndpoints
     {
         try
         {
-            PlayerProfile player = await service.RefreshFromGameAsync(allyCode, cancellationToken);
-            return Results.Ok(PlayerResponse.From(player));
+            await service.RefreshFromGameAsync(allyCode, cancellationToken);
+            return Results.NoContent();
         }
         catch (HttpRequestException exception)
         {
@@ -140,7 +144,7 @@ internal static class PlayerEndpoints
         try
         {
             PlayerProfile player = await service.SaveAsync(allyCode, request.Name, request.GalacticPower, cancellationToken);
-            return Results.Ok(PlayerResponse.From(player));
+            return Results.Ok(PlayerSummaryResponse.From(player));
         }
         catch (ArgumentException exception)
         {
@@ -150,7 +154,7 @@ internal static class PlayerEndpoints
 
     internal sealed record SavePlayerRequest(string Name, long GalacticPower);
 
-    internal sealed record PlayerResponse(
+    internal sealed record PlayerSummaryResponse(
         long AllyCode,
         string PlayerId,
         string Name,
@@ -160,10 +164,9 @@ internal static class PlayerEndpoints
         long GalacticPower,
         DateTimeOffset UpdatedAtUtc,
         int RosterCount,
-        IReadOnlyCollection<RosterUnitResponse> Roster,
-        IReadOnlyCollection<PlayerDatacronResponse> Datacrons)
+        int DatacronCount)
     {
-        public static PlayerResponse From(PlayerProfile player) => new(
+        public static PlayerSummaryResponse From(PlayerProfile player) => new(
             player.AllyCode,
             player.PlayerId,
             player.Name,
@@ -173,8 +176,7 @@ internal static class PlayerEndpoints
             player.GalacticPower,
             player.UpdatedAtUtc,
             player.Roster.Count,
-            [.. player.Roster.Select(RosterUnitResponse.From)],
-            [.. player.Datacrons.Select(PlayerDatacronResponse.From)]);
+            player.Datacrons.Count);
     }
 
     internal sealed record RosterPageResponse(
@@ -245,37 +247,6 @@ internal static class PlayerEndpoints
             RosterModSummaryResponse.From(unit.Mods));
     }
 
-    internal sealed record RosterUnitResponse(
-        string Id,
-        string DefinitionId,
-        int Level,
-        int Rarity,
-        int GearTier,
-        int RelicTier,
-        int EquippedModCount,
-        long GalacticPower,
-        bool IsShip,
-        int ZetaCount,
-        int OmicronCount,
-        RosterUnitStatsResponse? Stats,
-        RosterModSummaryResponse? Mods)
-    {
-        public static RosterUnitResponse From(RosterUnit unit) => new(
-            unit.Id,
-            unit.DefinitionId,
-            unit.Level,
-            unit.Rarity,
-            unit.GearTier,
-            unit.RelicTier,
-            unit.EquippedModCount,
-            unit.GalacticPower,
-            unit.IsShip,
-            unit.ZetaCount,
-            unit.OmicronCount,
-            RosterUnitStatsResponse.From(unit.Stats),
-            RosterModSummaryResponse.From(unit.Mods));
-    }
-
     internal sealed record RosterUnitStatsResponse(
         decimal? Health,
         decimal? Protection,
@@ -320,41 +291,5 @@ internal static class PlayerEndpoints
                 mods.SpeedPrimaryCount,
                 mods.SpeedBonus,
                 mods.IsComplete);
-    }
-
-    internal sealed record PlayerDatacronResponse(
-        string Id,
-        string SetId,
-        string TemplateId,
-        int Tier,
-        bool Locked,
-        int HighestRequiredRelicTier,
-        bool HasAbilityAffix,
-        IReadOnlyCollection<PlayerDatacronAffixResponse> Affixes)
-    {
-        public static PlayerDatacronResponse From(PlayerDatacron datacron) => new(
-            datacron.Id,
-            datacron.SetId,
-            datacron.TemplateId,
-            datacron.Tier,
-            datacron.Locked,
-            datacron.HighestRequiredRelicTier,
-            datacron.HasAbilityAffix,
-            [.. datacron.Affixes.Select(PlayerDatacronAffixResponse.From)]);
-    }
-
-    internal sealed record PlayerDatacronAffixResponse(
-        string? AbilityId,
-        int? StatType,
-        long? StatValue,
-        int? RequiredRelicTier,
-        IReadOnlyCollection<string> Tags)
-    {
-        public static PlayerDatacronAffixResponse From(PlayerDatacronAffix affix) => new(
-            affix.AbilityId,
-            affix.StatType,
-            affix.StatValue,
-            affix.RequiredRelicTier,
-            affix.Tags);
     }
 }
