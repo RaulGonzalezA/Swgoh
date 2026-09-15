@@ -213,6 +213,7 @@ public static class DependencyInjection
         services.AddSingleton(new SwgohGameDataOptions(gameDataLocale));
         services.AddSingleton<ISwgohGameDataCatalog, ConfiguredSwgohGameDataCatalog>();
         services.AddSingleton<IRosterGameDataCatalog, ConfiguredSwgohRosterGameDataCatalog>();
+        services.AddSingleton<IDatacronSetCatalog, SwgohDatacronSetCatalogClient>();
 
         string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
         services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>
@@ -224,11 +225,12 @@ public static class DependencyInjection
         string comlinkBaseUrl = configuration["Swgoh:Comlink:BaseUrl"] ?? "http://comlink";
         services.AddSingleton<GacComlinkRequestLimiter>();
         services.AddTransient<GacComlinkRateLimitHandler>();
-        services.AddHttpClient<ISwgohPlayerClient, SwgohComlinkClient>(client =>
+        services.AddHttpClient<SwgohComlinkClient>(client =>
         {
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
         }).AddHttpMessageHandler<GacComlinkRateLimitHandler>();
+        services.AddTransient<ISwgohPlayerClient, DatacronExpirationPlayerClient>();
         services.AddHttpClient(ComlinkGacClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
