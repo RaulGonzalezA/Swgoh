@@ -384,7 +384,7 @@ public partial class GacAttackPlanner
                     defenseId,
                     presetId,
                     notes: null,
-                    Planner.Plan.UpdatedAtUtc),
+                    expectedUpdatedAtUtc: Planner.Plan.UpdatedAtUtc),
                 "No se ha podido planificar el ataque."))
         {
             selectedAttackPresets.Remove(defenseId);
