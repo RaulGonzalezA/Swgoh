@@ -39,9 +39,11 @@ public sealed record GacPlannerSquad(
         string leader = leaderDefinitionId.Trim();
         string[] members =
         [
-            .. memberDefinitionIds.Select(value => string.IsNullOrWhiteSpace(value)
-                ? throw new ArgumentException("Squad member definition IDs cannot be empty.", nameof(memberDefinitionIds))
-                : value.Trim())
+            .. memberDefinitionIds.Select(value =>
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(memberDefinitionIds));
+                return value.Trim();
+            })
         ];
 
         string[] allUnits = [leader, .. members];
@@ -150,10 +152,7 @@ public sealed class GacTeamPreset
         DateTimeOffset updatedAtUtc)
     {
         GacTeamPreset preset = Create(id, allyCode, name, format, use, squad, createdAtUtc);
-        if (updatedAtUtc < createdAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc), "Updated time cannot be earlier than created time.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, createdAtUtc);
 
         preset.UpdatedAtUtc = updatedAtUtc;
         return preset;
@@ -166,10 +165,7 @@ public sealed class GacTeamPreset
         GacPlannerSquad squad,
         DateTimeOffset updatedAtUtc)
     {
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc), "Updated time cannot be earlier than created time.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         string normalizedName = ValidateName(name);
         ValidateEnums(format, use);
@@ -218,10 +214,8 @@ public sealed class GacTeamPreset
 
     private static void ValidateAllyCode(long allyCode)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
     }
 }
 
@@ -304,10 +298,7 @@ public sealed record GacAttackAssignment(
             throw new ArgumentException("Team preset ID cannot be empty.", nameof(teamPresetId));
         }
 
-        if (attempt < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(attempt), attempt, "Attempt must be at least one.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
 
         if (!Enum.IsDefined(status))
         {
@@ -433,10 +424,7 @@ public sealed class GacRoundPlan
             format,
             league,
             createdAtUtc);
-        if (updatedAtUtc < createdAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc), "Updated time cannot be earlier than created time.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, createdAtUtc);
 
         plan.Replace(ownDefenses, visibleDefenses, attacks, updatedAtUtc);
         return plan;
@@ -448,10 +436,7 @@ public sealed class GacRoundPlan
         IEnumerable<GacAttackAssignment> attackAssignments,
         DateTimeOffset updatedAtUtc)
     {
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc), "Updated time cannot be earlier than created time.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ArgumentNullException.ThrowIfNull(ownDefenseAssignments);
         ArgumentNullException.ThrowIfNull(enemyVisibleDefenses);
@@ -494,10 +479,7 @@ public sealed class GacRoundPlan
     {
         ValidateAllyCode(playerAllyCode, nameof(playerAllyCode));
         ArgumentException.ThrowIfNullOrWhiteSpace(eventInstanceId);
-        if (roundNumber < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(roundNumber), roundNumber, "Round number must be positive.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(roundNumber, 1);
 
         return $"{playerAllyCode}:{eventInstanceId.Trim()}:{roundNumber}";
     }
@@ -520,10 +502,7 @@ public sealed class GacRoundPlan
 
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventInstanceId);
-        if (roundNumber < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(roundNumber), roundNumber, "Round number must be positive.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(roundNumber, 1);
 
         if (!Enum.IsDefined(format))
         {
@@ -547,9 +526,7 @@ public sealed class GacRoundPlan
 
     private static void ValidateAllyCode(long allyCode, string parameterName)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(parameterName, allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000, parameterName);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999, parameterName);
     }
 }
