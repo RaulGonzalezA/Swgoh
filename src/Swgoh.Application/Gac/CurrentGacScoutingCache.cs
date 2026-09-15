@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 
+using Swgoh.Application.Caching;
 using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
 using Swgoh.Domain.Players;
@@ -35,15 +36,24 @@ public readonly record struct CurrentGacScoutingCacheKey(
     DateTimeOffset? OpponentUpdatedAtUtc,
     long Generation);
 
-internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
+internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache, IDisposable
 {
+    private const long ResultCacheSizeLimit = 512;
+    private const long GenerationCacheSizeLimit = 2_048;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(45);
+    private static readonly TimeSpan GenerationCacheDuration = TimeSpan.FromHours(2);
     private static readonly TimeSpan DefaultSharedOperationTimeout = TimeSpan.FromSeconds(75);
 
-    private readonly ConcurrentDictionary<CurrentGacScoutingCacheKey, CacheEntry> cache = new();
+    private readonly BoundedMemoryCache<CurrentGacScoutingCacheKey, CacheEntry> cache = new(
+        ResultCacheSizeLimit,
+        absoluteExpirationSelector: static entry => entry.ExpiresAtUtc);
     private readonly ConcurrentDictionary<CurrentGacScoutingCacheKey, Lazy<Task<CurrentGacScoutingResult>>> inFlight = new();
-    private readonly ConcurrentDictionary<long, long> generations = new();
+    private readonly BoundedMemoryCache<long, long> generations = new(
+        GenerationCacheSizeLimit,
+        defaultLifetime: GenerationCacheDuration);
+    private readonly object generationGate = new();
     private readonly TimeSpan sharedOperationTimeout;
+    private long generationSequence;
 
     public CurrentGacScoutingCache()
         : this(DefaultSharedOperationTimeout)
@@ -63,7 +73,20 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
         this.sharedOperationTimeout = sharedOperationTimeout;
     }
 
-    public long GetGeneration(long allyCode) => generations.GetOrAdd(allyCode, 0);
+    public long GetGeneration(long allyCode)
+    {
+        lock (generationGate)
+        {
+            if (generations.TryGetValue(allyCode, out long generation))
+            {
+                return generation;
+            }
+
+            generation = ++generationSequence;
+            generations[allyCode] = generation;
+            return generation;
+        }
+    }
 
     public bool TryGet(
         CurrentGacScoutingCacheKey key,
@@ -71,13 +94,8 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
     {
         if (cache.TryGetValue(key, out CacheEntry? entry))
         {
-            if (entry.ExpiresAtUtc > DateTimeOffset.UtcNow)
-            {
-                result = entry.Result;
-                return true;
-            }
-
-            cache.TryRemove(key, out _);
+            result = entry.Result;
+            return true;
         }
 
         result = null;
@@ -132,12 +150,21 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
 
     public void Invalidate(long allyCode)
     {
-        generations.AddOrUpdate(allyCode, 1, static (_, current) => current + 1);
+        lock (generationGate)
+        {
+            generations[allyCode] = ++generationSequence;
+        }
 
         foreach (CurrentGacScoutingCacheKey key in cache.Keys.Where(key => key.AllyCode == allyCode))
         {
             cache.TryRemove(key, out _);
         }
+    }
+
+    public void Dispose()
+    {
+        cache.Dispose();
+        generations.Dispose();
     }
 
     private async Task<CurrentGacScoutingResult> ExecuteSharedAsync(
