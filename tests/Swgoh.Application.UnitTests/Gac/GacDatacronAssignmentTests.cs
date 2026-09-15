@@ -1,3 +1,4 @@
+using Swgoh.Application.Gac;
 using Swgoh.Domain.Gac;
 
 using Xunit;
