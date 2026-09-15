@@ -102,11 +102,17 @@ internal sealed class GacTeamPresetMongoRepository(
 
 internal sealed class GacRoundPlanMongoRepository(
     IMongoDbRepository<GacRoundPlanDocument, string> repository,
-    IMongoCollection<GacRoundPlanDocument> collection,
-    GacPlannerWriteContext writeContext) : IGacRoundPlanRepository
+    GacPlannerWriteContext writeContext,
+    Microsoft.Extensions.Configuration.IConfiguration configuration) : IGacRoundPlanRepository
 {
     internal const string CollectionName = "gacRoundPlans";
     internal const string PlayerUpdatedIndexName = "ix_gac_round_plans_player_updated";
+
+    private readonly IMongoCollection<GacRoundPlanDocument> collection = new MongoClient(
+        configuration["ConnectionStrings:swgoh"]
+            ?? throw new InvalidOperationException("Connection string 'swgoh' is required."))
+        .GetDatabase("swgoh")
+        .GetCollection<GacRoundPlanDocument>(CollectionName);
 
     public async Task<GacRoundPlan?> FindByIdAsync(string id, CancellationToken cancellationToken = default)
     {
