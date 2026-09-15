@@ -72,9 +72,14 @@ internal static class GacPlannerEndpoints
                     item.TeamPresetId,
                     item.Attempt,
                     ParseAttackStatus(item.Status),
-                    item.Notes))]);
+                    item.Notes))],
+                request.ExpectedVersion);
             GacPlannerLookup lookup = await service.SaveCurrentAsync(allyCode, input, cancellationToken);
             return ToLookupResult(lookup);
+        }
+        catch (GacPlannerConcurrencyException exception)
+        {
+            return Results.Conflict(new PlannerUnavailableResponse("Conflict", exception.Message));
         }
         catch (ArgumentException exception)
         {
@@ -222,7 +227,8 @@ internal static class GacPlannerEndpoints
     internal sealed record SavePlanRequest(
         IReadOnlyCollection<OwnDefenseRequest>? OwnDefenses,
         IReadOnlyCollection<VisibleDefenseRequest>? VisibleDefenses,
-        IReadOnlyCollection<AttackRequest>? Attacks);
+        IReadOnlyCollection<AttackRequest>? Attacks,
+        long? ExpectedVersion);
 
     internal sealed record OwnDefenseRequest(Guid? Id, string Zone, Guid TeamPresetId);
 
@@ -285,7 +291,8 @@ internal static class GacPlannerEndpoints
         IReadOnlyCollection<AttackResponse> Attacks,
         IReadOnlyCollection<ConflictResponse> Conflicts,
         IReadOnlyCollection<CounterHintResponse> CounterHints,
-        DateTimeOffset UpdatedAtUtc)
+        DateTimeOffset UpdatedAtUtc,
+        long Version)
     {
         public static RoundPlanResponse From(GacRoundPlanDetails plan) => new(
             plan.Id,
@@ -302,7 +309,8 @@ internal static class GacPlannerEndpoints
             [.. plan.Attacks.Select(AttackResponse.From)],
             [.. plan.Conflicts.Select(ConflictResponse.From)],
             [.. plan.CounterHints.Select(CounterHintResponse.From)],
-            plan.UpdatedAtUtc);
+            plan.UpdatedAtUtc,
+            plan.Version);
     }
 
     internal sealed record OwnDefenseResponse(Guid Id, string Zone, TeamPresetResponse Team)
