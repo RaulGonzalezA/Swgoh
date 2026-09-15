@@ -16,7 +16,7 @@ public sealed class BackgroundGacOpponentSourceTests
     public async Task PendingLookupSurvivesCallerCancellationAndReusesResult()
     {
         var provider = new DeferredSource();
-        using var worker = new BackgroundGacOpponentSource(provider, NullLogger<BackgroundGacOpponentSource>.Instance);
+        using var worker = new BackgroundGacOpponentSource(provider, new GacTelemetry(), NullLogger<BackgroundGacOpponentSource>.Instance);
         CancellationToken token = TestContext.Current.CancellationToken;
         await worker.StartAsync(token);
         try
@@ -42,7 +42,7 @@ public sealed class BackgroundGacOpponentSourceTests
     public async Task ProviderFailureCompletesWithUnavailable()
     {
         var provider = new DeferredSource();
-        using var worker = new BackgroundGacOpponentSource(provider, NullLogger<BackgroundGacOpponentSource>.Instance);
+        using var worker = new BackgroundGacOpponentSource(provider, new GacTelemetry(), NullLogger<BackgroundGacOpponentSource>.Instance);
         CancellationToken token = TestContext.Current.CancellationToken;
         await worker.StartAsync(token);
         try
@@ -62,7 +62,7 @@ public sealed class BackgroundGacOpponentSourceTests
     public async Task Invalidate_DiscardsResultFromOlderGeneration()
     {
         var provider = new SequencedDeferredSource();
-        using var worker = new BackgroundGacOpponentSource(provider, NullLogger<BackgroundGacOpponentSource>.Instance);
+        using var worker = new BackgroundGacOpponentSource(provider, new GacTelemetry(), NullLogger<BackgroundGacOpponentSource>.Instance);
         CancellationToken token = TestContext.Current.CancellationToken;
         await worker.StartAsync(token);
         try
@@ -95,7 +95,7 @@ public sealed class BackgroundGacOpponentSourceTests
     public async Task DistinctPlayers_RunThreeLookupsConcurrently_WithoutHeadOfLineBlocking()
     {
         var provider = new ConcurrentDeferredSource();
-        using var worker = new BackgroundGacOpponentSource(provider, NullLogger<BackgroundGacOpponentSource>.Instance);
+        using var worker = new BackgroundGacOpponentSource(provider, new GacTelemetry(), NullLogger<BackgroundGacOpponentSource>.Instance);
         CancellationToken token = TestContext.Current.CancellationToken;
         await worker.StartAsync(token);
         try
