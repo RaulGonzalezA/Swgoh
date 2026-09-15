@@ -38,7 +38,11 @@ internal sealed class RosterAwareGacSmartDefenseService(
         Task<IReadOnlyCollection<GacPersonalMatchupStatistics>> personalTask = personalLearningService
             .GetStatisticsAsync(allyCode, state.Plan.Format, cancellationToken);
         Task<IReadOnlySet<Guid>> generatedPresetIdsTask = generatedTeamLifecycleService
-            .GetGeneratedPresetIdsAsync(allyCode, state.Plan.Format, origin: null, cancellationToken);
+            .GetGeneratedPresetIdsAsync(
+                allyCode,
+                state.Plan.Format,
+                origin: null,
+                cancellationToken: cancellationToken);
 
         await Task.WhenAll(strategyTask, scoutingTask, personalTask, generatedPresetIdsTask).ConfigureAwait(false);
         GacDefenseStrategySnapshot strategy = await strategyTask.ConfigureAwait(false);
@@ -103,18 +107,10 @@ internal sealed class RosterAwareGacSmartDefenseService(
             Assignments = appliedAssignments
         };
 
+        GacPlannerLookup saved;
         try
         {
-            await generatedTeamLifecycleService.RegisterAsync(
-                allyCode,
-                state.Plan.Format,
-                GacGeneratedTeamOrigin.SmartDefense,
-                generationId,
-                state.Plan.Id,
-                materialization.CreatedPresetIds,
-                cancellationToken).ConfigureAwait(false);
-
-            GacPlannerLookup saved = await SaveAsync(
+            saved = await SaveAsync(
                 allyCode,
                 state,
                 appliedAssignments,
@@ -123,26 +119,75 @@ internal sealed class RosterAwareGacSmartDefenseService(
             {
                 throw new InvalidOperationException(saved.Message ?? "The smart defense could not be applied.");
             }
-
-            await generatedTeamLifecycleService
-                .PruneUnreferencedAsync(allyCode, saved.State, cancellationToken)
-                .ConfigureAwait(false);
-
-            return ToResult(
-                state.Plan.Format,
-                true,
-                appliedGeneration,
-                saved.State.Plan.UpdatedAtUtc,
-                scouting);
         }
         catch
         {
-            await generatedTeamLifecycleService
-                .ForgetAsync(materialization.CreatedPresetIds, CancellationToken.None)
-                .ConfigureAwait(false);
             await RollbackAsync(allyCode, materialization).ConfigureAwait(false);
             throw;
         }
+
+        IReadOnlyCollection<string> lifecycleWarnings = await CompleteLifecycleAsync(
+            allyCode,
+            state,
+            saved.State!,
+            generationId,
+            materialization.CreatedPresetIds,
+            cancellationToken).ConfigureAwait(false);
+        if (lifecycleWarnings.Count > 0)
+        {
+            appliedGeneration = appliedGeneration with
+            {
+                Warnings = [.. appliedGeneration.Warnings, .. lifecycleWarnings]
+            };
+        }
+
+        return ToResult(
+            state.Plan.Format,
+            true,
+            appliedGeneration,
+            saved.State!.Plan.UpdatedAtUtc,
+            scouting);
+    }
+
+    private async Task<IReadOnlyCollection<string>> CompleteLifecycleAsync(
+        long allyCode,
+        GacPlannerState originalState,
+        GacPlannerState savedState,
+        string generationId,
+        IReadOnlyCollection<Guid> createdPresetIds,
+        CancellationToken cancellationToken)
+    {
+        var warnings = new List<string>();
+        try
+        {
+            await generatedTeamLifecycleService.RegisterAsync(
+                allyCode,
+                originalState.Plan.Format,
+                GacGeneratedTeamOrigin.SmartDefense,
+                generationId,
+                originalState.Plan.Id,
+                createdPresetIds,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            warnings.Add(
+                "La defensa se ha aplicado, pero no se pudo persistir toda la metadata de lifecycle; la compatibilidad legacy la mantendrá aislada.");
+        }
+
+        try
+        {
+            await generatedTeamLifecycleService
+                .PruneUnreferencedAsync(allyCode, savedState, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            warnings.Add(
+                "La defensa se ha aplicado, pero la limpieza automática de equipos generados anteriores no pudo completarse.");
+        }
+
+        return warnings;
     }
 
     private async Task<GacPlannerLookup> SaveAsync(
