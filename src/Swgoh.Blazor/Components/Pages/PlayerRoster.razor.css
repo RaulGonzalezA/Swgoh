@@ -107,7 +107,7 @@
 
 .roster-collection-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr));
     gap: var(--ds-space-3);
     align-items: stretch;
 }
@@ -137,19 +137,11 @@
     .roster-filters {
         grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(120px, .7fr));
     }
-
-    .roster-collection-grid {
-        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    }
 }
 
 @media (max-width: 900px) {
     .roster-metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .roster-collection-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .roster-filters {
@@ -168,10 +160,6 @@
 
     .roster-search {
         grid-column: auto;
-    }
-
-    .roster-collection-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .roster-section-heading {
@@ -196,7 +184,6 @@
 
 @media (max-width: 520px) {
     .roster-collection-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: var(--ds-space-2);
     }
 
@@ -211,8 +198,7 @@
 }
 
 @media (max-width: 380px) {
-    .roster-metrics,
-    .roster-collection-grid {
+    .roster-metrics {
         grid-template-columns: 1fr;
     }
 }
