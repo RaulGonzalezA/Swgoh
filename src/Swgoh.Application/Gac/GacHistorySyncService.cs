@@ -43,10 +43,8 @@ internal sealed class GacHistorySyncService(
         int maxRounds,
         CancellationToken cancellationToken = default)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
 
         if (!Enum.IsDefined(format))
         {
