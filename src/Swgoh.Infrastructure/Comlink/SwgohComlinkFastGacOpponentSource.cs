@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 
 using Polly.Timeout;
 
+using Swgoh.Application.Caching;
 using Swgoh.Application.Gac;
 using Swgoh.Domain.Gac;
 
@@ -15,12 +16,16 @@ namespace Swgoh.Infrastructure.Comlink;
 
 internal sealed class SwgohComlinkFastGacOpponentSource(
     IHttpClientFactory httpClientFactory,
-    ILogger<SwgohComlinkFastGacOpponentSource> logger) : ICurrentGacOpponentSource
+    ILogger<SwgohComlinkFastGacOpponentSource> logger) : ICurrentGacOpponentSource, IDisposable
 {
     private const int BracketSize = 8;
     private const int BracketBatchSize = 8;
     private const int MaxBracketIndex = 20_000;
     private const int RateLimitRetryCount = 5;
+    private const long ResultCacheSizeLimit = 2_048;
+    private const long LocationCacheSizeLimit = 4_096;
+    private const long LastKnownBracketCacheSizeLimit = 2_048;
+    private const long RatingSampleCacheSizeLimit = 8_192;
     private static readonly int[] LocalSearchRadii = [16, 48, 128];
     private static readonly TimeSpan BatchDelay = TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan RateLimitedBatchDelay = TimeSpan.FromMilliseconds(900);
@@ -30,10 +35,18 @@ internal sealed class SwgohComlinkFastGacOpponentSource(
     private static readonly TimeSpan RatingSampleCacheDuration = TimeSpan.FromDays(1);
     private static readonly TimeSpan LookupTimeout = TimeSpan.FromSeconds(30);
 
-    private readonly ConcurrentDictionary<string, ResultCacheEntry> resultCache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, LocationCacheEntry> locationCache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, int> lastKnownBracketIndexes = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, RatingSampleCacheEntry> ratingSamples = new(StringComparer.Ordinal);
+    private readonly BoundedMemoryCache<string, ResultCacheEntry> resultCache = new(
+        ResultCacheSizeLimit,
+        absoluteExpirationSelector: static entry => entry.ExpiresAtUtc);
+    private readonly BoundedMemoryCache<string, LocationCacheEntry> locationCache = new(
+        LocationCacheSizeLimit,
+        absoluteExpirationSelector: static entry => entry.ExpiresAtUtc);
+    private readonly BoundedMemoryCache<string, int> lastKnownBracketIndexes = new(
+        LastKnownBracketCacheSizeLimit,
+        defaultLifetime: LocationCacheDuration);
+    private readonly BoundedMemoryCache<string, RatingSampleCacheEntry> ratingSamples = new(
+        RatingSampleCacheSizeLimit,
+        absoluteExpirationSelector: static entry => entry.ExpiresAtUtc);
 
     public async Task<CurrentGacOpponentLookup> GetAsync(
         long allyCode,
@@ -1047,6 +1060,14 @@ internal sealed class SwgohComlinkFastGacOpponentSource(
         }
 
         return long.TryParse(JsonString(value), out result);
+    }
+
+    public void Dispose()
+    {
+        resultCache.Dispose();
+        locationCache.Dispose();
+        lastKnownBracketIndexes.Dispose();
+        ratingSamples.Dispose();
     }
 
     private sealed record ResultCacheEntry(CurrentGacOpponentLookup Lookup, DateTimeOffset ExpiresAtUtc);
