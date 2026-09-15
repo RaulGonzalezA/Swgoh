@@ -21,10 +21,7 @@ public sealed partial class ConquestPlan
         string? rewardTargetName,
         DateTimeOffset updatedAtUtc)
     {
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ApplyDailyGoal(
             availableEnergy,
