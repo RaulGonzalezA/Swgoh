@@ -57,6 +57,9 @@ jobs:
       - name: Restore
         run: dotnet restore Swgoh.sln
 
+      - name: Enforce source-size limit
+        run: bash scripts/check-source-size.sh
+
       - name: Verify formatting
         run: dotnet format Swgoh.sln --verify-no-changes --no-restore
 
