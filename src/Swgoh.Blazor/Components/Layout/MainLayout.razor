@@ -40,6 +40,10 @@
                     <span class="command-nav-icon" aria-hidden="true">E</span>
                     <span>Estrategia</span>
                 </NavLink>
+                <NavLink href="@($"/gac/{allyCode}/round-optimizer")" Match="NavLinkMatch.All">
+                    <span class="command-nav-icon" aria-hidden="true">O</span>
+                    <span>Round Optimizer</span>
+                </NavLink>
                 <NavLink href="@($"/conquest/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">C</span>
                     <span>Conquista</span>
@@ -51,6 +55,7 @@
                 <span class="command-nav-disabled"><span class="command-nav-icon">G</span>GAC</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">P</span>Planner</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">E</span>Estrategia</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">O</span>Round Optimizer</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">C</span>Conquista</span>
             }
 
@@ -127,6 +132,9 @@
                 <NavLink href="@($"/gac/{moreAllyCode}/strategy")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
                     <span class="command-nav-icon">E</span><span><strong>Estrategia</strong><small>Plantillas y reservas GAC</small></span>
                 </NavLink>
+                <NavLink href="@($"/gac/{moreAllyCode}/round-optimizer")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                    <span class="command-nav-icon">O</span><span><strong>Round Optimizer</strong><small>Optimiza defensa y ataque juntos</small></span>
+                </NavLink>
             }
             else
             {
@@ -135,6 +143,9 @@
                 </span>
                 <span class="command-mobile-more-disabled">
                     <span class="command-nav-icon">E</span><span><strong>Estrategia</strong><small>Selecciona primero un jugador</small></span>
+                </span>
+                <span class="command-mobile-more-disabled">
+                    <span class="command-nav-icon">O</span><span><strong>Round Optimizer</strong><small>Selecciona primero un jugador</small></span>
                 </span>
             }
             <NavLink href="/data" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
@@ -195,7 +206,8 @@
             return path.Equals("/data", StringComparison.OrdinalIgnoreCase) ||
                    path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith("/planner", StringComparison.OrdinalIgnoreCase) ||
-                   path.EndsWith("/strategy", StringComparison.OrdinalIgnoreCase);
+                   path.EndsWith("/strategy", StringComparison.OrdinalIgnoreCase) ||
+                   path.EndsWith("/round-optimizer", StringComparison.OrdinalIgnoreCase);
         }
     }
 
