@@ -36,6 +36,10 @@
                     <span class="command-nav-icon" aria-hidden="true">P</span>
                     <span>Planner</span>
                 </NavLink>
+                <NavLink href="@($"/gac/{allyCode}/strategy")" Match="NavLinkMatch.All">
+                    <span class="command-nav-icon" aria-hidden="true">E</span>
+                    <span>Estrategia</span>
+                </NavLink>
                 <NavLink href="@($"/conquest/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">C</span>
                     <span>Conquista</span>
@@ -46,6 +50,7 @@
                 <span class="command-nav-disabled"><span class="command-nav-icon">R</span>Roster</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">G</span>GAC</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">P</span>Planner</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">E</span>Estrategia</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">C</span>Conquista</span>
             }
 
@@ -119,11 +124,17 @@
                 <NavLink href="@($"/gac/{moreAllyCode}/planner")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
                     <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Diseña y ejecuta la ronda</small></span>
                 </NavLink>
+                <NavLink href="@($"/gac/{moreAllyCode}/strategy")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                    <span class="command-nav-icon">E</span><span><strong>Estrategia</strong><small>Plantillas y reservas GAC</small></span>
+                </NavLink>
             }
             else
             {
                 <span class="command-mobile-more-disabled">
                     <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Selecciona primero un jugador</small></span>
+                </span>
+                <span class="command-mobile-more-disabled">
+                    <span class="command-nav-icon">E</span><span><strong>Estrategia</strong><small>Selecciona primero un jugador</small></span>
                 </span>
             }
             <NavLink href="/data" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
@@ -183,7 +194,8 @@
             string path = new Uri(Navigation.Uri).AbsolutePath;
             return path.Equals("/data", StringComparison.OrdinalIgnoreCase) ||
                    path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
-                   path.EndsWith("/planner", StringComparison.OrdinalIgnoreCase);
+                   path.EndsWith("/planner", StringComparison.OrdinalIgnoreCase) ||
+                   path.EndsWith("/strategy", StringComparison.OrdinalIgnoreCase);
         }
     }
 
