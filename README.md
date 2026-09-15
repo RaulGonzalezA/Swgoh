@@ -24,10 +24,10 @@ The public HTTP API uses URL-segment versioning. Version 1 is exposed under `/ap
 
 ### Endpoints
 
-- `GET /api/v1/players/{allyCode}` returns the last persisted player profile and roster.
+- `GET /api/v1/players/{allyCode}` returns a lightweight persisted player summary: identity, guild, level, Galactic Power, freshness, roster count and datacron count. Roster units and datacron details are intentionally excluded from this response.
 - `GET /api/v1/players/{allyCode}/roster` returns an enriched, filtered, sorted and paged roster. Each item includes the localized unit `name`, `nameKey`, Game Data `thumbnailName`, readable factions and raw SWGOH tags in addition to progression/GP data. Query options: `page`, `pageSize` (1-100), `search`, `type` (`All`, `Character`, `Ship`), `minRarity`, `minRelic`, `hasZeta`, `hasOmicron`, `orderBy` (`GalacticPower`, `RelicTier`, `Rarity`, `GearTier`, `Level`, `DefinitionId`, `Name`) and `direction` (`Ascending`, `Descending`). Search matches IDs, localized names, name keys, factions and tags.
-- `POST /api/v1/players/{allyCode}/refresh` fetches the player from Comlink, calculates unit GP, enriches the roster and persists both the current profile and a historical snapshot.
-- `PUT /api/v1/players/{allyCode}` remains available for manual/local data while the application evolves.
+- `POST /api/v1/players/{allyCode}/refresh` fetches the player from Comlink, calculates unit GP, enriches the roster and persists both the current profile and a historical snapshot. A successful refresh returns `204 No Content`; callers read the summary or roster through their dedicated GET endpoints.
+- `PUT /api/v1/players/{allyCode}` remains available for manual/local data while the application evolves and returns the lightweight player summary.
 - `GET /api/v1/players/{allyCode}/analysis` returns roster metrics including character/ship GP, relic thresholds, zetas, omicrons and mod coverage.
 - `GET /api/v1/players/{allyCode}/history?limit=30` returns recent snapshots ordered from newest to oldest. The limit is clamped between 1 and 365.
 - `GET /api/v1/players/{allyCode}/gl-progress` calculates Galactic Legend unit-requirement progress using current Game Data.
@@ -123,7 +123,7 @@ Game Data, category metadata and localization are cached in-process for six hour
 GitHub Actions uses two separate workflows:
 
 - `CI` validates formatting, builds Release and runs all unit/integration tests. Pull requests run only this workflow.
-- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, GAC defense rules and league transitions, accepts `202 Pending` while current-opponent discovery runs, refreshes a live player, confirms the dedicated refresh rate limit, and validates player import, enriched roster paging, positive Galactic Power, roster consistency, omicron detection, historical snapshot creation, analysis, Galactic Legend progress, squad definitions and a synthetic historical GAC import/opponent-scout flow.
+- `Smoke Test` starts MongoDB, Comlink and SWGOH Stats, builds and starts the API, validates OpenAPI/Scalar, GAC defense rules and league transitions, accepts `202 Pending` while current-opponent discovery runs, refreshes a live player, confirms the `204 No Content` refresh contract and dedicated refresh rate limit, verifies that the player GET is a lightweight summary without embedded roster/datacron arrays, and validates enriched roster paging, positive Galactic Power, omicron detection, historical snapshot creation, analysis, Galactic Legend progress, squad definitions and a synthetic historical GAC import/opponent-scout flow.
 
 A manual `CI` run exposes `run_smoke`. When enabled, `Smoke Test` is dispatched only after CI has completed successfully. Disable it to execute CI alone. The same manual run accepts `ally_code` for the chained smoke test.
 
