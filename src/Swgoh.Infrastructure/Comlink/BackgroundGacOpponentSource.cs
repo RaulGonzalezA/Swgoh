@@ -11,7 +11,7 @@ using Swgoh.Domain.Gac;
 namespace Swgoh.Infrastructure.Comlink;
 
 internal sealed class BackgroundGacOpponentSource(
-    SwgohComlinkUnifiedGacOpponentSource source,
+    ILiveGacOpponentSource source,
     IGacTelemetry gacTelemetry,
     ILogger<BackgroundGacOpponentSource> logger) : BackgroundService, ICurrentGacOpponentSource
 {
