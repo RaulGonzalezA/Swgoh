@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IConquestService, ConquestService>();
         services.AddScoped<IConquestDailyPlanService, ConquestDailyPlanService>();
         services.AddSingleton<IGacRulesService, GacRulesService>();
+        services.AddSingleton<IGacTelemetry, GacTelemetry>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();
         services.AddScoped<IGacHistorySyncService, GacHistorySyncService>();
         services.AddScoped<IGacCounterStatisticsService, GacCounterStatisticsService>();
@@ -38,8 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IGacPlannerContextService, GacPlannerContextService>();
         services.AddScoped<IGacPlannerMutationService, GacPlannerMutationService>();
         services.AddScoped<GacDefenseStrategyService>();
-        services.AddScoped<IGacDefenseStrategyService>(serviceProvider =>
-            serviceProvider.GetRequiredService<GacDefenseStrategyService>());
+        services.AddScoped<IGacDefenseStrategyService, GacDefenseStrategyService>();
         services.AddScoped<IGacSmartDefenseService, GacSmartDefenseService>();
         services.AddScoped<GacAttackPlanOptimizerService>();
         services.AddScoped<IGacAttackPlanOptimizerService, HardenedGacAttackPlanOptimizerService>();

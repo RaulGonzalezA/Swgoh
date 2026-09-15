@@ -10,7 +10,8 @@ internal sealed class PersistedGacOpponentSource(
     BackgroundGacOpponentSource fallback,
     IGacBracketLocationRepository locations,
     GacExactBracketResolver exactResolver,
-    ILogger<PersistedGacOpponentSource> logger) : ICurrentGacOpponentSource, ICurrentGacOpponentCache, IDisposable
+    IGacTelemetry gacTelemetry,
+    ILogger<PersistedGacOpponentSource> logger) : IDisposable
 {
     private const long ResultCacheSizeLimit = 2_048;
     private const long PersistedAttemptCacheSizeLimit = 2_048;
@@ -37,7 +38,7 @@ internal sealed class PersistedGacOpponentSource(
         string key = $"{allyCode}:{formatOverride?.ToString() ?? "auto"}";
         if (resultCache.TryGetValue(key, out ResultCacheEntry? cached))
         {
-            GacTelemetry.RecordOpponentLookup(TimeSpan.Zero, cached.Lookup.Status, cacheHit: true, "persisted-wrapper-memory");
+            gacTelemetry.RecordOpponentLookup(TimeSpan.Zero, cached.Lookup.Status, cacheHit: true, "persisted-wrapper-memory");
             return cached.Lookup;
         }
 

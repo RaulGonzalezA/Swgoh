@@ -8,7 +8,7 @@ namespace Swgoh.Infrastructure.Comlink;
 internal sealed class SwgohComlinkUnifiedGacOpponentSource(
     SwgohComlinkFastGacOpponentSource locator,
     GacExactBracketResolver exactResolver,
-    ILogger<SwgohComlinkUnifiedGacOpponentSource> logger) : ICurrentGacOpponentSource
+    ILogger<SwgohComlinkUnifiedGacOpponentSource> logger) : ILiveGacOpponentSource
 {
     public async Task<CurrentGacOpponentLookup> GetAsync(
         long allyCode,

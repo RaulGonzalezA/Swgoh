@@ -40,7 +40,8 @@ public sealed class CurrentGacScoutingServiceTests
             profiles,
             roster,
             historySync,
-            counters);
+            counters,
+            new GacTelemetry());
 
         CurrentGacScoutingResult result = await service.GetAsync(
             playerAllyCode,
@@ -115,7 +116,8 @@ public sealed class CurrentGacScoutingServiceTests
             profiles,
             roster,
             new ThrowingHistorySyncService(),
-            new ThrowingCounterStatisticsService());
+            new ThrowingCounterStatisticsService(),
+            new GacTelemetry());
 
         CurrentGacScoutingResult result = await service.GetAsync(
             playerAllyCode,
@@ -153,7 +155,8 @@ public sealed class CurrentGacScoutingServiceTests
             profiles,
             roster,
             historySync,
-            counters);
+            counters,
+            new GacTelemetry());
 
         CurrentGacScoutingResult result = await service.GetAsync(
             playerAllyCode,

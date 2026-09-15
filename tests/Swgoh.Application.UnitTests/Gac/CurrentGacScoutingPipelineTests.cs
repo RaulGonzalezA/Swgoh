@@ -42,7 +42,8 @@ public sealed class CurrentGacScoutingPipelineTests
                 opponentProfile,
                 opponentSnapshotStarted),
             new CoordinatedHistorySyncService(historyRelease),
-            new EmptyCounterStatisticsService());
+            new EmptyCounterStatisticsService(),
+            new GacTelemetry());
 
         Task<CurrentGacScoutingResult> resultTask = service.GetAsync(
             playerAllyCode,
@@ -147,6 +148,7 @@ public sealed class CurrentGacScoutingPipelineTests
         new StaticRosterService(playerProfile, opponentProfile),
         new ImmediateHistorySyncService(),
         new EmptyCounterStatisticsService(),
+        new GacTelemetry(),
         new FixedClock(FixedNow));
 
     private static CurrentGacOpponent CreateOpponent(long playerAllyCode, long opponentAllyCode) => new(
