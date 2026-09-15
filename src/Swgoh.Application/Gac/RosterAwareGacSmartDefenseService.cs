@@ -7,7 +7,8 @@ internal sealed class RosterAwareGacSmartDefenseService(
     IGacPlannerService plannerService,
     ICurrentGacScoutingService scoutingService,
     IGacPersonalLearningService personalLearningService,
-    IGacRosterDefenseCandidateProvider rosterCandidateProvider) : IGacSmartDefenseService
+    IGacRosterDefenseCandidateProvider rosterCandidateProvider,
+    IGacGeneratedTeamLifecycleService generatedTeamLifecycleService) : IGacSmartDefenseService
 {
     private const int HistoryRoundLimit = 30;
 
@@ -36,11 +37,15 @@ internal sealed class RosterAwareGacSmartDefenseService(
             cancellationToken);
         Task<IReadOnlyCollection<GacPersonalMatchupStatistics>> personalTask = personalLearningService
             .GetStatisticsAsync(allyCode, state.Plan.Format, cancellationToken);
+        Task<IReadOnlySet<Guid>> generatedPresetIdsTask = generatedTeamLifecycleService
+            .GetGeneratedPresetIdsAsync(allyCode, state.Plan.Format, origin: null, cancellationToken);
 
-        await Task.WhenAll(strategyTask, scoutingTask, personalTask).ConfigureAwait(false);
+        await Task.WhenAll(strategyTask, scoutingTask, personalTask, generatedPresetIdsTask).ConfigureAwait(false);
         GacDefenseStrategySnapshot strategy = await strategyTask.ConfigureAwait(false);
         CurrentGacScoutingResult scouting = await scoutingTask.ConfigureAwait(false);
         IReadOnlyCollection<GacPersonalMatchupStatistics> personal = await personalTask.ConfigureAwait(false);
+        IReadOnlySet<Guid> generatedPresetIds = await generatedPresetIdsTask.ConfigureAwait(false);
+        GacDefenseStrategyProfile reusableProfile = RemoveGeneratedReferences(strategy.Profile, generatedPresetIds);
 
         string[] consumedUnits =
         [
@@ -53,7 +58,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
         GacRosterDefenseCandidateSet rosterCandidates = await rosterCandidateProvider.BuildAsync(
             allyCode,
             state.Plan.Format,
-            strategy.Profile,
+            reusableProfile,
             state.Presets,
             scouting.BattlePlan,
             consumedUnits,
@@ -65,7 +70,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
         ];
 
         GacSmartDefenseService.SmartGeneration generation = GacSmartDefenseService.Generate(
-            strategy.Profile,
+            reusableProfile,
             candidates,
             scouting,
             personal,
@@ -80,6 +85,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
             return ToResult(state.Plan.Format, false, generation, state.Plan.UpdatedAtUtc, scouting);
         }
 
+        string generationId = Guid.NewGuid().ToString("N");
         GacGeneratedPresetMaterialization materialization = await GacRosterDefenseCandidateService.MaterializeAsync(
             plannerService,
             allyCode,
@@ -87,6 +93,15 @@ internal sealed class RosterAwareGacSmartDefenseService(
             generation.Assignments,
             rosterCandidates,
             cancellationToken).ConfigureAwait(false);
+        await generatedTeamLifecycleService.RegisterAsync(
+            allyCode,
+            state.Plan.Format,
+            GacGeneratedTeamOrigin.SmartDefense,
+            generationId,
+            state.Plan.Id,
+            materialization.CreatedPresetIds,
+            cancellationToken).ConfigureAwait(false);
+
         GacSmartDefenseAssignment[] appliedAssignments =
         [
             .. generation.Assignments.Select(item =>
@@ -109,6 +124,10 @@ internal sealed class RosterAwareGacSmartDefenseService(
                 throw new InvalidOperationException(saved.Message ?? "The smart defense could not be applied.");
             }
 
+            await generatedTeamLifecycleService
+                .PruneUnreferencedAsync(allyCode, saved.State, cancellationToken)
+                .ConfigureAwait(false);
+
             return ToResult(
                 state.Plan.Format,
                 true,
@@ -118,6 +137,9 @@ internal sealed class RosterAwareGacSmartDefenseService(
         }
         catch
         {
+            await generatedTeamLifecycleService
+                .ForgetAsync(materialization.CreatedPresetIds, CancellationToken.None)
+                .ConfigureAwait(false);
             await RollbackAsync(allyCode, materialization).ConfigureAwait(false);
             throw;
         }
@@ -173,6 +195,24 @@ internal sealed class RosterAwareGacSmartDefenseService(
             plannerService,
             allyCode,
             materialization.CreatedPresetIds);
+
+    private static GacDefenseStrategyProfile RemoveGeneratedReferences(
+        GacDefenseStrategyProfile profile,
+        IReadOnlySet<Guid> generatedPresetIds) =>
+        profile with
+        {
+            Slots =
+            [
+                .. profile.Slots.Select(slot =>
+                    slot.PinnedTeamPresetId is Guid pinned && generatedPresetIds.Contains(pinned)
+                        ? slot with { PinnedTeamPresetId = null }
+                        : slot)
+            ],
+            ReservedAttackPresetIds =
+            [
+                .. profile.ReservedAttackPresetIds.Where(id => !generatedPresetIds.Contains(id))
+            ]
+        };
 
     private static GacSmartDefenseGenerationResult ToResult(
         GacFormat format,
