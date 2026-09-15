@@ -301,3 +301,4 @@ public partial class Home
         _lifetime.Cancel();
         _lifetime.Dispose();
     }
+}
