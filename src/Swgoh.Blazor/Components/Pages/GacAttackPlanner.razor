@@ -251,10 +251,14 @@ else
                         <label>Tipo<select value="@PresetType" @onchange="PresetTypeChanged"><option value="Character">Personajes</option><option value="Fleet">Flota</option></select></label>
                     </div>
                     <label>
+                        Buscar unidad
+                        <input type="search" placeholder="Nombre o ID…" @bind="PresetUnitSearch" @bind:event="oninput" />
+                    </label>
+                    <label>
                         Líder
                         <select @bind="PresetLeaderId">
                             <option value="">Selecciona unidad…</option>
-                            @foreach (PlayerApiClient.RosterUnitViewModel unit in PresetUnitOptions)
+                            @foreach (PlayerApiClient.RosterUnitViewModel unit in SearchablePresetUnitOptions)
                             {
                                 <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
                             }
@@ -268,7 +272,7 @@ else
                                 @(memberIndex == 0 ? "Miembros" : " ")
                                 <select value="@PresetMemberIds[index]" @onchange="eventArgs => SetPresetMember(index, eventArgs.Value?.ToString())">
                                     <option value="">@(PresetMembersRequired ? "Selecciona unidad…" : "Opcional…")</option>
-                                    @foreach (PlayerApiClient.RosterUnitViewModel unit in PresetUnitOptions)
+                                    @foreach (PlayerApiClient.RosterUnitViewModel unit in SearchablePresetUnitOptions)
                                     {
                                         <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
                                     }
@@ -331,10 +335,14 @@ else
                 <div class="planner-inline-editor">
                     <label>Zona<select @bind="OwnDefenseZone">@foreach (string zone in ZoneOptions) { <option value="@zone">@zone</option> }</select></label>
                     <label class="planner-inline-editor-wide">
+                        Buscar equipo o unidad
+                        <input type="search" placeholder="Leia, Malgus, REYJEDITRAINING…" @bind="OwnDefenseSearch" @bind:event="oninput" style="width:100%;min-width:0;" />
+                    </label>
+                    <label class="planner-inline-editor-wide">
                         Equipo
                         <select @bind="OwnDefensePresetId">
                             <option value="">Selecciona equipo…</option>
-                            @foreach (GacPlannerApiClient.TeamPresetViewModel preset in DefensePresetOptions)
+                            @foreach (GacPlannerApiClient.TeamPresetViewModel preset in SearchableDefensePresetOptions)
                             {
                                 <option value="@preset.Id.ToString()">@preset.Name · @FriendlyUse(preset.Use)</option>
                             }
@@ -401,10 +409,14 @@ else
                         </div>
                         <label>Etiqueta opcional<input placeholder="Ej. Muro sur" @bind="EnemyLabel" /></label>
                         <label>
+                            Buscar unidad rival
+                            <input type="search" placeholder="Nombre o ID…" @bind="EnemyUnitSearch" @bind:event="oninput" />
+                        </label>
+                        <label>
                             Líder
                             <select @bind="EnemyLeaderId">
                                 <option value="">Selecciona unidad rival…</option>
-                                @foreach (PlayerApiClient.RosterUnitViewModel unit in EnemyUnitOptions)
+                                @foreach (PlayerApiClient.RosterUnitViewModel unit in SearchableEnemyUnitOptions)
                                 {
                                     <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
                                 }
@@ -418,7 +430,7 @@ else
                                     @(memberIndex == 0 ? "Miembros" : " ")
                                     <select value="@EnemyMemberIds[index]" @onchange="eventArgs => SetEnemyMember(index, eventArgs.Value?.ToString())">
                                         <option value="">@(EnemyMembersRequired ? "Selecciona unidad…" : "Opcional…")</option>
-                                        @foreach (PlayerApiClient.RosterUnitViewModel unit in EnemyUnitOptions)
+                                        @foreach (PlayerApiClient.RosterUnitViewModel unit in SearchableEnemyUnitOptions)
                                         {
                                             <option value="@unit.DefinitionId">@UnitOptionLabel(unit)</option>
                                         }
@@ -584,4 +596,52 @@ else
     {
         <div class="planner-saving-toast"><span class="spinner"></span> Guardando plan…</div>
     }
+}
+
+@code {
+    private string PresetUnitSearch { get; set; } = string.Empty;
+    private string OwnDefenseSearch { get; set; } = string.Empty;
+    private string EnemyUnitSearch { get; set; } = string.Empty;
+
+    private IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> SearchablePresetUnitOptions =>
+        FilterUnitOptions(
+            PresetUnitOptions,
+            PresetUnitSearch,
+            new[] { PresetLeaderId }.Concat(PresetMemberIds));
+
+    private IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> SearchableEnemyUnitOptions =>
+        FilterUnitOptions(
+            EnemyUnitOptions,
+            EnemyUnitSearch,
+            new[] { EnemyLeaderId }.Concat(EnemyMemberIds));
+
+    private IReadOnlyCollection<GacPlannerApiClient.TeamPresetViewModel> SearchableDefensePresetOptions =>
+        [.. DefensePresetOptions.Where(preset =>
+            string.IsNullOrWhiteSpace(OwnDefenseSearch) ||
+            preset.Id.ToString().Equals(OwnDefensePresetId, StringComparison.OrdinalIgnoreCase) ||
+            MatchesSearch(preset.Name, OwnDefenseSearch) ||
+            MatchesSearch(preset.Use, OwnDefenseSearch) ||
+            preset.Squad.AllUnits.Any(unit =>
+                MatchesSearch(unit.Name, OwnDefenseSearch) ||
+                MatchesSearch(unit.DefinitionId, OwnDefenseSearch)))];
+
+    private static IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> FilterUnitOptions(
+        IEnumerable<PlayerApiClient.RosterUnitViewModel> options,
+        string search,
+        IEnumerable<string> selectedDefinitionIds)
+    {
+        HashSet<string> selected = selectedDefinitionIds
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return [.. options.Where(unit =>
+            selected.Contains(unit.DefinitionId) ||
+            string.IsNullOrWhiteSpace(search) ||
+            MatchesSearch(unit.Name, search) ||
+            MatchesSearch(unit.DefinitionId, search))];
+    }
+
+    private static bool MatchesSearch(string? value, string search) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase);
 }
