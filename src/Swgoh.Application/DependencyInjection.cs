@@ -31,6 +31,8 @@ public static class DependencyInjection
         services.AddScoped<CurrentGacScoutingService>();
         services.AddScoped<ICurrentGacScoutingService, CachedCurrentGacScoutingService>();
         services.AddScoped<IGacPersonalLearningService, GacPersonalLearningService>();
+        services.AddSingleton<GacPlannerWriteContext>();
+        services.AddSingleton<GacOptimizationCoordinator>();
         services.AddScoped<GacPlannerService>();
         services.AddScoped<IGacPlannerService, LearningGacPlannerService>();
         services.AddScoped<IGacPlannerContextService, GacPlannerContextService>();
@@ -39,7 +41,8 @@ public static class DependencyInjection
         services.AddScoped<IGacDefenseStrategyService>(serviceProvider =>
             serviceProvider.GetRequiredService<GacDefenseStrategyService>());
         services.AddScoped<IGacSmartDefenseService, GacSmartDefenseService>();
-        services.AddScoped<IGacAttackPlanOptimizerService, GacAttackPlanOptimizerService>();
+        services.AddScoped<GacAttackPlanOptimizerService>();
+        services.AddScoped<IGacAttackPlanOptimizerService, HardenedGacAttackPlanOptimizerService>();
         services.AddScoped<IGacJointRoundOptimizerService, GacJointRoundOptimizerService>();
         services.AddScoped<IGacAttackExecutionService, GacAttackExecutionService>();
         return services;

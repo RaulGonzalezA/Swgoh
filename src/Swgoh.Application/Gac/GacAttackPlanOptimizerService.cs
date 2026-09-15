@@ -47,7 +47,12 @@ internal sealed class GacAttackPlanOptimizerService(
             allyCode,
             state.Plan.Format,
             cancellationToken).ConfigureAwait(false);
-        GacAttackOptimizationResult optimization = Optimize(state, mode, tacticalContext, personalContext);
+        GacAttackOptimizationResult optimization = Optimize(
+            state,
+            mode,
+            tacticalContext,
+            personalContext,
+            cancellationToken);
         if (!apply || optimization.Recommendations.Count == 0)
         {
             return new GacAttackOptimizationLookup(
@@ -105,19 +110,30 @@ internal sealed class GacAttackPlanOptimizerService(
     internal static GacAttackOptimizationResult Optimize(
         GacPlannerState state,
         GacAttackOptimizationMode mode) =>
-        Optimize(state, mode, GacTacticalOptimizationContext.Empty, GacPersonalLearningContext.Empty);
+        Optimize(
+            state,
+            mode,
+            GacTacticalOptimizationContext.Empty,
+            GacPersonalLearningContext.Empty,
+            CancellationToken.None);
 
     internal static GacAttackOptimizationResult Optimize(
         GacPlannerState state,
         GacAttackOptimizationMode mode,
         GacTacticalOptimizationContext tacticalContext) =>
-        Optimize(state, mode, tacticalContext, GacPersonalLearningContext.Empty);
+        Optimize(
+            state,
+            mode,
+            tacticalContext,
+            GacPersonalLearningContext.Empty,
+            CancellationToken.None);
 
     internal static GacAttackOptimizationResult Optimize(
         GacPlannerState state,
         GacAttackOptimizationMode mode,
         GacTacticalOptimizationContext tacticalContext,
-        GacPersonalLearningContext personalContext)
+        GacPersonalLearningContext personalContext,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(tacticalContext);
@@ -127,6 +143,7 @@ internal sealed class GacAttackPlanOptimizerService(
             throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported optimization mode.");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         HashSet<string> blockedUnits = BuildBlockedUnits(state, mode);
         GacVisibleDefenseDetails[] targets =
         [
@@ -151,6 +168,7 @@ internal sealed class GacAttackPlanOptimizerService(
                 group => group.Select(TeamPower).DefaultIfEmpty(0m).Max());
         Dictionary<Guid, GacPlannerCounterHint> hints = state.Plan.CounterHints.ToDictionary(hint => hint.DefenseId);
 
+        cancellationToken.ThrowIfCancellationRequested();
         PreliminaryCandidate[] preliminaryCandidates =
         [
             .. targets.SelectMany(defense =>
@@ -174,6 +192,7 @@ internal sealed class GacAttackPlanOptimizerService(
                         candidate.UnitDefinitionIds))
                 ]);
 
+        cancellationToken.ThrowIfCancellationRequested();
         DefenseChoice[] choices =
         [
             .. targets.Select(defense => new DefenseChoice(
@@ -204,8 +223,10 @@ internal sealed class GacAttackPlanOptimizerService(
             usedUnits: [],
             totalScore: 0m,
             totalCost: 0m,
-            search);
+            search,
+            cancellationToken);
 
+        cancellationToken.ThrowIfCancellationRequested();
         GacAttackOptimizationRecommendation[] recommendations =
         [
             .. search.BestCandidates
@@ -561,9 +582,15 @@ internal sealed class GacAttackPlanOptimizerService(
         HashSet<string> usedUnits,
         decimal totalScore,
         decimal totalCost,
-        SearchState state)
+        SearchState state,
+        CancellationToken cancellationToken)
     {
         state.NodesVisited++;
+        if ((state.NodesVisited & 0xFF) == 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         if (state.NodesVisited > MaxSearchNodes)
         {
             state.SearchLimitReached = true;
@@ -602,13 +629,22 @@ internal sealed class GacAttackPlanOptimizerService(
                 usedUnits,
                 totalScore + candidate.Score,
                 totalCost + candidate.StrategicCost,
-                state);
+                state,
+                cancellationToken);
 
             selected.RemoveAt(selected.Count - 1);
             RebuildUsedUnits(selected, usedUnits);
         }
 
-        Search(choices, index + 1, selected, usedUnits, totalScore, totalCost, state);
+        Search(
+            choices,
+            index + 1,
+            selected,
+            usedUnits,
+            totalScore,
+            totalCost,
+            state,
+            cancellationToken);
     }
 
     private static void RebuildUsedUnits(IEnumerable<Candidate> selected, HashSet<string> usedUnits)

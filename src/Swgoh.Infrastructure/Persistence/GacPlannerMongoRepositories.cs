@@ -101,10 +101,18 @@ internal sealed class GacTeamPresetMongoRepository(
 }
 
 internal sealed class GacRoundPlanMongoRepository(
-    IMongoDbRepository<GacRoundPlanDocument, string> repository) : IGacRoundPlanRepository
+    IMongoDbRepository<GacRoundPlanDocument, string> repository,
+    GacPlannerWriteContext writeContext,
+    Microsoft.Extensions.Configuration.IConfiguration configuration) : IGacRoundPlanRepository
 {
     internal const string CollectionName = "gacRoundPlans";
     internal const string PlayerUpdatedIndexName = "ix_gac_round_plans_player_updated";
+
+    private readonly IMongoCollection<GacRoundPlanDocument> collection = new MongoClient(
+        configuration["ConnectionStrings:swgoh"]
+            ?? throw new InvalidOperationException("Connection string 'swgoh' is required."))
+        .GetDatabase("swgoh")
+        .GetCollection<GacRoundPlanDocument>(CollectionName);
 
     public async Task<GacRoundPlan?> FindByIdAsync(string id, CancellationToken cancellationToken = default)
     {
@@ -115,13 +123,81 @@ internal sealed class GacRoundPlanMongoRepository(
         return document is null ? null : ToDomain(document);
     }
 
-    public Task UpsertAsync(GacRoundPlan plan, CancellationToken cancellationToken = default)
+    public async Task<long> GetVersionAsync(string id, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(plan);
-        return repository.UpsertAsync(ToDocument(plan), cancellationToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        GacRoundPlanDocument? document = await collection
+            .Find(Builders<GacRoundPlanDocument>.Filter.Eq(item => item.Id, id.Trim()))
+            .Project<GacRoundPlanDocument>(Builders<GacRoundPlanDocument>.Projection
+                .Include(item => item.Id)
+                .Include(item => item.Version))
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return document?.Version ?? 0L;
     }
 
-    private static GacRoundPlanDocument ToDocument(GacRoundPlan plan) => new()
+    public async Task<bool> TrySaveAsync(
+        GacRoundPlan plan,
+        long expectedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (expectedVersion < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(expectedVersion),
+                expectedVersion,
+                "Plan version cannot be negative.");
+        }
+
+        FilterDefinitionBuilder<GacRoundPlanDocument> builder = Builders<GacRoundPlanDocument>.Filter;
+        FilterDefinition<GacRoundPlanDocument> versionFilter = expectedVersion == 0
+            ? builder.Or(
+                builder.Eq(item => item.Version, 0),
+                builder.Exists(nameof(GacRoundPlanDocument.Version), exists: false))
+            : builder.Eq(item => item.Version, expectedVersion);
+        FilterDefinition<GacRoundPlanDocument> filter = builder.Eq(item => item.Id, plan.Id) & versionFilter;
+        GacRoundPlanDocument document = ToDocument(plan, expectedVersion + 1);
+
+        try
+        {
+            ReplaceOneResult result = await collection
+                .ReplaceOneAsync(
+                    filter,
+                    document,
+                    new ReplaceOptions { IsUpsert = expectedVersion == 0 },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return result.MatchedCount == 1 || result.UpsertedId is not null;
+        }
+        catch (MongoWriteException exception) when (exception.WriteError?.Code == 11000)
+        {
+            return false;
+        }
+    }
+
+    public async Task UpsertAsync(GacRoundPlan plan, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (writeContext.ExpectedVersion is long expectedVersion)
+        {
+            bool saved = await TrySaveAsync(plan, expectedVersion, cancellationToken).ConfigureAwait(false);
+            if (!saved)
+            {
+                throw new GacPlannerConcurrencyException(
+                    "The GAC plan changed while this operation was running. Reload and try again.");
+            }
+
+            return;
+        }
+
+        long currentVersion = await GetVersionAsync(plan.Id, cancellationToken).ConfigureAwait(false);
+        await repository
+            .UpsertAsync(ToDocument(plan, currentVersion + 1), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static GacRoundPlanDocument ToDocument(GacRoundPlan plan, long version) => new()
     {
         Id = plan.Id,
         PlayerAllyCode = plan.PlayerAllyCode,
@@ -163,7 +239,8 @@ internal sealed class GacRoundPlanMongoRepository(
             })
         ],
         CreatedAtUtc = plan.CreatedAtUtc,
-        UpdatedAtUtc = plan.UpdatedAtUtc
+        UpdatedAtUtc = plan.UpdatedAtUtc,
+        Version = version
     };
 
     private static GacRoundPlan ToDomain(GacRoundPlanDocument document)

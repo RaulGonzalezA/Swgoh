@@ -67,6 +67,24 @@ builder.Services.AddRateLimiter(options =>
             });
     });
 
+    options.AddPolicy("gac-optimizer", context =>
+    {
+        string allyCode = context.Request.RouteValues.TryGetValue("allyCode", out object? value)
+            ? value?.ToString() ?? "unknown"
+            : "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            allyCode,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 4,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+
     options.OnRejected = async (context, cancellationToken) =>
     {
         HttpResponse response = context.HttpContext.Response;

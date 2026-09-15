@@ -72,7 +72,7 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
             allyCode,
             HttpMethod.Post,
             $"/api/v1/gac/players/{allyCode}/planner/current/own-defenses",
-            new OwnDefenseMutationRequest(zone, teamPresetId, expectedUpdatedAtUtc),
+            new OwnDefenseMutationWireRequest(zone, teamPresetId, ExpectedVersion(allyCode)),
             cancellationToken);
 
     public Task<GacPlannerApiClient.PlannerResult> RemoveOwnDefenseAsync(
@@ -83,7 +83,7 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
         SendPlannerMutationAsync(
             allyCode,
             HttpMethod.Delete,
-            $"/api/v1/gac/players/{allyCode}/planner/current/own-defenses/{assignmentId}?expectedUpdatedAtUtc={EscapeTimestamp(expectedUpdatedAtUtc)}",
+            $"/api/v1/gac/players/{allyCode}/planner/current/own-defenses/{assignmentId}?expectedVersion={ExpectedVersion(allyCode)}",
             body: null,
             cancellationToken);
 
@@ -95,7 +95,13 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
             allyCode,
             HttpMethod.Post,
             $"/api/v1/gac/players/{allyCode}/planner/current/visible-defenses",
-            request,
+            new VisibleDefenseMutationWireRequest(
+                request.Zone,
+                request.Label,
+                request.LeaderDefinitionId,
+                request.MemberDefinitionIds,
+                request.IsFleet,
+                ExpectedVersion(allyCode)),
             cancellationToken);
 
     public Task<GacPlannerApiClient.PlannerResult> RemoveVisibleDefenseAsync(
@@ -106,7 +112,7 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
         SendPlannerMutationAsync(
             allyCode,
             HttpMethod.Delete,
-            $"/api/v1/gac/players/{allyCode}/planner/current/visible-defenses/{defenseId}?expectedUpdatedAtUtc={EscapeTimestamp(expectedUpdatedAtUtc)}",
+            $"/api/v1/gac/players/{allyCode}/planner/current/visible-defenses/{defenseId}?expectedVersion={ExpectedVersion(allyCode)}",
             body: null,
             cancellationToken);
 
@@ -121,7 +127,7 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
             allyCode,
             HttpMethod.Post,
             $"/api/v1/gac/players/{allyCode}/planner/current/attacks",
-            new AddAttackMutationRequest(defenseId, teamPresetId, notes, expectedUpdatedAtUtc),
+            new AddAttackMutationWireRequest(defenseId, teamPresetId, notes, ExpectedVersion(allyCode)),
             cancellationToken);
 
     public Task<GacPlannerApiClient.PlannerResult> UpdateAttackAsync(
@@ -135,7 +141,7 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
             allyCode,
             HttpMethod.Patch,
             $"/api/v1/gac/players/{allyCode}/planner/current/attacks/{attackId}",
-            new UpdateAttackMutationRequest(status, notes, expectedUpdatedAtUtc),
+            new UpdateAttackMutationWireRequest(status, notes, ExpectedVersion(allyCode)),
             cancellationToken);
 
     private async Task<GacPlannerApiClient.PlannerResult> SendPlannerMutationAsync(
@@ -188,10 +194,17 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
         return new GacPlannerApiClient.PlannerResult(null, "No se ha podido actualizar el plan de Gran Arena.");
     }
 
-    private static string ContextCacheKey(long allyCode) => $"gac-planner-context:{allyCode}";
+    private long ExpectedVersion(long allyCode)
+    {
+        if (TryGetCachedContext(allyCode, out PlannerContextViewModel? context) && context is not null)
+        {
+            return context.Planner.Plan.Version;
+        }
 
-    private static string EscapeTimestamp(DateTimeOffset value) =>
-        Uri.EscapeDataString(value.ToString("O"));
+        throw new InvalidOperationException("The GAC planner context must be loaded before applying a mutation.");
+    }
+
+    private static string ContextCacheKey(long allyCode) => $"gac-planner-context:{allyCode}";
 
     public sealed record PlannerContextResult(PlannerContextViewModel? Context, string? Message);
 
@@ -209,11 +222,6 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
         IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> Items,
         IReadOnlyCollection<string> AvailableFactions);
 
-    public sealed record OwnDefenseMutationRequest(
-        string Zone,
-        Guid TeamPresetId,
-        DateTimeOffset ExpectedUpdatedAtUtc);
-
     public sealed record VisibleDefenseMutationRequest(
         string Zone,
         string? Label,
@@ -222,14 +230,27 @@ public sealed class GacPlannerPerformanceApiClient(HttpClient httpClient, IMemor
         bool IsFleet,
         DateTimeOffset ExpectedUpdatedAtUtc);
 
-    public sealed record AddAttackMutationRequest(
+    private sealed record OwnDefenseMutationWireRequest(
+        string Zone,
+        Guid TeamPresetId,
+        long ExpectedVersion);
+
+    private sealed record VisibleDefenseMutationWireRequest(
+        string Zone,
+        string? Label,
+        string LeaderDefinitionId,
+        IReadOnlyCollection<string> MemberDefinitionIds,
+        bool IsFleet,
+        long ExpectedVersion);
+
+    private sealed record AddAttackMutationWireRequest(
         Guid DefenseId,
         Guid TeamPresetId,
         string? Notes,
-        DateTimeOffset ExpectedUpdatedAtUtc);
+        long ExpectedVersion);
 
-    public sealed record UpdateAttackMutationRequest(
+    private sealed record UpdateAttackMutationWireRequest(
         string Status,
         string? Notes,
-        DateTimeOffset ExpectedUpdatedAtUtc);
+        long ExpectedVersion);
 }

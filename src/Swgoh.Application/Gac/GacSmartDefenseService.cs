@@ -124,7 +124,7 @@ internal sealed class GacSmartDefenseService(
         GacPlannerLookup saved = await plannerService
             .SaveCurrentAsync(
                 allyCode,
-                new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks),
+                new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks, state.Plan.Version),
                 cancellationToken)
             .ConfigureAwait(false);
         if (!saved.IsAvailable || saved.State is null)

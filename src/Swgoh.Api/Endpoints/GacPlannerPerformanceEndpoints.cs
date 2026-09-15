@@ -67,7 +67,7 @@ internal static class GacPlannerPerformanceEndpoints
                 allyCode,
                 request.Zone,
                 request.TeamPresetId,
-                request.ExpectedUpdatedAtUtc,
+                request.ExpectedVersion,
                 cancellationToken);
             return ToLookupResult(lookup);
         }
@@ -84,7 +84,7 @@ internal static class GacPlannerPerformanceEndpoints
     private static async Task<IResult> RemoveOwnDefenseAsync(
         long allyCode,
         Guid assignmentId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         IGacPlannerMutationService service,
         CancellationToken cancellationToken)
     {
@@ -93,7 +93,7 @@ internal static class GacPlannerPerformanceEndpoints
             GacPlannerLookup lookup = await service.RemoveOwnDefenseAsync(
                 allyCode,
                 assignmentId,
-                expectedUpdatedAtUtc,
+                expectedVersion,
                 cancellationToken);
             return ToLookupResult(lookup);
         }
@@ -125,7 +125,7 @@ internal static class GacPlannerPerformanceEndpoints
             GacPlannerLookup lookup = await service.AddVisibleDefenseAsync(
                 allyCode,
                 defense,
-                request.ExpectedUpdatedAtUtc,
+                request.ExpectedVersion,
                 cancellationToken);
             return ToLookupResult(lookup);
         }
@@ -142,7 +142,7 @@ internal static class GacPlannerPerformanceEndpoints
     private static async Task<IResult> RemoveVisibleDefenseAsync(
         long allyCode,
         Guid defenseId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         IGacPlannerMutationService service,
         CancellationToken cancellationToken)
     {
@@ -151,7 +151,7 @@ internal static class GacPlannerPerformanceEndpoints
             GacPlannerLookup lookup = await service.RemoveVisibleDefenseAsync(
                 allyCode,
                 defenseId,
-                expectedUpdatedAtUtc,
+                expectedVersion,
                 cancellationToken);
             return ToLookupResult(lookup);
         }
@@ -178,7 +178,7 @@ internal static class GacPlannerPerformanceEndpoints
                 request.DefenseId,
                 request.TeamPresetId,
                 request.Notes,
-                request.ExpectedUpdatedAtUtc,
+                request.ExpectedVersion,
                 cancellationToken);
             return ToLookupResult(lookup);
         }
@@ -206,7 +206,7 @@ internal static class GacPlannerPerformanceEndpoints
                 attackId,
                 ParseAttackStatus(request.Status),
                 request.Notes,
-                request.ExpectedUpdatedAtUtc,
+                request.ExpectedVersion,
                 cancellationToken);
             return ToLookupResult(lookup);
         }
@@ -261,7 +261,7 @@ internal static class GacPlannerPerformanceEndpoints
     internal sealed record OwnDefenseMutationRequest(
         string Zone,
         Guid TeamPresetId,
-        DateTimeOffset? ExpectedUpdatedAtUtc);
+        long? ExpectedVersion);
 
     internal sealed record VisibleDefenseMutationRequest(
         string Zone,
@@ -269,18 +269,18 @@ internal static class GacPlannerPerformanceEndpoints
         string LeaderDefinitionId,
         IReadOnlyCollection<string>? MemberDefinitionIds,
         bool IsFleet,
-        DateTimeOffset? ExpectedUpdatedAtUtc);
+        long? ExpectedVersion);
 
     internal sealed record AddAttackMutationRequest(
         Guid DefenseId,
         Guid TeamPresetId,
         string? Notes,
-        DateTimeOffset? ExpectedUpdatedAtUtc);
+        long? ExpectedVersion);
 
     internal sealed record UpdateAttackMutationRequest(
         string Status,
         string? Notes,
-        DateTimeOffset? ExpectedUpdatedAtUtc);
+        long? ExpectedVersion);
 
     internal sealed record GacPlannerContextResponse(
         GacPlannerEndpoints.GacPlannerResponse Planner,

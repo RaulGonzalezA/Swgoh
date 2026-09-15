@@ -225,7 +225,8 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         IReadOnlyCollection<AttackViewModel> Attacks,
         IReadOnlyCollection<ConflictViewModel> Conflicts,
         IReadOnlyCollection<CounterHintViewModel> CounterHints,
-        DateTimeOffset UpdatedAtUtc);
+        DateTimeOffset UpdatedAtUtc,
+        long Version);
 
     public sealed record OwnDefenseViewModel(Guid Id, string Zone, TeamPresetViewModel Team);
 
@@ -305,7 +306,8 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
     public sealed record SavePlanRequest(
         IReadOnlyCollection<SaveOwnDefenseRequest> OwnDefenses,
         IReadOnlyCollection<SaveVisibleDefenseRequest> VisibleDefenses,
-        IReadOnlyCollection<SaveAttackRequest> Attacks);
+        IReadOnlyCollection<SaveAttackRequest> Attacks,
+        long ExpectedVersion);
 
     public sealed record SaveOwnDefenseRequest(Guid? Id, string Zone, Guid TeamPresetId);
 

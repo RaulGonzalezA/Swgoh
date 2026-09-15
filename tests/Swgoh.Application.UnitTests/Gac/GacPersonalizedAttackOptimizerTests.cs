@@ -32,7 +32,8 @@ public sealed class GacPersonalizedAttackOptimizerTests
             State([learned, neutral], defense),
             GacAttackOptimizationMode.RebuildPlanned,
             GacTacticalOptimizationContext.Empty,
-            personal);
+            personal,
+            TestContext.Current.CancellationToken);
 
         GacAttackOptimizationRecommendation recommendation = Assert.Single(result.Recommendations);
         Assert.Equal(learned.Id, recommendation.TeamPresetId);

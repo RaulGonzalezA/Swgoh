@@ -5,14 +5,16 @@ namespace Swgoh.Application.Gac;
 internal sealed class LearningGacPlannerService(
     GacPlannerService inner,
     IGacPersonalLearningService personalLearningService,
-    IGacPersonalBattleRepository personalBattleRepository) : IGacPlannerService
+    IGacPersonalBattleRepository personalBattleRepository,
+    IGacRoundPlanRepository planRepository,
+    GacPlannerWriteContext writeContext) : IGacPlannerService
 {
     public async Task<GacPlannerLookup> GetCurrentAsync(
         long allyCode,
         CancellationToken cancellationToken = default)
     {
         GacPlannerLookup lookup = await inner.GetCurrentAsync(allyCode, cancellationToken).ConfigureAwait(false);
-        return await EnrichBannersAsync(lookup, cancellationToken).ConfigureAwait(false);
+        return await EnrichAsync(lookup, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<GacPlannerLookup> SaveCurrentAsync(
@@ -20,9 +22,21 @@ internal sealed class LearningGacPlannerService(
         SaveCurrentGacRoundPlan input,
         CancellationToken cancellationToken = default)
     {
-        GacPlannerLookup lookup = await inner
-            .SaveCurrentAsync(allyCode, input, cancellationToken)
-            .ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(input);
+        if (input.ExpectedVersion is not long expectedVersion)
+        {
+            throw new GacPlannerConcurrencyException(
+                "A plan version is required for every GAC write. Reload the round and try again.");
+        }
+
+        GacPlannerLookup lookup;
+        using (writeContext.Begin(expectedVersion))
+        {
+            lookup = await inner
+                .SaveCurrentAsync(allyCode, input, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (lookup.State is not null)
         {
             await personalLearningService
@@ -30,7 +44,7 @@ internal sealed class LearningGacPlannerService(
                 .ConfigureAwait(false);
         }
 
-        return await EnrichBannersAsync(lookup, cancellationToken).ConfigureAwait(false);
+        return await EnrichAsync(lookup, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<GacTeamPresetDetails> CreatePresetAsync(
@@ -52,33 +66,44 @@ internal sealed class LearningGacPlannerService(
         CancellationToken cancellationToken = default) =>
         inner.DeletePresetAsync(allyCode, id, cancellationToken);
 
-    private async Task<GacPlannerLookup> EnrichBannersAsync(
+    private async Task<GacPlannerLookup> EnrichAsync(
         GacPlannerLookup lookup,
         CancellationToken cancellationToken)
     {
-        if (lookup.State is null || lookup.State.Plan.Attacks.Count == 0)
+        if (lookup.State is null)
         {
             return lookup;
         }
 
-        IReadOnlyCollection<GacPersonalBattleObservation> observations = await personalBattleRepository
-            .GetRoundAsync(
-                lookup.State.Plan.PlayerAllyCode,
-                lookup.State.Plan.EventInstanceId,
-                lookup.State.Plan.RoundNumber,
-                cancellationToken)
+        long version = await planRepository
+            .GetVersionAsync(lookup.State.Plan.Id, cancellationToken)
             .ConfigureAwait(false);
-        Dictionary<Guid, int?> bannersByAttackId = observations
-            .GroupBy(observation => observation.AttackId)
-            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.RecordedAtUtc).First().Banners);
-        GacAttackAssignmentDetails[] attacks =
-        [
-            .. lookup.State.Plan.Attacks.Select(attack => attack with
-            {
-                Banners = bannersByAttackId.GetValueOrDefault(attack.Id)
-            })
-        ];
-        GacRoundPlanDetails plan = lookup.State.Plan with { Attacks = attacks };
+        GacRoundPlanDetails plan = lookup.State.Plan with { Version = version };
+
+        if (plan.Attacks.Count > 0)
+        {
+            IReadOnlyCollection<GacPersonalBattleObservation> observations = await personalBattleRepository
+                .GetRoundAsync(
+                    plan.PlayerAllyCode,
+                    plan.EventInstanceId,
+                    plan.RoundNumber,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            Dictionary<Guid, int?> bannersByAttackId = observations
+                .GroupBy(observation => observation.AttackId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(item => item.RecordedAtUtc).First().Banners);
+            GacAttackAssignmentDetails[] attacks =
+            [
+                .. plan.Attacks.Select(attack => attack with
+                {
+                    Banners = bannersByAttackId.GetValueOrDefault(attack.Id)
+                })
+            ];
+            plan = plan with { Attacks = attacks };
+        }
+
         return lookup with { State = lookup.State with { Plan = plan } };
     }
 }

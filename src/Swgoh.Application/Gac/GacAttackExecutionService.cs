@@ -79,7 +79,14 @@ internal sealed class GacAttackExecutionService(
             .. plan.Attacks.Select(item => item.Id == attackId ? updatedAttack : item)
         ];
         plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, updatedAttacks, clock.UtcNow);
-        await planRepository.UpsertAsync(plan, cancellationToken).ConfigureAwait(false);
+        bool saved = await planRepository
+            .TrySaveAsync(plan, state.Plan.Version, cancellationToken)
+            .ConfigureAwait(false);
+        if (!saved)
+        {
+            throw new GacPlannerConcurrencyException(
+                "The GAC plan changed while the attack result was being recorded. Reload the round and try again.");
+        }
 
         GacPersonalBattleObservation observation = GacPersonalBattleObservation.Create(
             state.Plan.PlayerAllyCode,

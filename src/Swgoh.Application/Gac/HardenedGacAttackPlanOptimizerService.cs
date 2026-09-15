@@ -1,0 +1,88 @@
+using Swgoh.Application.Abstractions;
+using Swgoh.Domain.Gac;
+
+namespace Swgoh.Application.Gac;
+
+internal sealed class HardenedGacAttackPlanOptimizerService(
+    GacAttackPlanOptimizerService inner,
+    IGacPlannerService plannerService,
+    IGacRoundPlanRepository planRepository,
+    GacOptimizationCoordinator optimizationCoordinator,
+    IClock clock) : IGacAttackPlanOptimizerService
+{
+    public async Task<GacAttackOptimizationLookup> OptimizeCurrentAsync(
+        long allyCode,
+        GacAttackOptimizationMode mode,
+        bool apply,
+        CancellationToken cancellationToken = default)
+    {
+        using IDisposable lease = await optimizationCoordinator
+            .AcquireAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        GacAttackOptimizationLookup preview = await inner
+            .OptimizeCurrentAsync(allyCode, mode, apply: false, cancellationToken)
+            .ConfigureAwait(false);
+        if (!apply ||
+            preview.State is null ||
+            preview.Optimization is null ||
+            preview.Optimization.Recommendations.Count == 0)
+        {
+            return preview;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        GacPlannerState state = preview.State;
+        GacAttackOptimizationResult optimization = preview.Optimization;
+        GacRoundPlan plan = await planRepository
+            .FindByIdAsync(state.Plan.Id, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The current GAC round plan could not be loaded for optimization.");
+
+        List<GacAttackAssignment> retainedAttacks = mode == GacAttackOptimizationMode.RebuildPlanned
+            ? [.. plan.Attacks.Where(attack => attack.Status != GacAttackPlanStatus.Planned)]
+            : [.. plan.Attacks];
+
+        foreach (GacAttackOptimizationRecommendation recommendation in optimization.Recommendations)
+        {
+            int attempt = retainedAttacks
+                .Where(attack => attack.DefenseId == recommendation.DefenseId)
+                .Select(attack => attack.Attempt)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+            string personalNote = recommendation.PersonalSamples > 0
+                ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
+                : string.Empty;
+            string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
+                $"coste {recommendation.StrategicCost:0.#} (reserva {recommendation.OpportunityCost:0.#}); " +
+                $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
+                $"datacron {recommendation.DatacronStatus}.";
+            retainedAttacks.Add(GacAttackAssignment.Create(
+                Guid.NewGuid(),
+                recommendation.DefenseId,
+                recommendation.TeamPresetId,
+                attempt,
+                GacAttackPlanStatus.Planned,
+                notes));
+        }
+
+        plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
+        bool saved = await planRepository
+            .TrySaveAsync(plan, state.Plan.Version, cancellationToken)
+            .ConfigureAwait(false);
+        if (!saved)
+        {
+            throw new GacPlannerConcurrencyException(
+                "The GAC plan changed while the attack optimizer was running. Recalculate before applying the result.");
+        }
+
+        GacPlannerLookup refreshed = await plannerService
+            .GetCurrentAsync(allyCode, cancellationToken)
+            .ConfigureAwait(false);
+        return new GacAttackOptimizationLookup(
+            refreshed.Status,
+            refreshed.Message,
+            refreshed.State,
+            optimization with { Applied = true });
+    }
+}

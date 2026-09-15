@@ -8,25 +8,25 @@ public interface IGacPlannerMutationService
         long allyCode,
         string zone,
         Guid teamPresetId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default);
 
     Task<GacPlannerLookup> RemoveOwnDefenseAsync(
         long allyCode,
         Guid assignmentId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default);
 
     Task<GacPlannerLookup> AddVisibleDefenseAsync(
         long allyCode,
         SaveGacVisibleDefense defense,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default);
 
     Task<GacPlannerLookup> RemoveVisibleDefenseAsync(
         long allyCode,
         Guid defenseId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default);
 
     Task<GacPlannerLookup> AddAttackAsync(
@@ -34,7 +34,7 @@ public interface IGacPlannerMutationService
         Guid defenseId,
         Guid teamPresetId,
         string? notes,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default);
 
     Task<GacPlannerLookup> UpdateAttackAsync(
@@ -42,7 +42,7 @@ public interface IGacPlannerMutationService
         Guid attackId,
         GacAttackPlanStatus status,
         string? notes,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default);
 }
 
@@ -54,11 +54,11 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
         long allyCode,
         string zone,
         Guid teamPresetId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default) =>
         MutateAsync(
             allyCode,
-            expectedUpdatedAtUtc,
+            expectedVersion,
             (state, ownDefenses, visibleDefenses, attacks) =>
             {
                 if (ownDefenses.Any(item => item.TeamPresetId == teamPresetId))
@@ -73,24 +73,24 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
     public Task<GacPlannerLookup> RemoveOwnDefenseAsync(
         long allyCode,
         Guid assignmentId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default) =>
         MutateAsync(
             allyCode,
-            expectedUpdatedAtUtc,
+            expectedVersion,
             (_, ownDefenses, _, _) => ownDefenses.RemoveAll(item => item.Id == assignmentId),
             cancellationToken);
 
     public Task<GacPlannerLookup> AddVisibleDefenseAsync(
         long allyCode,
         SaveGacVisibleDefense defense,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(defense);
         return MutateAsync(
             allyCode,
-            expectedUpdatedAtUtc,
+            expectedVersion,
             (_, _, visibleDefenses, _) => visibleDefenses.Add(defense with { Id = null }),
             cancellationToken);
     }
@@ -98,11 +98,11 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
     public Task<GacPlannerLookup> RemoveVisibleDefenseAsync(
         long allyCode,
         Guid defenseId,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default) =>
         MutateAsync(
             allyCode,
-            expectedUpdatedAtUtc,
+            expectedVersion,
             (_, _, visibleDefenses, attacks) =>
             {
                 visibleDefenses.RemoveAll(item => item.Id == defenseId);
@@ -115,11 +115,11 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
         Guid defenseId,
         Guid teamPresetId,
         string? notes,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default) =>
         MutateAsync(
             allyCode,
-            expectedUpdatedAtUtc,
+            expectedVersion,
             (_, _, visibleDefenses, attacks) =>
             {
                 if (visibleDefenses.All(item => item.Id != defenseId))
@@ -147,11 +147,11 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
         Guid attackId,
         GacAttackPlanStatus status,
         string? notes,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         CancellationToken cancellationToken = default) =>
         MutateAsync(
             allyCode,
-            expectedUpdatedAtUtc,
+            expectedVersion,
             (_, _, _, attacks) =>
             {
                 int index = attacks.FindIndex(item => item.Id == attackId);
@@ -166,7 +166,7 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
 
     private async Task<GacPlannerLookup> MutateAsync(
         long allyCode,
-        DateTimeOffset? expectedUpdatedAtUtc,
+        long? expectedVersion,
         Action<
             GacPlannerState,
             List<SaveGacOwnDefenseAssignment>,
@@ -182,7 +182,7 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
             return current;
         }
 
-        EnsureVersion(current.State.Plan, expectedUpdatedAtUtc);
+        long version = EnsureVersion(current.State.Plan, expectedVersion);
 
         List<SaveGacOwnDefenseAssignment> ownDefenses =
         [
@@ -217,17 +217,25 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
         return await plannerService
             .SaveCurrentAsync(
                 allyCode,
-                new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks),
+                new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks, version),
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private static void EnsureVersion(GacRoundPlanDetails plan, DateTimeOffset? expectedUpdatedAtUtc)
+    private static long EnsureVersion(GacRoundPlanDetails plan, long? expectedVersion)
     {
-        if (expectedUpdatedAtUtc is DateTimeOffset expected && plan.UpdatedAtUtc != expected)
+        if (expectedVersion is not long expected)
+        {
+            throw new GacPlannerConcurrencyException(
+                "A plan version is required. Reload the GAC round before applying this change.");
+        }
+
+        if (plan.Version != expected)
         {
             throw new GacPlannerConcurrencyException(
                 "The GAC plan changed since it was loaded. Reload the round before applying this change.");
         }
+
+        return expected;
     }
 }
