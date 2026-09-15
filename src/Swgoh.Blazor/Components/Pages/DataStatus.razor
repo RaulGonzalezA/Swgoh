@@ -43,7 +43,7 @@
                         <div><span>Jugador</span><strong>@(_player?.Name ?? "No disponible")</strong></div>
                         <div><span>Última actualización</span><strong>@RelativeUpdated(_player?.UpdatedAtUtc)</strong></div>
                         <div><span>Unidades</span><strong>@(_player?.RosterCount.ToString("N0") ?? "—")</strong></div>
-                        <div><span>Datacrons</span><strong>@(_player?.AvailableDatacrons.Count.ToString("N0") ?? "—")</strong></div>
+                        <div><span>Datacrons</span><strong>@(_player?.DatacronCount.ToString("N0") ?? "—")</strong></div>
                     </div>
                     <a class="command-secondary-link" href="@($"/player/{allyCode}")">Abrir roster →</a>
                 </ChildContent>
