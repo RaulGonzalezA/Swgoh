@@ -94,7 +94,7 @@ public sealed class GacOpponentResolverTests
 
         Assert.NotNull(opponent);
         Assert.Equal(987654321, opponent.AllyCode);
-        Assert.Equal("PersistedBracketBracketOrderPairing", method);
+        Assert.Equal("PersistedBracketOrderPairing", method);
     }
 
     private static GacBracketParticipant Participant(
