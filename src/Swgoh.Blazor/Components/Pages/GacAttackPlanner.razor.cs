@@ -85,8 +85,8 @@ public partial class GacAttackPlanner
     protected IReadOnlyCollection<GacPlannerApiClient.TeamPresetViewModel> DefensePresetOptions => Planner is null
         ? []
         : [.. Planner.Presets
-            .Where(preset => preset.Use is "Defense" or "Flexible")
-            .OrderBy(preset => preset.Use == "Defense" ? 0 : 1)
+            .Where(preset => ownDefenses.All(assignment => assignment.TeamPresetId != preset.Id))
+            .OrderBy(preset => preset.Use == "Defense" ? 0 : preset.Use == "Flexible" ? 1 : 2)
             .ThenBy(preset => preset.Name, StringComparer.OrdinalIgnoreCase)];
 
     protected IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> PresetUnitOptions =>
@@ -235,12 +235,28 @@ public partial class GacAttackPlanner
     {
         if (!Guid.TryParse(OwnDefensePresetId, out Guid presetId))
         {
+            Error = "Selecciona un equipo antes de añadirlo a tu defensa.";
             return;
         }
 
-        ownDefenses.Add(new OwnDefenseDraft(Guid.Empty, OwnDefenseZone, presetId));
-        OwnDefensePresetId = string.Empty;
-        await SavePlanAsync();
+        if (ownDefenses.Any(item => item.TeamPresetId == presetId))
+        {
+            Error = "Ese equipo ya está colocado en tu defensa.";
+            return;
+        }
+
+        string selectedPresetId = OwnDefensePresetId;
+        var draft = new OwnDefenseDraft(Guid.Empty, OwnDefenseZone, presetId);
+        ownDefenses.Add(draft);
+
+        if (await SavePlanAsync())
+        {
+            OwnDefensePresetId = string.Empty;
+            return;
+        }
+
+        ownDefenses.Remove(draft);
+        OwnDefensePresetId = selectedPresetId;
     }
 
     protected async Task RemoveOwnDefenseAsync(Guid id)
@@ -442,11 +458,12 @@ public partial class GacAttackPlanner
         return units;
     }
 
-    private async Task SavePlanAsync()
+    private async Task<bool> SavePlanAsync()
     {
         if (Planner is null)
         {
-            return;
+            Error = "No hay una ronda de Gran Arena disponible para guardar el plan.";
+            return false;
         }
 
         Saving = true;
@@ -474,16 +491,22 @@ public partial class GacAttackPlanner
                     item.Notes))]);
 
             GacPlannerApiClient.PlannerResult result = await PlannerClient.SaveCurrentAsync(AllyCode, request);
+            if (result.Planner is null)
+            {
+                Error = result.Message ?? "No se ha podido guardar el plan de la ronda.";
+                UnavailableMessage = result.Message;
+                return false;
+            }
+
             Planner = result.Planner;
             UnavailableMessage = result.Message;
-            if (Planner is not null)
-            {
-                MapDraftsFromPlanner();
-            }
+            MapDraftsFromPlanner();
+            return true;
         }
         catch (HttpRequestException)
         {
             Error = "No se ha podido guardar el plan. Revisa que los equipos tengan el tamaño correcto y no repitan unidades.";
+            return false;
         }
         finally
         {
