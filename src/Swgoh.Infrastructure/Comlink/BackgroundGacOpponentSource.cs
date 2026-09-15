@@ -14,6 +14,7 @@ internal sealed class BackgroundGacOpponentSource(
     ICurrentGacOpponentSource source,
     ILogger<BackgroundGacOpponentSource> logger) : BackgroundService, ICurrentGacOpponentSource
 {
+    internal const int WorkerCount = 3;
     private const long EntryCacheSizeLimit = 512;
     private const long GenerationCacheSizeLimit = 2_048;
     private static readonly TimeSpan GenerationCacheDuration = TimeSpan.FromHours(2);
@@ -26,7 +27,12 @@ internal sealed class BackgroundGacOpponentSource(
     private readonly BoundedMemoryCache<long, long> generations = new(
         GenerationCacheSizeLimit,
         defaultLifetime: GenerationCacheDuration);
-    private readonly Channel<LookupWorkItem> queue = Channel.CreateBounded<LookupWorkItem>(32);
+    private readonly Channel<LookupWorkItem> queue = Channel.CreateBounded<LookupWorkItem>(new BoundedChannelOptions(32)
+    {
+        SingleReader = false,
+        SingleWriter = false,
+        FullMode = BoundedChannelFullMode.Wait
+    });
     private long generationSequence;
     private int disposed;
 
@@ -91,57 +97,84 @@ internal sealed class BackgroundGacOpponentSource(
         base.Dispose();
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (LookupWorkItem workItem in queue.Reader.ReadAllAsync(stoppingToken))
+        Task[] workers = Enumerable.Range(0, WorkerCount)
+            .Select(workerId => ProcessQueueAsync(workerId, stoppingToken))
+            .ToArray();
+        return Task.WhenAll(workers);
+    }
+
+    private async Task ProcessQueueAsync(int workerId, CancellationToken stoppingToken)
+    {
+        try
         {
-            var key = workItem.Key;
-            CurrentGacOpponentLookup result;
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            deadline.CancelAfter(TimeSpan.FromMinutes(6));
-            try
+            await foreach (LookupWorkItem workItem in queue.Reader.ReadAllAsync(stoppingToken))
             {
-                result = await source.GetAsync(key.AllyCode, key.Format, deadline.Token).ConfigureAwait(false);
+                await ProcessWorkItemAsync(workerId, workItem, stoppingToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal hosted-service shutdown.
+        }
+    }
+
+    private async Task ProcessWorkItemAsync(int workerId, LookupWorkItem workItem, CancellationToken stoppingToken)
+    {
+        var key = workItem.Key;
+        CurrentGacOpponentLookup result;
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        deadline.CancelAfter(TimeSpan.FromMinutes(6));
+        try
+        {
+            result = await source.GetAsync(key.AllyCode, key.Format, deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "GAC background worker {WorkerId} lookup failed for player {AllyCode}",
+                workerId,
+                key.AllyCode);
+            result = CurrentGacOpponentLookup.Unavailable(
+                CurrentGacOpponentStatus.OpponentUnavailable,
+                "No se ha podido resolver el rival de Gran Arena. Inténtalo de nuevo en un minuto.");
+        }
+        finally
+        {
+            stopwatch.Stop();
+        }
+
+        GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, result.Status, cacheHit: false, "provider");
+        logger.LogInformation(
+            "GAC background worker {WorkerId} completed provider lookup for {AllyCode} with {Status} in {ElapsedMs} ms",
+            workerId,
+            key.AllyCode,
+            result.Status,
+            stopwatch.Elapsed.TotalMilliseconds);
+
+        lock (gate)
+        {
+            long currentGeneration = GetGeneration(key.AllyCode);
+            if (currentGeneration != workItem.Generation)
             {
+                logger.LogDebug(
+                    "Discarding stale GAC background result for {AllyCode}: generation {CompletedGeneration}, current {CurrentGeneration}",
+                    key.AllyCode,
+                    workItem.Generation,
+                    currentGeneration);
                 return;
             }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "GAC background lookup failed for player {AllyCode}", key.AllyCode);
-                result = CurrentGacOpponentLookup.Unavailable(
-                    CurrentGacOpponentStatus.OpponentUnavailable,
-                    "No se ha podido resolver el rival de Gran Arena. Inténtalo de nuevo en un minuto.");
-            }
-            finally
-            {
-                stopwatch.Stop();
-            }
 
-            GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, result.Status, cacheHit: false, "provider");
-            logger.LogInformation(
-                "GAC background provider completed for {AllyCode} with {Status} in {ElapsedMs} ms",
-                key.AllyCode,
-                result.Status,
-                stopwatch.Elapsed.TotalMilliseconds);
-
-            lock (gate)
-            {
-                long currentGeneration = GetGeneration(key.AllyCode);
-                if (currentGeneration != workItem.Generation)
-                {
-                    logger.LogDebug(
-                        "Discarding stale GAC background result for {AllyCode}: generation {CompletedGeneration}, current {CurrentGeneration}",
-                        key.AllyCode,
-                        workItem.Generation,
-                        currentGeneration);
-                    continue;
-                }
-
-                entries[key] = new Entry(result, DateTimeOffset.UtcNow.AddMinutes(result.Status == CurrentGacOpponentStatus.Found ? 5 : 1));
-            }
+            entries[key] = new Entry(
+                result,
+                DateTimeOffset.UtcNow.AddMinutes(result.Status == CurrentGacOpponentStatus.Found ? 5 : 1));
         }
     }
 
