@@ -209,11 +209,13 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
         });
+        services.AddSingleton<GacComlinkRequestLimiter>();
+        services.AddTransient<GacComlinkRateLimitHandler>();
         services.AddHttpClient(ComlinkGacClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
-        });
+        }).AddHttpMessageHandler<GacComlinkRateLimitHandler>();
 
         string? gacHistoryProviderBaseUrl = configuration["Swgoh:GacHistory:ProviderBaseUrl"];
         if (!string.IsNullOrWhiteSpace(gacHistoryProviderBaseUrl))
