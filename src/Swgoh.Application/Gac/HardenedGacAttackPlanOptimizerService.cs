@@ -7,6 +7,7 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
     GacAttackPlanOptimizerService inner,
     IGacPlannerService plannerService,
     IGacRoundPlanRepository planRepository,
+    IGacGeneratedTeamLifecycleService generatedTeamLifecycleService,
     GacOptimizationCoordinator optimizationCoordinator,
     IClock clock) : IGacAttackPlanOptimizerService
 {
@@ -42,6 +43,15 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
                 optimization,
                 cancellationToken)
             .ConfigureAwait(false);
+        string generationId = Guid.NewGuid().ToString("N");
+        await generatedTeamLifecycleService.RegisterAsync(
+            allyCode,
+            state.Plan.Format,
+            GacGeneratedTeamOrigin.CounterEngine,
+            generationId,
+            state.Plan.Id,
+            materialization.CreatedPresetIds,
+            cancellationToken).ConfigureAwait(false);
         optimization = GacAttackGeneratedPresetMaterializer.Remap(optimization, materialization.IdMap);
 
         try
@@ -92,6 +102,9 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
         }
         catch
         {
+            await generatedTeamLifecycleService
+                .ForgetAsync(materialization.CreatedPresetIds, CancellationToken.None)
+                .ConfigureAwait(false);
             await GacRosterDefenseCandidateService
                 .RollbackMaterializationAsync(plannerService, allyCode, materialization.CreatedPresetIds)
                 .ConfigureAwait(false);
@@ -101,6 +114,13 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
         GacPlannerLookup refreshed = await plannerService
             .GetCurrentAsync(allyCode, cancellationToken)
             .ConfigureAwait(false);
+        if (refreshed.State is not null)
+        {
+            await generatedTeamLifecycleService
+                .PruneUnreferencedAsync(allyCode, refreshed.State, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return new GacAttackOptimizationLookup(
             refreshed.Status,
             refreshed.Message,
