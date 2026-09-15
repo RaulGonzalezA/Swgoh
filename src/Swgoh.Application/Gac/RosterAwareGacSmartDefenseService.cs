@@ -93,15 +93,6 @@ internal sealed class RosterAwareGacSmartDefenseService(
             generation.Assignments,
             rosterCandidates,
             cancellationToken).ConfigureAwait(false);
-        await generatedTeamLifecycleService.RegisterAsync(
-            allyCode,
-            state.Plan.Format,
-            GacGeneratedTeamOrigin.SmartDefense,
-            generationId,
-            state.Plan.Id,
-            materialization.CreatedPresetIds,
-            cancellationToken).ConfigureAwait(false);
-
         GacSmartDefenseAssignment[] appliedAssignments =
         [
             .. generation.Assignments.Select(item =>
@@ -114,6 +105,15 @@ internal sealed class RosterAwareGacSmartDefenseService(
 
         try
         {
+            await generatedTeamLifecycleService.RegisterAsync(
+                allyCode,
+                state.Plan.Format,
+                GacGeneratedTeamOrigin.SmartDefense,
+                generationId,
+                state.Plan.Id,
+                materialization.CreatedPresetIds,
+                cancellationToken).ConfigureAwait(false);
+
             GacPlannerLookup saved = await SaveAsync(
                 allyCode,
                 state,
