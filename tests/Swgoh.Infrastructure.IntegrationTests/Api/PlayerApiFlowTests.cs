@@ -24,7 +24,7 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
     private const long AllyCode = 476_825_771;
 
     [Fact]
-    public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesEnrichedRosterAnalysisAndHistory()
+    public async Task Refresh_PersistsPlayerAndSnapshot_ThenExposesLightweightSummaryRosterAnalysisAndHistory()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         using var connectionStringScope = new EnvironmentVariableScope(
@@ -38,13 +38,9 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
             $"/api/v1/players/{AllyCode}/refresh",
             content: null,
             cancellationToken);
-        using JsonDocument refreshed = await ReadJsonAsync(refreshResponse, cancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
-        Assert.Equal(AllyCode, refreshed.RootElement.GetProperty("allyCode").GetInt64());
-        Assert.Equal("Aberronko", refreshed.RootElement.GetProperty("name").GetString());
-        Assert.Equal(100_000, refreshed.RootElement.GetProperty("galacticPower").GetInt64());
-        Assert.Equal(2, refreshed.RootElement.GetProperty("rosterCount").GetInt32());
+        Assert.Equal(HttpStatusCode.NoContent, refreshResponse.StatusCode);
+        Assert.Equal(0, refreshResponse.Content.Headers.ContentLength ?? 0);
 
         using HttpResponseMessage playerResponse = await client.GetAsync(
             $"/api/v1/players/{AllyCode}",
@@ -52,8 +48,14 @@ public sealed class PlayerApiFlowTests(MongoDbContainerFixture fixture)
         using JsonDocument persisted = await ReadJsonAsync(playerResponse, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, playerResponse.StatusCode);
+        Assert.Equal(AllyCode, persisted.RootElement.GetProperty("allyCode").GetInt64());
         Assert.Equal("player-id", persisted.RootElement.GetProperty("playerId").GetString());
-        Assert.Equal(2, persisted.RootElement.GetProperty("roster").GetArrayLength());
+        Assert.Equal("Aberronko", persisted.RootElement.GetProperty("name").GetString());
+        Assert.Equal(100_000, persisted.RootElement.GetProperty("galacticPower").GetInt64());
+        Assert.Equal(2, persisted.RootElement.GetProperty("rosterCount").GetInt32());
+        Assert.Equal(0, persisted.RootElement.GetProperty("datacronCount").GetInt32());
+        Assert.False(persisted.RootElement.TryGetProperty("roster", out _));
+        Assert.False(persisted.RootElement.TryGetProperty("datacrons", out _));
 
         using HttpResponseMessage rosterResponse = await client.GetAsync(
             $"/api/v1/players/{AllyCode}/roster?search=Clone%20Captain&type=Character&minRarity=7&minRelic=8&hasZeta=true&orderBy=Name&direction=Ascending&page=1&pageSize=1",
