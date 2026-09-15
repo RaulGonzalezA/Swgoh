@@ -36,11 +36,11 @@ public sealed record GacPersonalBattleObservation(
         ValidateAllyCode(playerAllyCode, nameof(playerAllyCode));
         ValidateAllyCode(opponentAllyCode, nameof(opponentAllyCode));
         ArgumentException.ThrowIfNullOrWhiteSpace(eventInstanceId);
-        if (roundNumber < 1) throw new ArgumentOutOfRangeException(nameof(roundNumber));
+        ArgumentOutOfRangeException.ThrowIfLessThan(roundNumber, 1);
         if (!Enum.IsDefined(format)) throw new ArgumentOutOfRangeException(nameof(format));
         if (attackId == Guid.Empty) throw new ArgumentException("Attack ID cannot be empty.", nameof(attackId));
         if (defenseId == Guid.Empty) throw new ArgumentException("Defense ID cannot be empty.", nameof(defenseId));
-        if (attempt < 1) throw new ArgumentOutOfRangeException(nameof(attempt));
+        ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
         if (banners is < 0 or > 100)
         {
             throw new ArgumentOutOfRangeException(nameof(banners), banners, "Banners must be between 0 and 100.");
@@ -74,7 +74,7 @@ public sealed record GacPersonalBattleObservation(
     {
         ValidateAllyCode(playerAllyCode, nameof(playerAllyCode));
         ArgumentException.ThrowIfNullOrWhiteSpace(eventInstanceId);
-        if (roundNumber < 1) throw new ArgumentOutOfRangeException(nameof(roundNumber));
+        ArgumentOutOfRangeException.ThrowIfLessThan(roundNumber, 1);
         if (attackId == Guid.Empty) throw new ArgumentException("Attack ID cannot be empty.", nameof(attackId));
         return $"{playerAllyCode}:{eventInstanceId.Trim()}:{roundNumber}:{attackId:D}";
     }
