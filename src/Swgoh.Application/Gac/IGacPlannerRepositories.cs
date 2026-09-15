@@ -20,5 +20,20 @@ public interface IGacRoundPlanRepository
 {
     Task<GacRoundPlan?> FindByIdAsync(string id, CancellationToken cancellationToken = default);
 
+    Task<long> GetVersionAsync(string id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(0L);
+
+    Task<bool> TrySaveAsync(
+        GacRoundPlan plan,
+        long expectedVersion,
+        CancellationToken cancellationToken = default) =>
+        SaveFallbackAsync(plan, cancellationToken);
+
     Task UpsertAsync(GacRoundPlan plan, CancellationToken cancellationToken = default);
+
+    private async Task<bool> SaveFallbackAsync(GacRoundPlan plan, CancellationToken cancellationToken)
+    {
+        await UpsertAsync(plan, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
 }
