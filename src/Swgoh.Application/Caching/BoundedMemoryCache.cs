@@ -12,11 +12,13 @@ public sealed class BoundedMemoryCache<TKey, TValue> : IDisposable
     private readonly MemoryCache cache;
     private readonly TimeSpan? defaultLifetime;
     private readonly Func<TValue, DateTimeOffset?>? absoluteExpirationSelector;
+    private readonly Func<TValue, long>? sizeSelector;
 
     public BoundedMemoryCache(
         long sizeLimit,
         TimeSpan? defaultLifetime = null,
-        Func<TValue, DateTimeOffset?>? absoluteExpirationSelector = null)
+        Func<TValue, DateTimeOffset?>? absoluteExpirationSelector = null,
+        Func<TValue, long>? sizeSelector = null)
     {
         if (sizeLimit <= 0)
         {
@@ -38,6 +40,7 @@ public sealed class BoundedMemoryCache<TKey, TValue> : IDisposable
         });
         this.defaultLifetime = defaultLifetime;
         this.absoluteExpirationSelector = absoluteExpirationSelector;
+        this.sizeSelector = sizeSelector;
     }
 
     public int Count => cache.Count;
@@ -65,9 +68,15 @@ public sealed class BoundedMemoryCache<TKey, TValue> : IDisposable
     {
         ArgumentNullException.ThrowIfNull(value);
 
+        long size = sizeSelector?.Invoke(value) ?? 1;
+        if (size <= 0)
+        {
+            throw new InvalidOperationException("Cache entry size must be greater than zero.");
+        }
+
         var options = new MemoryCacheEntryOptions
         {
-            Size = 1
+            Size = size
         };
 
         DateTimeOffset? absoluteExpiration = absoluteExpirationSelector?.Invoke(value);
