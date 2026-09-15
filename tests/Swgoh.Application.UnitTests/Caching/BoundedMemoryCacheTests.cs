@@ -19,6 +19,29 @@ public sealed class BoundedMemoryCacheTests
     }
 
     [Fact]
+    public void Set_WithWeightedEntryLargerThanLimit_DoesNotRetainEntry()
+    {
+        using var cache = new BoundedMemoryCache<int, string>(
+            sizeLimit: 3,
+            sizeSelector: static value => value.Length);
+
+        cache[1] = "four";
+
+        Assert.False(cache.TryGetValue(1, out _));
+        Assert.Equal(0, cache.Count);
+    }
+
+    [Fact]
+    public void Set_WithInvalidEntryWeight_Throws()
+    {
+        using var cache = new BoundedMemoryCache<int, string>(
+            sizeLimit: 3,
+            sizeSelector: static _ => 0);
+
+        Assert.Throws<InvalidOperationException>(() => cache[1] = "value");
+    }
+
+    [Fact]
     public void Set_WithExpiredAbsoluteExpiration_DoesNotRetainEntry()
     {
         using var cache = new BoundedMemoryCache<int, CacheValue>(
