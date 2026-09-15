@@ -7,7 +7,7 @@ namespace Swgoh.Infrastructure.Gac;
 
 internal sealed class NormalizedHttpGacHistoryProvider(
     IHttpClientFactory httpClientFactory,
-    string? apiKey) : IGacHistoryProvider
+    GacHistoryProviderOptions options) : IGacHistoryProvider
 {
     internal const string HttpClientName = "gac-history-provider";
 
@@ -23,9 +23,9 @@ internal sealed class NormalizedHttpGacHistoryProvider(
         using HttpRequestMessage request = new(
             HttpMethod.Get,
             $"gac/players/{allyCode}/history?format={FormatName(format)}&maxRounds={maxRounds}");
-        if (!string.IsNullOrWhiteSpace(apiKey))
+        if (!string.IsNullOrWhiteSpace(options.ApiKey))
         {
-            request.Headers.TryAddWithoutValidation("X-Api-Key", apiKey);
+            request.Headers.TryAddWithoutValidation("X-Api-Key", options.ApiKey);
         }
 
         HttpClient client = httpClientFactory.CreateClient(HttpClientName);
