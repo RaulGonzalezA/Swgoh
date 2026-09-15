@@ -119,6 +119,7 @@ app.MapGacScoutingCacheEndpoints();
 app.MapGacPlannerEndpoints();
 app.MapGacPlannerPerformanceEndpoints();
 app.MapGacDefenseStrategyEndpoints();
+app.MapGacGeneratedDefenseCleanupEndpoints();
 app.MapGacPlannerOptimizationEndpoints();
 app.MapGacAttackExecutionEndpoints();
 app.MapGacDataEndpoints();
