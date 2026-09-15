@@ -22,7 +22,7 @@
             </NavLink>
 
             <span class="command-nav-section">Juego</span>
-            @if (Session.AllyCode is long allyCode)
+            @if (NavigationAllyCode is long allyCode)
             {
                 <NavLink href="@($"/player/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">R</span>
@@ -61,7 +61,7 @@
         </nav>
 
         <div class="command-sidebar-foot">
-            @if (Session.AllyCode is long sidebarAllyCode)
+            @if (NavigationAllyCode is long sidebarAllyCode)
             {
                 <span>@(Session.PlayerName ?? "Jugador activo")</span>
                 <small>#@FormatAllyCode(sidebarAllyCode) · contexto persistente</small>
@@ -80,7 +80,7 @@
                 <span class="command-topbar-kicker">SWGOH Assistant</span>
                 <strong>@(Session.PlayerName ?? "Centro de operaciones")</strong>
             </div>
-            @if (Session.AllyCode is long currentAllyCode)
+            @if (NavigationAllyCode is long currentAllyCode)
             {
                 @if (IsGacWarRoom)
                 {
@@ -114,7 +114,7 @@
                 <strong>Más</strong>
                 <button type="button" @onclick="CloseMobileMore" aria-label="Cerrar">×</button>
             </div>
-            @if (Session.AllyCode is long moreAllyCode)
+            @if (NavigationAllyCode is long moreAllyCode)
             {
                 <NavLink href="@($"/gac/{moreAllyCode}/planner")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
                     <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Diseña y ejecuta la ronda</small></span>
@@ -138,7 +138,7 @@
 
     <nav class="command-mobile-nav" aria-label="Navegación móvil">
         <NavLink href="/" Match="NavLinkMatch.All"><span>⌂</span><small>Inicio</small></NavLink>
-        @if (Session.AllyCode is long mobileAllyCode)
+        @if (NavigationAllyCode is long mobileAllyCode)
         {
             <NavLink href="@($"/player/{mobileAllyCode}")" Match="NavLinkMatch.All"><span>R</span><small>Roster</small></NavLink>
             <NavLink href="@($"/gac/{mobileAllyCode}")" Match="NavLinkMatch.All"><span>G</span><small>GAC</small></NavLink>
@@ -160,11 +160,13 @@
     private bool contextRestored;
     private bool _showMobileMore;
 
+    private long? NavigationAllyCode => Session.AllyCode ?? TryGetRouteAllyCode(Navigation.Uri);
+
     private bool IsGacWarRoom
     {
         get
         {
-            if (Session.AllyCode is not long allyCode)
+            if (NavigationAllyCode is not long allyCode)
             {
                 return false;
             }
