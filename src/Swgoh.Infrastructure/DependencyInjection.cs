@@ -209,7 +209,7 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
         });
-        services.AddHttpClient(SwgohComlinkGacOpponentSource.HttpClientName, client =>
+        services.AddHttpClient(ComlinkGacClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
@@ -240,11 +240,12 @@ public static class DependencyInjection
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
         services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
-        services.AddSingleton<SwgohComlinkGacOpponentSource>();
-        services.AddSingleton<SwgohComlinkCurrentRoundOpponentSource>();
+        services.AddSingleton<IComlinkGacClient, ComlinkGacClient>();
+        services.AddSingleton<GacExactBracketResolver>();
         services.AddSingleton<SwgohComlinkFastGacOpponentSource>();
+        services.AddSingleton<SwgohComlinkUnifiedGacOpponentSource>();
         services.AddSingleton(provider => new BackgroundGacOpponentSource(
-            provider.GetRequiredService<SwgohComlinkFastGacOpponentSource>(),
+            provider.GetRequiredService<SwgohComlinkUnifiedGacOpponentSource>(),
             provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BackgroundGacOpponentSource>>()));
         services.AddSingleton<PersistedGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource>(provider => provider.GetRequiredService<PersistedGacOpponentSource>());
