@@ -121,6 +121,11 @@ public static class DependencyInjection
                         Name = GacTeamPresetMongoRepository.AllyCodeFormatIndexName
                     }));
 
+        services.AddMongoRepository<GacDefenseStrategyDocument, string>(
+            GacDefenseStrategyMongoRepository.CollectionName,
+            strategy => strategy.Id,
+            collection => collection.CreateIfMissing());
+
         IndexKeysDefinition<GacRoundPlanDocument> gacRoundPlanIndexKeys = Builders<GacRoundPlanDocument>.IndexKeys
             .Ascending(plan => plan.PlayerAllyCode)
             .Descending(plan => plan.UpdatedAtUtc);
@@ -240,6 +245,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacBracketLocationRepository, GacBracketLocationMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
+        services.AddSingleton<IGacDefenseStrategyRepository, GacDefenseStrategyMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
         services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
         services.AddSingleton<IComlinkGacClient, ComlinkGacClient>();
