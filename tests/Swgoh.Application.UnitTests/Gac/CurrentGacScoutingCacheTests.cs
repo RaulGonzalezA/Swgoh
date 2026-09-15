@@ -7,6 +7,9 @@ namespace Swgoh.Application.UnitTests.Gac;
 
 public sealed class CurrentGacScoutingCacheTests
 {
+    private static readonly DateTimeOffset PlayerVersion = DateTimeOffset.Parse("2026-09-15T04:00:00Z");
+    private static readonly DateTimeOffset OpponentVersion = DateTimeOffset.Parse("2026-09-15T04:01:00Z");
+
     [Fact]
     public async Task GetOrCreateAsync_WithConcurrentRequests_ExecutesFactoryOnce()
     {
@@ -62,6 +65,50 @@ public sealed class CurrentGacScoutingCacheTests
     }
 
     [Fact]
+    public async Task TryGet_WhenPlayerVersionChanges_DoesNotReturnPreviousScouting()
+    {
+        var cache = new CurrentGacScoutingCache();
+        CurrentGacScoutingCacheKey originalKey = CreateKey(cache);
+        CurrentGacScoutingResult expected = CreateResult();
+        await cache.GetOrCreateAsync(originalKey, () => Task.FromResult(expected));
+
+        CurrentGacScoutingCacheKey refreshedKey = originalKey with
+        {
+            PlayerUpdatedAtUtc = originalKey.PlayerUpdatedAtUtc!.Value.AddMinutes(1)
+        };
+
+        Assert.False(cache.TryGet(refreshedKey, out _));
+        Assert.True(cache.TryGet(originalKey, out CurrentGacScoutingResult? cached));
+        Assert.Same(expected, cached);
+    }
+
+    [Fact]
+    public async Task GetOrCreateAsync_WhenGenerationChanges_DoesNotRestoreStaleKey()
+    {
+        var cache = new CurrentGacScoutingCache();
+        CurrentGacScoutingCacheKey originalKey = CreateKey(cache);
+        CurrentGacScoutingResult expected = CreateResult();
+        CurrentGacScoutingCacheKey refreshedKey = default;
+
+        CurrentGacScoutingResult result = await cache.GetOrCreateAsync(originalKey, () =>
+        {
+            cache.Invalidate(originalKey.AllyCode);
+            refreshedKey = originalKey with
+            {
+                PlayerUpdatedAtUtc = originalKey.PlayerUpdatedAtUtc!.Value.AddMinutes(1),
+                Generation = cache.GetGeneration(originalKey.AllyCode)
+            };
+            cache.Set(refreshedKey, expected);
+            return Task.FromResult(expected);
+        });
+
+        Assert.Same(expected, result);
+        Assert.False(cache.TryGet(originalKey, out _));
+        Assert.True(cache.TryGet(refreshedKey, out CurrentGacScoutingResult? cached));
+        Assert.Same(expected, cached);
+    }
+
+    [Fact]
     public void Invalidate_ChangesGeneration_AndMakesPreviousKeyUnreachable()
     {
         var cache = new CurrentGacScoutingCache();
@@ -79,6 +126,8 @@ public sealed class CurrentGacScoutingCacheTests
         OpponentAllyCode: 123456789,
         Format: GacFormat.FiveVsFive,
         MaxRounds: 30,
+        PlayerUpdatedAtUtc: PlayerVersion,
+        OpponentUpdatedAtUtc: OpponentVersion,
         Generation: cache.GetGeneration(476825771));
 
     private static CurrentGacScoutingResult CreateResult()
