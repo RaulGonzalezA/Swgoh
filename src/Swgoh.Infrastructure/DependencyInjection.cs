@@ -204,13 +204,13 @@ public static class DependencyInjection
         });
 
         string comlinkBaseUrl = configuration["Swgoh:Comlink:BaseUrl"] ?? "http://comlink";
+        services.AddSingleton<GacComlinkRequestLimiter>();
+        services.AddTransient<GacComlinkRateLimitHandler>();
         services.AddHttpClient<ISwgohPlayerClient, SwgohComlinkClient>(client =>
         {
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(120);
-        });
-        services.AddSingleton<GacComlinkRequestLimiter>();
-        services.AddTransient<GacComlinkRateLimitHandler>();
+        }).AddHttpMessageHandler<GacComlinkRateLimitHandler>();
         services.AddHttpClient(ComlinkGacClient.HttpClientName, client =>
         {
             client.BaseAddress = new Uri(comlinkBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
