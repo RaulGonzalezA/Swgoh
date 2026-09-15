@@ -121,6 +121,24 @@ public static class DependencyInjection
                         Name = GacTeamPresetMongoRepository.AllyCodeFormatIndexName
                     }));
 
+        IndexKeysDefinition<GacGeneratedTeamLifecycleDocument> generatedTeamLifecycleIndexKeys =
+            Builders<GacGeneratedTeamLifecycleDocument>.IndexKeys
+                .Ascending(entry => entry.AllyCode)
+                .Ascending(entry => entry.Format)
+                .Ascending(entry => entry.Origin)
+                .Descending(entry => entry.CreatedAtUtc);
+        services.AddMongoRepository<GacGeneratedTeamLifecycleDocument, string>(
+            GacGeneratedTeamLifecycleMongoRepository.CollectionName,
+            entry => entry.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    generatedTeamLifecycleIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacGeneratedTeamLifecycleMongoRepository.AllyCodeFormatIndexName
+                    }));
+
         services.AddMongoRepository<GacDefenseStrategyDocument, string>(
             GacDefenseStrategyMongoRepository.CollectionName,
             strategy => strategy.Id,
@@ -238,6 +256,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacBracketLocationRepository, GacBracketLocationMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();
+        services.AddSingleton<IGacGeneratedTeamLifecycleRepository, GacGeneratedTeamLifecycleMongoRepository>();
         services.AddSingleton<IGacDefenseStrategyRepository, GacDefenseStrategyMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
         services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
