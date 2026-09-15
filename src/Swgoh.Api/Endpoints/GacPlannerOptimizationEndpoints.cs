@@ -17,6 +17,8 @@ internal static class GacPlannerOptimizationEndpoints
 
         group.MapPost("/current/optimize", OptimizeCurrentAsync)
             .WithSummary("Preview or apply an optimized attack plan for the current GAC round");
+        group.MapPost("/current/optimize-round", OptimizeRoundAsync)
+            .WithSummary("Preview or apply a joint defense and attack optimization for the current GAC round");
 
         return endpoints;
     }
@@ -44,6 +46,33 @@ internal static class GacPlannerOptimizationEndpoints
         }
     }
 
+    private static async Task<IResult> OptimizeRoundAsync(
+        long allyCode,
+        JointOptimizeRequest request,
+        IGacJointRoundOptimizerService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            GacJointRoundOptimizationLookup lookup = await service.OptimizeCurrentAsync(
+                allyCode,
+                ParseJointMode(request.Mode),
+                request.Apply,
+                cancellationToken);
+            return ToJointResult(lookup);
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["optimizer"] = [exception.Message] });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.Conflict(new { message = exception.Message });
+        }
+    }
+
     private static IResult ToResult(GacAttackOptimizationLookup lookup)
     {
         if (lookup.IsAvailable && lookup.State is not null && lookup.Optimization is not null)
@@ -51,6 +80,28 @@ internal static class GacPlannerOptimizationEndpoints
             return Results.Ok(new OptimizationEnvelope(
                 GacPlannerEndpoints.GacPlannerResponse.From(lookup.State),
                 OptimizationResponse.From(lookup.Optimization)));
+        }
+
+        var unavailable = new GacPlannerEndpoints.PlannerUnavailableResponse(
+            lookup.Status.ToString(),
+            lookup.Message);
+        return lookup.Status switch
+        {
+            CurrentGacOpponentStatus.NoActiveEvent or CurrentGacOpponentStatus.PlayerNotJoined =>
+                Results.NotFound(unavailable),
+            CurrentGacOpponentStatus.OpponentUnavailable or CurrentGacOpponentStatus.FormatUnavailable =>
+                Results.Conflict(unavailable),
+            _ => Results.Problem(statusCode: StatusCodes.Status502BadGateway)
+        };
+    }
+
+    private static IResult ToJointResult(GacJointRoundOptimizationLookup lookup)
+    {
+        if (lookup.IsAvailable && lookup.State is not null && lookup.Optimization is not null)
+        {
+            return Results.Ok(new JointOptimizationEnvelope(
+                GacPlannerEndpoints.GacPlannerResponse.From(lookup.State),
+                JointOptimizationResponse.From(lookup.Optimization)));
         }
 
         var unavailable = new GacPlannerEndpoints.PlannerUnavailableResponse(
@@ -78,11 +129,30 @@ internal static class GacPlannerOptimizationEndpoints
             : throw new ArgumentException("Optimization mode must be FillGaps or RebuildPlanned.", nameof(value));
     }
 
+    private static GacJointRoundOptimizationMode ParseJointMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return GacJointRoundOptimizationMode.Balanced;
+        }
+
+        return Enum.TryParse(value.Trim(), ignoreCase: true, out GacJointRoundOptimizationMode mode) && Enum.IsDefined(mode)
+            ? mode
+            : throw new ArgumentException(
+                "Joint optimization mode must be Balanced, DefenseFirst, OffenseFirst or MaxBanners.",
+                nameof(value));
+    }
+
     internal sealed record OptimizeRequest(string? Mode, bool Apply = false);
+    internal sealed record JointOptimizeRequest(string? Mode, bool Apply = false);
 
     internal sealed record OptimizationEnvelope(
         GacPlannerEndpoints.GacPlannerResponse Planner,
         OptimizationResponse Optimization);
+
+    internal sealed record JointOptimizationEnvelope(
+        GacPlannerEndpoints.GacPlannerResponse Planner,
+        JointOptimizationResponse Optimization);
 
     internal sealed record OptimizationResponse(
         string Mode,
@@ -107,6 +177,105 @@ internal static class GacPlannerOptimizationEndpoints
             result.UncoveredDefenseIds,
             [.. result.Recommendations.Select(OptimizationRecommendationResponse.From)],
             result.SearchLimitReached);
+    }
+
+    internal sealed record JointOptimizationResponse(
+        string Format,
+        string Mode,
+        bool Applied,
+        int ScenariosEvaluated,
+        JointScenarioResponse Selected,
+        IReadOnlyCollection<JointScenarioResponse> Alternatives,
+        DateTimeOffset? PlanUpdatedAtUtc,
+        IReadOnlyCollection<string> Warnings)
+    {
+        public static JointOptimizationResponse From(GacJointRoundOptimizationResult result) => new(
+            result.Format == GacFormat.ThreeVsThree ? "3v3" : "5v5",
+            result.Mode.ToString(),
+            result.Applied,
+            result.ScenariosEvaluated,
+            JointScenarioResponse.From(result.Selected),
+            [.. result.Alternatives.Select(JointScenarioResponse.From)],
+            result.PlanUpdatedAtUtc,
+            result.Warnings);
+    }
+
+    internal sealed record JointScenarioResponse(
+        string ScenarioId,
+        decimal JointScore,
+        decimal DefenseScore,
+        decimal DefenseCompletionRate,
+        decimal AttackCoverageRate,
+        decimal AttackScore,
+        decimal? KnownAverageBanners,
+        decimal OffensePreservationScore,
+        decimal AverageDefenseOpportunityCost,
+        int RecommendedAttacks,
+        int TargetDefenses,
+        int HistoricalMatches,
+        bool AttackSearchLimitReached,
+        IReadOnlyCollection<JointDefenseAssignmentResponse> DefenseAssignments,
+        IReadOnlyCollection<OptimizationRecommendationResponse> AttackRecommendations,
+        IReadOnlyCollection<Guid> UncoveredDefenseIds,
+        IReadOnlyCollection<string> Warnings)
+    {
+        public static JointScenarioResponse From(GacJointRoundScenario scenario) => new(
+            scenario.ScenarioId,
+            scenario.JointScore,
+            scenario.DefenseScore,
+            scenario.DefenseCompletionRate,
+            scenario.AttackCoverageRate,
+            scenario.AttackScore,
+            scenario.KnownAverageBanners,
+            scenario.OffensePreservationScore,
+            scenario.AverageDefenseOpportunityCost,
+            scenario.RecommendedAttacks,
+            scenario.TargetDefenses,
+            scenario.HistoricalMatches,
+            scenario.AttackSearchLimitReached,
+            [.. scenario.DefenseAssignments.Select(JointDefenseAssignmentResponse.From)],
+            [.. scenario.AttackRecommendations.Select(OptimizationRecommendationResponse.From)],
+            scenario.UncoveredDefenseIds,
+            scenario.Warnings);
+    }
+
+    internal sealed record JointDefenseAssignmentResponse(
+        int Position,
+        string Zone,
+        Guid TeamPresetId,
+        string TeamName,
+        bool Pinned,
+        bool IsFleet,
+        long GalacticPower,
+        decimal Score,
+        decimal DefensiveValue,
+        decimal OffensiveOpportunityCost,
+        string Confidence,
+        bool ContainsGalacticLegend,
+        int OmicronCount,
+        int EligibleDatacronTier,
+        int OpponentSamples,
+        int PersonalSamples,
+        IReadOnlyCollection<string> Reasons)
+    {
+        public static JointDefenseAssignmentResponse From(GacSmartDefenseAssignment item) => new(
+            item.Position,
+            item.Zone,
+            item.TeamPresetId,
+            item.TeamName,
+            item.Pinned,
+            item.IsFleet,
+            item.GalacticPower,
+            item.Score,
+            item.DefensiveValue,
+            item.OffensiveOpportunityCost,
+            item.Confidence,
+            item.ContainsGalacticLegend,
+            item.OmicronCount,
+            item.EligibleDatacronTier,
+            item.OpponentSamples,
+            item.PersonalSamples,
+            item.Reasons);
     }
 
     internal sealed record OptimizationRecommendationResponse(
