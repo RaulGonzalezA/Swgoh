@@ -29,7 +29,7 @@ public sealed class CurrentGacScoutingCacheTests
         Task<CurrentGacScoutingResult>[] requests =
         [
             .. Enumerable.Range(0, 8)
-                .Select(_ => cache.GetOrCreateAsync(key, Factory))
+                .Select(_ => cache.GetOrCreateAsync(key, Factory, TestContext.Current.CancellationToken))
         ];
 
         await Task.Yield();
@@ -52,12 +52,12 @@ public sealed class CurrentGacScoutingCacheTests
         {
             executions++;
             return Task.FromResult(expected);
-        });
+        }, TestContext.Current.CancellationToken);
         CurrentGacScoutingResult second = await cache.GetOrCreateAsync(key, _ =>
         {
             executions++;
             return Task.FromResult(CreateResult());
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.Same(expected, first);
         Assert.Same(expected, second);
@@ -92,14 +92,17 @@ public sealed class CurrentGacScoutingCacheTests
             return expected;
         }
 
-        using var callerCancellation = new CancellationTokenSource();
+        using var callerCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         Task<CurrentGacScoutingResult> first = cache.GetOrCreateAsync(key, Factory, callerCancellation.Token);
         await started.Task;
 
         callerCancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
 
-        Task<CurrentGacScoutingResult> second = cache.GetOrCreateAsync(key, Factory);
+        Task<CurrentGacScoutingResult> second = cache.GetOrCreateAsync(
+            key,
+            Factory,
+            TestContext.Current.CancellationToken);
         release.SetResult();
         CurrentGacScoutingResult result = await second;
 
@@ -124,13 +127,13 @@ public sealed class CurrentGacScoutingCacheTests
         }
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            cache.GetOrCreateAsync(key, TimeoutFactory));
+            cache.GetOrCreateAsync(key, TimeoutFactory, TestContext.Current.CancellationToken));
 
         CurrentGacScoutingResult retried = await cache.GetOrCreateAsync(key, _ =>
         {
             Interlocked.Increment(ref executions);
             return Task.FromResult(expected);
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.Same(expected, retried);
         Assert.Equal(2, executions);
@@ -142,7 +145,10 @@ public sealed class CurrentGacScoutingCacheTests
         var cache = new CurrentGacScoutingCache();
         CurrentGacScoutingCacheKey originalKey = CreateKey(cache);
         CurrentGacScoutingResult expected = CreateResult();
-        await cache.GetOrCreateAsync(originalKey, _ => Task.FromResult(expected));
+        await cache.GetOrCreateAsync(
+            originalKey,
+            _ => Task.FromResult(expected),
+            TestContext.Current.CancellationToken);
 
         CurrentGacScoutingCacheKey refreshedKey = originalKey with
         {
@@ -172,7 +178,7 @@ public sealed class CurrentGacScoutingCacheTests
             };
             cache.Set(refreshedKey, expected);
             return Task.FromResult(expected);
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result);
         Assert.False(cache.TryGet(originalKey, out _));
