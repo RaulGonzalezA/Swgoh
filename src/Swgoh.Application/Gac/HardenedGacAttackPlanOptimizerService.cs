@@ -44,18 +44,19 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
                 cancellationToken)
             .ConfigureAwait(false);
         string generationId = Guid.NewGuid().ToString("N");
-        await generatedTeamLifecycleService.RegisterAsync(
-            allyCode,
-            state.Plan.Format,
-            GacGeneratedTeamOrigin.CounterEngine,
-            generationId,
-            state.Plan.Id,
-            materialization.CreatedPresetIds,
-            cancellationToken).ConfigureAwait(false);
         optimization = GacAttackGeneratedPresetMaterializer.Remap(optimization, materialization.IdMap);
 
         try
         {
+            await generatedTeamLifecycleService.RegisterAsync(
+                allyCode,
+                state.Plan.Format,
+                GacGeneratedTeamOrigin.CounterEngine,
+                generationId,
+                state.Plan.Id,
+                materialization.CreatedPresetIds,
+                cancellationToken).ConfigureAwait(false);
+
             GacRoundPlan plan = await planRepository
                 .FindByIdAsync(state.Plan.Id, cancellationToken)
                 .ConfigureAwait(false)
