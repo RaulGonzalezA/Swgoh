@@ -8,6 +8,31 @@ public enum GacAttackOptimizationMode
     RebuildPlanned = 1
 }
 
+public sealed record GacCounterCandidateAnalysis(
+    int Rank,
+    Guid TeamPresetId,
+    string TeamName,
+    decimal Score,
+    decimal EstimatedWinProbability,
+    decimal? ExpectedBanners,
+    string Risk,
+    string TimeoutRisk,
+    decimal StrategicCost,
+    decimal CriticalPieceCost,
+    string Evidence,
+    string Confidence,
+    string Rationale,
+    string DatacronStatus,
+    decimal TacticalAdjustment,
+    decimal PersonalAdjustment,
+    int FutureDefensesAtRisk);
+
+public sealed record GacCounterDefenseAnalysis(
+    Guid DefenseId,
+    string DefenseName,
+    string Zone,
+    IReadOnlyCollection<GacCounterCandidateAnalysis> Candidates);
+
 public sealed record GacAttackOptimizationRecommendation(
     Guid DefenseId,
     string DefenseName,
@@ -41,7 +66,11 @@ public sealed record GacAttackOptimizationRecommendation(
     decimal? PersonalOneShotRate = null,
     decimal? PersonalAverageBanners = null,
     string PersonalScope = "None",
-    string PersonalRationale = "");
+    string PersonalRationale = "",
+    decimal EstimatedWinProbability = 0m,
+    string Risk = "High",
+    string TimeoutRisk = "Unknown",
+    decimal CriticalPieceCost = 0m);
 
 public sealed record GacAttackOptimizationResult(
     GacAttackOptimizationMode Mode,
@@ -53,7 +82,11 @@ public sealed record GacAttackOptimizationResult(
     decimal? KnownAverageBanners,
     IReadOnlyCollection<Guid> UncoveredDefenseIds,
     IReadOnlyCollection<GacAttackOptimizationRecommendation> Recommendations,
-    bool SearchLimitReached);
+    bool SearchLimitReached,
+    IReadOnlyCollection<GacCounterDefenseAnalysis>? CounterAnalyses = null)
+{
+    public IReadOnlyCollection<GacCounterDefenseAnalysis> CounterEngine => CounterAnalyses ?? [];
+}
 
 public sealed record GacAttackOptimizationLookup(
     CurrentGacOpponentStatus Status,
