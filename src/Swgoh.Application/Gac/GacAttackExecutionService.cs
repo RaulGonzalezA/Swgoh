@@ -19,6 +19,8 @@ internal sealed class GacAttackExecutionService(
     IGacAttackPlanOptimizerService optimizerService,
     IClock clock) : IGacAttackExecutionService
 {
+    private static readonly TimeSpan PostCommitOperationTimeout = TimeSpan.FromSeconds(10);
+
     public async Task<GacAttackExecutionLookup> ExecuteAsync(
         long allyCode,
         Guid attackId,
@@ -68,6 +70,7 @@ internal sealed class GacAttackExecutionService(
             ?? throw new InvalidOperationException("The current GAC round plan no longer contains the selected attack.");
 
         string? notes = string.IsNullOrWhiteSpace(input.Notes) ? attack.Notes : input.Notes.Trim();
+        DateTimeOffset recordedAtUtc = clock.UtcNow;
         GacAttackAssignment updatedAttack = GacAttackAssignment.Create(
             attack.Id,
             attack.DefenseId,
@@ -79,7 +82,7 @@ internal sealed class GacAttackExecutionService(
         [
             .. plan.Attacks.Select(item => item.Id == attackId ? updatedAttack : item)
         ];
-        plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, updatedAttacks, clock.UtcNow);
+        plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, updatedAttacks, recordedAtUtc);
         bool saved = await planRepository
             .TrySaveAsync(plan, state.Plan.Version, cancellationToken)
             .ConfigureAwait(false);
@@ -88,6 +91,14 @@ internal sealed class GacAttackExecutionService(
             throw new GacPlannerConcurrencyException(
                 "The GAC plan changed while the attack result was being recorded. Reload the round and try again.");
         }
+
+        GacPlannerState committedState = BuildCommittedState(
+            state,
+            attackDetails,
+            input,
+            notes,
+            recordedAtUtc);
+        var warnings = new List<string>();
 
         GacPersonalBattleObservation observation = GacPersonalBattleObservation.Create(
             state.Plan.PlayerAllyCode,
@@ -103,22 +114,11 @@ internal sealed class GacAttackExecutionService(
             defense.Squad.AllUnits.Select(unit => unit.DefinitionId),
             input.Status == GacAttackPlanStatus.Won,
             input.Banners,
-            clock.UtcNow);
-        await personalBattleRepository.UpsertAsync(observation, cancellationToken).ConfigureAwait(false);
+            recordedAtUtc);
+        await PersistObservationBestEffortAsync(observation, warnings).ConfigureAwait(false);
 
-        GacAttackOptimizationLookup optimizationLookup = await optimizerService
-            .OptimizeCurrentAsync(
-                allyCode,
-                GacAttackOptimizationMode.FillGaps,
-                apply: false,
-                cancellationToken)
-            .ConfigureAwait(false);
-        GacPlannerState refreshedState = optimizationLookup.State
-            ?? throw new InvalidOperationException("The GAC planner became unavailable after recording the result.");
-        GacAttackOptimizationRecommendation? next = optimizationLookup.Optimization?.Recommendations
-            .OrderByDescending(recommendation => recommendation.Score)
-            .ThenBy(recommendation => recommendation.StrategicCost)
-            .FirstOrDefault();
+        (GacPlannerState resultState, GacAttackOptimizationResult? optimization, GacAttackOptimizationRecommendation? next) =
+            await ReoptimizeBestEffortAsync(allyCode, committedState, warnings).ConfigureAwait(false);
 
         return new GacAttackExecutionLookup(
             CurrentGacOpponentStatus.Found,
@@ -128,8 +128,92 @@ internal sealed class GacAttackExecutionService(
                 input.Status,
                 input.Banners,
                 notes,
-                refreshedState,
-                optimizationLookup.Optimization,
-                next));
+                resultState,
+                optimization,
+                next,
+                warnings));
+    }
+
+    private async Task PersistObservationBestEffortAsync(
+        GacPersonalBattleObservation observation,
+        ICollection<string> warnings)
+    {
+        using var timeout = new CancellationTokenSource(PostCommitOperationTimeout);
+        try
+        {
+            await personalBattleRepository.UpsertAsync(observation, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            warnings.Add(
+                "El resultado del ataque se guardó, pero el aprendizaje personal no pudo actualizarse en esta operación.");
+        }
+    }
+
+    private async Task<(GacPlannerState State, GacAttackOptimizationResult? Optimization, GacAttackOptimizationRecommendation? Next)>
+        ReoptimizeBestEffortAsync(
+            long allyCode,
+            GacPlannerState committedState,
+            ICollection<string> warnings)
+    {
+        using var timeout = new CancellationTokenSource(PostCommitOperationTimeout);
+        try
+        {
+            GacAttackOptimizationLookup optimizationLookup = await optimizerService
+                .OptimizeCurrentAsync(
+                    allyCode,
+                    GacAttackOptimizationMode.FillGaps,
+                    apply: false,
+                    timeout.Token)
+                .ConfigureAwait(false);
+            GacPlannerState resultState = optimizationLookup.State ?? committedState;
+            GacAttackOptimizationRecommendation? next = optimizationLookup.Optimization?.Recommendations
+                .OrderByDescending(recommendation => recommendation.Score)
+                .ThenBy(recommendation => recommendation.StrategicCost)
+                .FirstOrDefault();
+            return (resultState, optimizationLookup.Optimization, next);
+        }
+        catch (Exception)
+        {
+            warnings.Add(
+                "El resultado del ataque se guardó, pero no se pudo recalcular el siguiente ataque en esta operación.");
+            return (committedState, null, null);
+        }
+    }
+
+    private static GacPlannerState BuildCommittedState(
+        GacPlannerState state,
+        GacAttackAssignmentDetails attackDetails,
+        ExecuteGacAttackResult input,
+        string? notes,
+        DateTimeOffset recordedAtUtc)
+    {
+        GacAttackAssignmentDetails committedAttack = attackDetails with
+        {
+            Status = input.Status,
+            Notes = notes,
+            Banners = input.Banners
+        };
+        GacAttackAssignmentDetails[] attacks =
+        [
+            .. state.Plan.Attacks.Select(item => item.Id == committedAttack.Id ? committedAttack : item)
+        ];
+        GacVisibleDefenseDetails[] visibleDefenses =
+        [
+            .. state.Plan.VisibleDefenses.Select(defense => defense with
+            {
+                Defeated = attacks.Any(attack =>
+                    attack.DefenseId == defense.Id &&
+                    attack.Status == GacAttackPlanStatus.Won)
+            })
+        ];
+        GacRoundPlanDetails plan = state.Plan with
+        {
+            Attacks = attacks,
+            VisibleDefenses = visibleDefenses,
+            UpdatedAtUtc = recordedAtUtc,
+            Version = state.Plan.Version + 1
+        };
+        return state with { Plan = plan };
     }
 }
