@@ -62,14 +62,7 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache, IDispo
 
     internal CurrentGacScoutingCache(TimeSpan sharedOperationTimeout)
     {
-        if (sharedOperationTimeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(sharedOperationTimeout),
-                sharedOperationTimeout,
-                "Shared GAC scouting timeout must be greater than zero.");
-        }
-
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(sharedOperationTimeout, TimeSpan.Zero);
         this.sharedOperationTimeout = sharedOperationTimeout;
     }
 

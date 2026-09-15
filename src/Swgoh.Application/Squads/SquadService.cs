@@ -29,10 +29,8 @@ internal sealed class SquadService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
-        if (query.Limit is < 1 or > MaxSearchLimit)
-        {
-            throw new ArgumentOutOfRangeException(nameof(query), query.Limit, $"Squad search limit must be between 1 and {MaxSearchLimit}.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.Limit, 1, nameof(query));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(query.Limit, MaxSearchLimit, nameof(query));
 
         SquadSearchQuery normalized = query with
         {

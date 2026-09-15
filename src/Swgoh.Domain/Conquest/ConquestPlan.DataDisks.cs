@@ -17,10 +17,7 @@ public sealed partial class ConquestPlan
         IEnumerable<ConquestDiskLoadout> newDiskLoadouts,
         DateTimeOffset updatedAtUtc)
     {
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ApplyDataDisks(diskCapacityLimit, newDataDisks, newDiskLoadouts);
         UpdatedAtUtc = updatedAtUtc;
@@ -48,13 +45,8 @@ public sealed partial class ConquestPlan
         IEnumerable<ConquestDataDisk> sourceDisks,
         IEnumerable<ConquestDiskLoadout> sourceLoadouts)
     {
-        if (diskCapacityLimit is < 1 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(diskCapacityLimit),
-                diskCapacityLimit,
-                "Data disk capacity limit must be between 1 and 100.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(diskCapacityLimit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(diskCapacityLimit, 100);
 
         ArgumentNullException.ThrowIfNull(sourceDisks);
         ArgumentNullException.ThrowIfNull(sourceLoadouts);

@@ -36,9 +36,10 @@ internal sealed class GacAttackExecutionService(
             throw new ArgumentException("Execution result must be Won or Failed.", nameof(input));
         }
 
-        if (input.Banners is < 0 or > 100)
+        if (input.Banners is int banners)
         {
-            throw new ArgumentOutOfRangeException(nameof(input), input.Banners, "Banners must be between 0 and 100.");
+            ArgumentOutOfRangeException.ThrowIfNegative(banners, nameof(input));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(banners, 100, nameof(input));
         }
 
         GacPlannerLookup plannerLookup = await plannerService

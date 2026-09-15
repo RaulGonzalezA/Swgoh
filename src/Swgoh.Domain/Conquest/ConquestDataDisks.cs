@@ -33,13 +33,8 @@ public sealed record ConquestDataDiskTarget(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
         ];
 
-        if (minimumMatchingUnits is < 1 or > 5)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(minimumMatchingUnits),
-                minimumMatchingUnits,
-                "Minimum matching units must be between 1 and 5.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(minimumMatchingUnits, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(minimumMatchingUnits, 5);
 
         if (type == ConquestDataDiskTargetType.Faction && normalizedFaction is null)
         {
@@ -87,21 +82,10 @@ public sealed record ConquestDataDisk(
 
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(target);
-        if (capacityCost is < 1 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(capacityCost),
-                capacityCost,
-                "Data disk capacity cost must be between 1 and 100.");
-        }
-
-        if (plannerBonus is < 0m or > 25m)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(plannerBonus),
-                plannerBonus,
-                "Planner bonus must be between 0 and 25.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacityCost, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacityCost, 100);
+        ArgumentOutOfRangeException.ThrowIfNegative(plannerBonus);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(plannerBonus, 25m);
 
         Guid[] featIds =
         [

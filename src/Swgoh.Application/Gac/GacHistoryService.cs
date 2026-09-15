@@ -17,13 +17,8 @@ internal sealed class GacHistoryService(
     {
         ValidateAllyCode(allyCode);
         ArgumentNullException.ThrowIfNull(rounds);
-        if (rounds.Count is < 1 or > MaxImportRounds)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(rounds),
-                rounds.Count,
-                $"Import must contain between 1 and {MaxImportRounds} rounds.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(rounds.Count, 1, nameof(rounds));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(rounds.Count, MaxImportRounds, nameof(rounds));
 
         GameDataCatalog catalog = await gameDataCatalog.GetAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<string, GameUnitDefinition> units = catalog.Units.Values
@@ -139,9 +134,7 @@ internal sealed class GacHistoryService(
 
     private static void ValidateAllyCode(long allyCode)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
     }
 }

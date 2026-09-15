@@ -396,10 +396,8 @@ internal sealed class GacDefenseStrategyService(
     private static void ValidateSlots(IReadOnlyCollection<GacDefenseTemplateSlot> slots)
     {
         ArgumentNullException.ThrowIfNull(slots);
-        if (slots.Count is < 1 or > 24)
-        {
-            throw new ArgumentOutOfRangeException(nameof(slots), "A defense template requires between 1 and 24 slots.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(slots.Count, 1, nameof(slots));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(slots.Count, 24, nameof(slots));
 
         if (slots.Any(slot => slot.Position < 1 || string.IsNullOrWhiteSpace(slot.Zone)))
         {

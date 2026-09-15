@@ -38,10 +38,11 @@ public sealed class SquadVariant
         ArgumentNullException.ThrowIfNull(memberDefinitionIds);
 
         string leader = leaderDefinitionId.Trim();
-        string[] members = [.. memberDefinitionIds
-            .Select(value => string.IsNullOrWhiteSpace(value)
-                ? throw new ArgumentException("Squad member definition IDs cannot be empty.", nameof(memberDefinitionIds))
-                : value.Trim())];
+        string[] members = [.. memberDefinitionIds.Select(value =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(memberDefinitionIds));
+            return value.Trim();
+        })];
 
         int requiredMemberCount = GetRequiredUnitCount(format) - 1;
         if (members.Length != requiredMemberCount)

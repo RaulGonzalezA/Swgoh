@@ -26,13 +26,8 @@ public sealed record ConquestUnitStamina(string DefinitionId, int CurrentPercent
     public static ConquestUnitStamina Create(string definitionId, int currentPercent)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(definitionId);
-        if (currentPercent is < 0 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(currentPercent),
-                currentPercent,
-                "Stamina must be between 0 and 100 percent.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(currentPercent);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(currentPercent, 100);
 
         return new ConquestUnitStamina(definitionId.Trim(), currentPercent);
     }
@@ -64,13 +59,8 @@ public sealed record ConquestFeatRule(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
         ];
 
-        if (minimumMatchingUnits is < 1 or > 5)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(minimumMatchingUnits),
-                minimumMatchingUnits,
-                "Minimum matching units must be between 1 and 5.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(minimumMatchingUnits, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(minimumMatchingUnits, 5);
 
         if (type == ConquestFeatRuleType.Faction && normalizedFaction is null)
         {
@@ -139,25 +129,11 @@ public sealed record ConquestFeat(
             throw new ArgumentOutOfRangeException(nameof(sector), sector, "Sector must be between 1 and 5.");
         }
 
-        if (points < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(points));
-        }
-
-        if (target < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(target));
-        }
-
-        if (progress < 0 || progress > target)
-        {
-            throw new ArgumentOutOfRangeException(nameof(progress));
-        }
-
-        if (expectedProgressPerBattle < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(expectedProgressPerBattle));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(points, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(target, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(progress);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(progress, target);
+        ArgumentOutOfRangeException.ThrowIfLessThan(expectedProgressPerBattle, 1);
 
         ArgumentNullException.ThrowIfNull(rule);
         return new ConquestFeat(
@@ -279,10 +255,7 @@ public sealed partial class ConquestPlan
             staminaCostPerBattle,
             reserveFloorPercent,
             stamina);
-        if (updatedAtUtc < createdAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, createdAtUtc);
 
         plan.UpdatedAtUtc = updatedAtUtc;
         return plan;
@@ -311,10 +284,7 @@ public sealed partial class ConquestPlan
         DateTimeOffset updatedAtUtc)
     {
         ValidateIdentity(AllyCode, EventId, name, difficulty);
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ConquestFeat[] normalizedFeats = ValidateFeats(newFeats);
         ValidateStaminaSettings(staminaCostPerBattle, reserveFloorPercent);
@@ -381,28 +351,15 @@ public sealed partial class ConquestPlan
 
     private static void ValidateStaminaSettings(int staminaCostPerBattle, int reserveFloorPercent)
     {
-        if (staminaCostPerBattle is < 1 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(staminaCostPerBattle),
-                staminaCostPerBattle,
-                "Stamina cost per battle must be between 1 and 100 percent.");
-        }
-
-        if (reserveFloorPercent is < 0 or > 100)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(reserveFloorPercent),
-                reserveFloorPercent,
-                "Reserve floor must be between 0 and 100 percent.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(staminaCostPerBattle, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(staminaCostPerBattle, 100);
+        ArgumentOutOfRangeException.ThrowIfNegative(reserveFloorPercent);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(reserveFloorPercent, 100);
     }
 
     private static void ValidateAllyCode(long allyCode)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
     }
 }

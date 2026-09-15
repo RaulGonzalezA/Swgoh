@@ -22,20 +22,9 @@ internal sealed class GacComlinkRequestLimiter : IDisposable
 
     internal GacComlinkRequestLimiter(int maxConcurrency, int permitLimit, TimeSpan window)
     {
-        if (maxConcurrency <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxConcurrency), maxConcurrency, "Max concurrency must be greater than zero.");
-        }
-
-        if (permitLimit <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(permitLimit), permitLimit, "Permit limit must be greater than zero.");
-        }
-
-        if (window <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(window), window, "Rate-limit window must be greater than zero.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxConcurrency, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(permitLimit, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(window, TimeSpan.Zero);
 
         concurrency = new SemaphoreSlim(maxConcurrency, maxConcurrency);
         this.permitLimit = permitLimit;

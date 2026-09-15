@@ -8,10 +8,7 @@ public sealed class GacPlannerWriteContext
 
     public IDisposable Begin(long version)
     {
-        if (version < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(version), version, "Plan version cannot be negative.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(version);
 
         long? previous = expectedVersion.Value;
         expectedVersion.Value = version;

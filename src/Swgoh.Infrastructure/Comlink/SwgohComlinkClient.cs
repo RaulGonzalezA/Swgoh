@@ -20,10 +20,8 @@ internal sealed class SwgohComlinkClient(
 
     public async Task<ImportedPlayer> GetPlayerAsync(long allyCode, CancellationToken cancellationToken = default)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000L);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999L);
 
         ComlinkPlayerRequest request = new(new ComlinkPlayerPayload(allyCode.ToString(CultureInfo.InvariantCulture)), false);
         using HttpResponseMessage response = await httpClient.PostAsJsonAsync("player", request, cancellationToken).ConfigureAwait(false);

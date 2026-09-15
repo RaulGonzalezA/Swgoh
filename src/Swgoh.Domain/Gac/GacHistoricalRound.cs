@@ -18,9 +18,11 @@ public sealed record GacHistoricalSquad(
         string leader = leaderDefinitionId.Trim();
         string[] members =
         [
-            .. memberDefinitionIds.Select(value => string.IsNullOrWhiteSpace(value)
-                ? throw new ArgumentException("Squad member definition IDs cannot be empty.", nameof(memberDefinitionIds))
-                : value.Trim())
+            .. memberDefinitionIds.Select(value =>
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(memberDefinitionIds));
+                return value.Trim();
+            })
         ];
 
         string[] allUnits = [leader, .. members];
@@ -79,10 +81,7 @@ public sealed record GacOffenseBattle(
         ArgumentNullException.ThrowIfNull(defender);
         ArgumentNullException.ThrowIfNull(attacker);
         ArgumentOutOfRangeException.ThrowIfNegative(banners);
-        if (attempt < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(attempt), attempt, "Attempt must be at least one.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
 
         if (defender.IsFleet != attacker.IsFleet)
         {
@@ -150,20 +149,9 @@ public sealed class GacHistoricalRound
         IEnumerable<GacOffenseBattle> offenseBattles)
     {
         ValidateAllyCode(allyCode);
-        if (season < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(season), season, "Season must be positive.");
-        }
-
-        if (eventNumber < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(eventNumber), eventNumber, "Event number must be positive.");
-        }
-
-        if (roundNumber < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(roundNumber), roundNumber, "Round number must be positive.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(season, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(eventNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(roundNumber, 1);
 
         if (!Enum.IsDefined(format))
         {
@@ -255,9 +243,7 @@ public sealed class GacHistoricalRound
 
     private static void ValidateAllyCode(long allyCode)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
     }
 }

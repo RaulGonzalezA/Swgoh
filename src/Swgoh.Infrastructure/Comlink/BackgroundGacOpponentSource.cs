@@ -40,10 +40,8 @@ internal sealed class BackgroundGacOpponentSource(
     public Task<CurrentGacOpponentLookup> GetAsync(long allyCode, GacFormat? formatOverride, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000L);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999L);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         lock (gate)

@@ -30,13 +30,8 @@ internal sealed partial class ConquestDailyPlanService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.MaxBattles is < 1 or > 20)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(request),
-                request.MaxBattles,
-                "Daily plan battles must be between 1 and 20.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(request.MaxBattles, 1, nameof(request));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(request.MaxBattles, 20, nameof(request));
 
         Task<ConquestPlan?> planTask = repository.GetCurrentAsync(allyCode, cancellationToken);
         Task<PlayerProfile?> playerTask = playerProfileService.GetAsync(allyCode, cancellationToken);

@@ -30,10 +30,8 @@ internal sealed class PersistedGacOpponentSource(
         GacFormat? formatOverride,
         CancellationToken cancellationToken = default)
     {
-        if (!GacBracketParser.IsValidAllyCode(allyCode))
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000L);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999L);
 
         string key = $"{allyCode}:{formatOverride?.ToString() ?? "auto"}";
         if (resultCache.TryGetValue(key, out ResultCacheEntry? cached))

@@ -50,10 +50,8 @@ internal sealed partial class SwgohComlinkFastGacOpponentSource(
         GacFormat? formatOverride,
         CancellationToken cancellationToken = default)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000L);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999L);
 
         string resultKey = $"{allyCode}:{formatOverride?.ToString() ?? "auto"}";
         if (resultCache.TryGetValue(resultKey, out ResultCacheEntry? cached) &&

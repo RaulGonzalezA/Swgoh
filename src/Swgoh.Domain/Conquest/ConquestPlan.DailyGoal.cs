@@ -21,10 +21,7 @@ public sealed partial class ConquestPlan
         string? rewardTargetName,
         DateTimeOffset updatedAtUtc)
     {
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ApplyDailyGoal(
             availableEnergy,
@@ -54,36 +51,18 @@ public sealed partial class ConquestPlan
         int? targetRewardPoints,
         string? rewardTargetName)
     {
-        if (availableEnergy is < 0)
+        if (availableEnergy is int energy)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(availableEnergy),
-                availableEnergy,
-                "Available Conquest energy cannot be negative.");
+            ArgumentOutOfRangeException.ThrowIfNegative(energy, nameof(availableEnergy));
         }
 
-        if (energyCostPerBattle is < 1 or > 1_000)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(energyCostPerBattle),
-                energyCostPerBattle,
-                "Energy cost per battle must be between 1 and 1000.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(energyCostPerBattle, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(energyCostPerBattle, 1_000);
+        ArgumentOutOfRangeException.ThrowIfNegative(currentRewardPoints);
 
-        if (currentRewardPoints < 0)
+        if (targetRewardPoints is int target)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(currentRewardPoints),
-                currentRewardPoints,
-                "Current reward points cannot be negative.");
-        }
-
-        if (targetRewardPoints is < 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(targetRewardPoints),
-                targetRewardPoints,
-                "Target reward points cannot be negative.");
+            ArgumentOutOfRangeException.ThrowIfNegative(target, nameof(targetRewardPoints));
         }
 
         AvailableEnergy = availableEnergy;

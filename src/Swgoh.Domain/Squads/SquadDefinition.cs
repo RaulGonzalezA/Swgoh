@@ -73,10 +73,7 @@ public sealed class SquadDefinition
         DateTimeOffset updatedAtUtc)
     {
         SquadDefinition definition = Create(id, name, format, use, tags, variants, createdAtUtc);
-        if (updatedAtUtc < createdAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc), "Updated time cannot be earlier than created time.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, createdAtUtc);
 
         definition.UpdatedAtUtc = updatedAtUtc;
         return definition;
@@ -91,10 +88,7 @@ public sealed class SquadDefinition
         DateTimeOffset updatedAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc), "Updated time cannot be earlier than created time.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         string[] normalizedTags = NormalizeTags(tags);
         SquadVariant[] validatedVariants = ValidateVariants(format, variants);
@@ -115,9 +109,11 @@ public sealed class SquadDefinition
         string[] normalized =
         [
             .. source
-                .Select(tag => string.IsNullOrWhiteSpace(tag)
-                    ? throw new ArgumentException("Squad tags cannot be empty.", nameof(source))
-                    : tag.Trim().ToLowerInvariant())
+                .Select(tag =>
+                {
+                    ArgumentException.ThrowIfNullOrWhiteSpace(tag, nameof(source));
+                    return tag.Trim().ToLowerInvariant();
+                })
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(tag => tag, StringComparer.Ordinal)
         ];
