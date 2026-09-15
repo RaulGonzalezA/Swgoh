@@ -91,6 +91,53 @@ public sealed class BackgroundGacOpponentSourceTests
         }
     }
 
+    [Fact]
+    public async Task DistinctPlayers_RunThreeLookupsConcurrently_WithoutHeadOfLineBlocking()
+    {
+        var provider = new ConcurrentDeferredSource();
+        using var worker = new BackgroundGacOpponentSource(provider, NullLogger<BackgroundGacOpponentSource>.Instance);
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await worker.StartAsync(token);
+        try
+        {
+            long[] allyCodes = [476825771, 476825772, 476825773, 476825774];
+            foreach (long allyCode in allyCodes)
+            {
+                Assert.Equal(CurrentGacOpponentStatus.Pending, (await worker.GetAsync(allyCode, null, token)).Status);
+            }
+
+            ConcurrentDeferredSource.Invocation[] firstWave =
+            [
+                await provider.ReadNextAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token),
+                await provider.ReadNextAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token),
+                await provider.ReadNextAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token)
+            ];
+
+            Assert.Equal(BackgroundGacOpponentSource.WorkerCount, provider.Calls);
+            Assert.Equal(3, firstWave.Select(invocation => invocation.AllyCode).Distinct().Count());
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), token);
+            Assert.Equal(BackgroundGacOpponentSource.WorkerCount, provider.Calls);
+
+            firstWave[0].Result.SetResult(CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.NoActiveEvent, "Done"));
+            ConcurrentDeferredSource.Invocation fourth = await provider.ReadNextAsync(token)
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5), token);
+            Assert.Equal(4, provider.Calls);
+            Assert.Contains(fourth.AllyCode, allyCodes);
+            Assert.DoesNotContain(fourth.AllyCode, firstWave.Select(invocation => invocation.AllyCode));
+
+            foreach (ConcurrentDeferredSource.Invocation invocation in firstWave.Skip(1).Append(fourth))
+            {
+                invocation.Result.TrySetResult(CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.NoActiveEvent, "Done"));
+            }
+        }
+        finally
+        {
+            await worker.StopAsync(token);
+        }
+    }
+
     private static async Task<CurrentGacOpponentLookup> WaitForResultAsync(BackgroundGacOpponentSource worker, CancellationToken token)
     {
         while (true)
@@ -143,5 +190,31 @@ public sealed class BackgroundGacOpponentSourceTests
             invocations.Reader.ReadAsync(cancellationToken);
 
         public sealed record Invocation(TaskCompletionSource<CurrentGacOpponentLookup> Result);
+    }
+
+    private sealed class ConcurrentDeferredSource : ICurrentGacOpponentSource
+    {
+        private readonly Channel<Invocation> invocations = Channel.CreateUnbounded<Invocation>();
+        private int calls;
+
+        public int Calls => Volatile.Read(ref calls);
+
+        public Task<CurrentGacOpponentLookup> GetAsync(
+            long allyCode,
+            GacFormat? formatOverride,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref calls);
+            var invocation = new Invocation(
+                allyCode,
+                new TaskCompletionSource<CurrentGacOpponentLookup>(TaskCreationOptions.RunContinuationsAsynchronously));
+            invocations.Writer.TryWrite(invocation);
+            return invocation.Result.Task.WaitAsync(cancellationToken);
+        }
+
+        public ValueTask<Invocation> ReadNextAsync(CancellationToken cancellationToken) =>
+            invocations.Reader.ReadAsync(cancellationToken);
+
+        public sealed record Invocation(long AllyCode, TaskCompletionSource<CurrentGacOpponentLookup> Result);
     }
 }
