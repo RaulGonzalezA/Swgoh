@@ -94,6 +94,23 @@ public sealed class GacJointRoundOptimizerServiceTests
         Assert.True(complete.JointScore > incomplete.JointScore);
     }
 
+    [Fact]
+    public void EvaluateScenario_KyberFiveVsFive_UsesAllFourteenRequiredDefenseSlots()
+    {
+        GacBoardLayout layout = GacBoardLayouts.Get(GacLeague.Kyber, GacFormat.FiveVsFive);
+
+        GacJointRoundScenario scenario = GacJointRoundOptimizerService.EvaluateScenario(
+            "kyber-regression",
+            layout.TotalDefenseSlots,
+            Defense(score: 70m, opportunityCost: 0m),
+            Attacks(targets: 0, recommended: 0, averageScore: 0m),
+            GacJointRoundOptimizationMode.Balanced);
+
+        Assert.Equal(14, layout.TotalDefenseSlots);
+        Assert.Equal(7.1m, scenario.DefenseCompletionRate);
+        Assert.True(scenario.DefenseCompletionRate < 100m);
+    }
+
     private static GacSmartDefenseService.SmartGeneration Defense(decimal score, decimal opportunityCost) => new(
         [
             new GacSmartDefenseAssignment(
