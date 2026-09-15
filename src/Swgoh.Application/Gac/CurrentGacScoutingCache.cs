@@ -16,7 +16,8 @@ public interface ICurrentGacScoutingCache
 
     Task<CurrentGacScoutingResult> GetOrCreateAsync(
         CurrentGacScoutingCacheKey key,
-        Func<Task<CurrentGacScoutingResult>> factory);
+        Func<CancellationToken, Task<CurrentGacScoutingResult>> factory,
+        CancellationToken cancellationToken = default);
 
     void Set(CurrentGacScoutingCacheKey key, CurrentGacScoutingResult result);
 
@@ -37,10 +38,30 @@ public readonly record struct CurrentGacScoutingCacheKey(
 internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(45);
+    private static readonly TimeSpan DefaultSharedOperationTimeout = TimeSpan.FromSeconds(75);
 
     private readonly ConcurrentDictionary<CurrentGacScoutingCacheKey, CacheEntry> cache = new();
     private readonly ConcurrentDictionary<CurrentGacScoutingCacheKey, Lazy<Task<CurrentGacScoutingResult>>> inFlight = new();
     private readonly ConcurrentDictionary<long, long> generations = new();
+    private readonly TimeSpan sharedOperationTimeout;
+
+    public CurrentGacScoutingCache()
+        : this(DefaultSharedOperationTimeout)
+    {
+    }
+
+    internal CurrentGacScoutingCache(TimeSpan sharedOperationTimeout)
+    {
+        if (sharedOperationTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(sharedOperationTimeout),
+                sharedOperationTimeout,
+                "Shared GAC scouting timeout must be greater than zero.");
+        }
+
+        this.sharedOperationTimeout = sharedOperationTimeout;
+    }
 
     public long GetGeneration(long allyCode) => generations.GetOrAdd(allyCode, 0);
 
@@ -65,7 +86,8 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
 
     public async Task<CurrentGacScoutingResult> GetOrCreateAsync(
         CurrentGacScoutingCacheKey key,
-        Func<Task<CurrentGacScoutingResult>> factory)
+        Func<CancellationToken, Task<CurrentGacScoutingResult>> factory,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(factory);
 
@@ -77,23 +99,10 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
         Lazy<Task<CurrentGacScoutingResult>> lazy = inFlight.GetOrAdd(
             key,
             _ => new Lazy<Task<CurrentGacScoutingResult>>(
-                factory,
+                () => ExecuteSharedAsync(key, factory),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
-        try
-        {
-            CurrentGacScoutingResult result = await lazy.Value.ConfigureAwait(false);
-            if (key.Generation == GetGeneration(key.AllyCode))
-            {
-                Set(key, result);
-            }
-
-            return result;
-        }
-        finally
-        {
-            inFlight.TryRemove(key, out _);
-        }
+        return await lazy.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public void Set(CurrentGacScoutingCacheKey key, CurrentGacScoutingResult result)
@@ -128,6 +137,27 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
         foreach (CurrentGacScoutingCacheKey key in cache.Keys.Where(key => key.AllyCode == allyCode))
         {
             cache.TryRemove(key, out _);
+        }
+    }
+
+    private async Task<CurrentGacScoutingResult> ExecuteSharedAsync(
+        CurrentGacScoutingCacheKey key,
+        Func<CancellationToken, Task<CurrentGacScoutingResult>> factory)
+    {
+        using var timeoutSource = new CancellationTokenSource(sharedOperationTimeout);
+        try
+        {
+            CurrentGacScoutingResult result = await factory(timeoutSource.Token).ConfigureAwait(false);
+            if (key.Generation == GetGeneration(key.AllyCode))
+            {
+                Set(key, result);
+            }
+
+            return result;
+        }
+        finally
+        {
+            inFlight.TryRemove(key, out _);
         }
     }
 
@@ -183,18 +213,18 @@ internal sealed class CachedCurrentGacScoutingService(
 
         return await cache.GetOrCreateAsync(
             initialKey,
-            async () =>
+            async sharedCancellationToken =>
             {
                 CurrentGacScoutingResult result = await inner.GetAsync(
                     allyCode,
                     formatOverride,
                     normalizedMaxRounds,
-                    CancellationToken.None).ConfigureAwait(false);
+                    sharedCancellationToken).ConfigureAwait(false);
 
                 ProfileVersions? finalVersions = await TryReadProfileVersionsAsync(
                     allyCode,
                     opponent.OpponentAllyCode,
-                    CancellationToken.None).ConfigureAwait(false);
+                    sharedCancellationToken).ConfigureAwait(false);
                 if (finalVersions is null)
                 {
                     cache.Invalidate(allyCode);
@@ -214,7 +244,8 @@ internal sealed class CachedCurrentGacScoutingService(
                 }
 
                 return result;
-            }).ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<ProfileVersions?> TryReadProfileVersionsAsync(
