@@ -15,7 +15,7 @@ internal static class GacOpponentResolver
     {
         if (playerIndex < 0 || playerIndex >= participants.Count)
         {
-            resolutionMethod = $"{methodPrefix}Unavailable";
+            resolutionMethod = AddPrefix(methodPrefix, "Unavailable");
             return null;
         }
 
@@ -55,7 +55,7 @@ internal static class GacOpponentResolver
                         int pairedIndex = ordered.Length - 1 - currentIndex;
                         if (pairedIndex >= 0 && pairedIndex < ordered.Length && pairedIndex != currentIndex)
                         {
-                            resolutionMethod = $"{methodPrefix}PvpScoreRankPairing";
+                            resolutionMethod = AddPrefix(methodPrefix, "PvpScoreRankPairing");
                             return ordered[pairedIndex].Participant;
                         }
                     }
@@ -70,12 +70,12 @@ internal static class GacOpponentResolver
             int pairedIndex = playerIndex % 2 == 0 ? playerIndex + 1 : playerIndex - 1;
             if (pairedIndex >= 0 && pairedIndex < participants.Count)
             {
-                resolutionMethod = $"{methodPrefix}BracketOrderPairing";
+                resolutionMethod = AddPrefix(methodPrefix, "BracketOrderPairing");
                 return participants[pairedIndex];
             }
         }
 
-        resolutionMethod = $"{methodPrefix}Unavailable";
+        resolutionMethod = AddPrefix(methodPrefix, "Unavailable");
         return null;
     }
 
@@ -90,5 +90,18 @@ internal static class GacOpponentResolver
         ];
 
         return scores.Length == 0 ? null : Math.Clamp(scores.Max() + 1, 1, 3);
+    }
+
+    private static string AddPrefix(string prefix, string method)
+    {
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return method;
+        }
+
+        return prefix.EndsWith("Bracket", StringComparison.Ordinal) &&
+               method.StartsWith("Bracket", StringComparison.Ordinal)
+            ? prefix + method["Bracket".Length..]
+            : prefix + method;
     }
 }
