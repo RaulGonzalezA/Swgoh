@@ -115,7 +115,7 @@ internal sealed partial class OptimizedGacRosterDefenseCandidateProvider(
         if (generated.Length > 0)
         {
             warnings.Add(
-                $"La composición defensiva del roster se optimizó de forma conjunta: {generated.Length} equipo(s) temporal(es) complementan los presets existentes sin repetir unidades.");
+                $"La optimización conjunta del roster seleccionó {generated.Length} equipo(s) temporal(es) que complementan los presets existentes sin repetir unidades.");
         }
         if (options.Count > 0)
         {
