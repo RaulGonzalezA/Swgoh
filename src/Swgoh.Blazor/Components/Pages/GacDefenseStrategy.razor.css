@@ -1,0 +1,284 @@
+.strategy-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.5rem;
+    align-items: end;
+    margin-bottom: 1.5rem;
+}
+
+.strategy-format-tabs {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    margin-bottom: 1.25rem;
+}
+
+.strategy-format-tabs button {
+    border: 1px solid var(--border-color);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    padding: .55rem .9rem;
+    border-radius: 999px;
+    font-weight: 700;
+}
+
+.strategy-format-tabs button.active {
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 15%, var(--surface-1));
+}
+
+.strategy-format-tabs span {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-size: .9rem;
+}
+
+.strategy-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .8rem;
+    margin: 1rem 0 1.4rem;
+}
+
+.strategy-summary > div,
+.strategy-panel,
+.strategy-actions-panel,
+.strategy-generation {
+    border: 1px solid var(--border-color);
+    background: var(--surface-1);
+    border-radius: 18px;
+}
+
+.strategy-summary > div {
+    padding: 1rem;
+    display: grid;
+    gap: .15rem;
+}
+
+.strategy-summary span,
+.strategy-summary small {
+    color: var(--text-secondary);
+}
+
+.strategy-summary strong {
+    font-size: 1.35rem;
+}
+
+.strategy-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr);
+    gap: 1rem;
+}
+
+.strategy-panel,
+.strategy-actions-panel,
+.strategy-generation {
+    padding: 1.15rem;
+}
+
+.strategy-panel-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+}
+
+.strategy-panel h2,
+.strategy-actions-panel h2,
+.strategy-generation h2 {
+    margin: .15rem 0;
+}
+
+.strategy-panel > p,
+.strategy-actions-panel > div > p {
+    color: var(--text-secondary);
+}
+
+.strategy-slot-list,
+.strategy-reserve-list,
+.strategy-generated-list {
+    display: grid;
+    gap: .65rem;
+    margin-top: 1rem;
+}
+
+.strategy-slot-card {
+    display: grid;
+    grid-template-columns: 42px minmax(140px, .65fr) minmax(230px, 1.35fr) 38px;
+    gap: .65rem;
+    align-items: end;
+    padding: .75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+.strategy-slot-number {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-color) 16%, transparent);
+    font-weight: 800;
+    align-self: center;
+}
+
+.strategy-slot-card label {
+    display: grid;
+    gap: .35rem;
+    font-size: .8rem;
+    color: var(--text-secondary);
+}
+
+.strategy-slot-card input,
+.strategy-slot-card select {
+    width: 100%;
+}
+
+.strategy-reserve-card {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: .7rem;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border-color);
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border-radius: 14px;
+    padding: .75rem;
+}
+
+.strategy-reserve-card.reserved {
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--surface-2));
+}
+
+.strategy-reserve-card.pinned {
+    opacity: .7;
+}
+
+.strategy-reserve-check {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+    font-weight: 900;
+}
+
+.strategy-reserve-card span:last-child {
+    display: grid;
+    gap: .15rem;
+}
+
+.strategy-reserve-card small {
+    color: var(--text-secondary);
+}
+
+.strategy-actions-panel {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.strategy-actions {
+    display: flex;
+    gap: .55rem;
+    flex-wrap: wrap;
+}
+
+.strategy-format-warning {
+    width: 100%;
+    color: var(--warning-color, #d7a432);
+}
+
+.strategy-generation {
+    margin-top: 1rem;
+}
+
+.strategy-generated-list article {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: .75rem;
+    align-items: center;
+    padding: .75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 13px;
+    background: var(--surface-2);
+}
+
+.strategy-generated-list article > span {
+    font-weight: 900;
+}
+
+.strategy-generated-list article > div:nth-child(2) {
+    display: grid;
+    gap: .15rem;
+}
+
+.strategy-generated-list small,
+.strategy-generated-meta {
+    color: var(--text-secondary);
+}
+
+.strategy-generated-meta {
+    display: flex;
+    gap: .75rem;
+    font-size: .85rem;
+}
+
+.strategy-warnings {
+    margin: .9rem 0;
+    padding: .75rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--warning-color, #d7a432) 10%, transparent);
+}
+
+.strategy-warnings p {
+    margin: .2rem 0;
+}
+
+@media (max-width: 980px) {
+    .strategy-summary,
+    .strategy-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .strategy-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .strategy-heading,
+    .strategy-actions-panel {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .strategy-summary {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .strategy-slot-card {
+        grid-template-columns: 34px 1fr 36px;
+    }
+
+    .strategy-slot-team {
+        grid-column: 2 / 3;
+    }
+
+    .strategy-generated-list article {
+        grid-template-columns: 34px 1fr;
+    }
+
+    .strategy-generated-meta {
+        grid-column: 2;
+    }
+}

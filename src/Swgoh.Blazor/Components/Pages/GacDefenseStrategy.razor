@@ -1,0 +1,410 @@
+@page "/gac/{AllyCode:long}/strategy"
+@rendermode InteractiveServer
+@using Swgoh.Blazor.Clients
+@inject GacDefenseStrategyApiClient StrategyClient
+@inject GacPlannerPerformanceApiClient PlannerClient
+
+<PageTitle>Estrategia GAC · SWGOH Planner</PageTitle>
+
+<div class="strategy-heading">
+    <div>
+        <a class="back-link" href="@($"/gac/{AllyCode}/planner")">← Planificador</a>
+        <span class="eyebrow">GAC Strategy Lab</span>
+        <h1>Plantillas de defensa y reservas de ataque</h1>
+        <p class="page-lead">Prepara una plantilla distinta para 3v3 y 5v5, fija tus defensas imprescindibles y protege los equipos que quieres guardar para atacar.</p>
+    </div>
+    <a class="secondary-button" href="@($"/gac/{AllyCode}/planner")">Abrir Planner</a>
+</div>
+
+<nav class="strategy-format-tabs" aria-label="Formato GAC">
+    <button type="button" class="@FiveFormatClass" @onclick="ChangeToFiveAsync">5v5</button>
+    <button type="button" class="@ThreeFormatClass" @onclick="ChangeToThreeAsync">3v3</button>
+    @if (!string.IsNullOrWhiteSpace(_currentFormat))
+    {
+        <span>Ronda actual: <strong>@_currentFormat</strong></span>
+    }
+</nav>
+
+@if (_loading)
+{
+    <UiLoadingState Title="Cargando estrategia" Description="Plantilla, equipos guardados y reservas" />
+}
+else if (_error is not null)
+{
+    <UiAlert Tone="danger" Icon="!" Title="No se ha podido cargar la estrategia" Description="@_error" />
+}
+else if (_strategy is not null)
+{
+    @if (_success is not null)
+    {
+        <UiAlert Tone="success" Icon="✓" Title="Estrategia actualizada" Description="@_success" />
+    }
+
+    <section class="strategy-summary">
+        <div><span>Formato</span><strong>@_selectedFormat</strong><small>plantilla independiente</small></div>
+        <div><span>Slots</span><strong>@_slots.Count</strong><small>posiciones de defensa</small></div>
+        <div><span>Fijados</span><strong>@_slots.Count(slot => slot.PinnedTeamPresetId is not null)</strong><small>no los cambia el generador</small></div>
+        <div><span>Reservas ataque</span><strong>@_reserved.Count</strong><small>nunca irán a defensa automática</small></div>
+    </section>
+
+    <div class="strategy-grid">
+        <section class="strategy-panel">
+            <div class="strategy-panel-heading">
+                <div><span class="section-kicker">Plantilla @_selectedFormat</span><h2>Slots de defensa</h2></div>
+                <button type="button" class="ghost-button" @onclick="AddSlot">+ Slot</button>
+            </div>
+            <p>Cada posición puede quedar en <strong>Automático</strong> o fijarse a un equipo concreto. Una zona llamada “Flota” solo utilizará presets de flota.</p>
+
+            <div class="strategy-slot-list">
+                @foreach (SlotDraft slot in _slots.OrderBy(slot => slot.Position))
+                {
+                    <article class="strategy-slot-card" @key="slot.Key">
+                        <span class="strategy-slot-number">@slot.Position</span>
+                        <label>
+                            Zona
+                            <input value="@slot.Zone" @onchange="eventArgs => SetZone(slot, eventArgs.Value?.ToString())" />
+                        </label>
+                        <label class="strategy-slot-team">
+                            Equipo fijado
+                            <select value="@PinnedValue(slot)" @onchange="eventArgs => SetPinned(slot, eventArgs.Value?.ToString())">
+                                <option value="">Automático</option>
+                                @foreach (GacDefenseStrategyApiClient.StrategyPresetViewModel preset in PresetsForSlot(slot))
+                                {
+                                    <option value="@preset.Id">@preset.Name · @FriendlyUse(preset.Use)</option>
+                                }
+                            </select>
+                        </label>
+                        <button type="button" class="planner-icon-button" title="Eliminar slot" @onclick="() => RemoveSlot(slot)">×</button>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="strategy-panel">
+            <div class="strategy-panel-heading">
+                <div><span class="section-kicker">Protección ofensiva</span><h2>Reservar para ataque</h2></div>
+                <span class="count-badge">@_reserved.Count</span>
+            </div>
+            <p>Los equipos marcados aquí quedan fuera de la generación automática de defensa. El optimizador de ataques podrá seguir utilizándolos.</p>
+
+            @if (_strategy.Presets.Count == 0)
+            {
+                <div class="planner-board-empty">No tienes equipos guardados para @_selectedFormat. Créelos primero desde el Planner.</div>
+            }
+            else
+            {
+                <div class="strategy-reserve-list">
+                    @foreach (GacDefenseStrategyApiClient.StrategyPresetViewModel preset in _strategy.Presets.OrderBy(preset => preset.Name))
+                    {
+                        bool pinned = _slots.Any(slot => slot.PinnedTeamPresetId == preset.Id);
+                        bool reserved = _reserved.Contains(preset.Id);
+                        <button type="button"
+                                class="strategy-reserve-card @(reserved ? "reserved" : string.Empty) @(pinned ? "pinned" : string.Empty)"
+                                disabled="@pinned"
+                                @onclick="() => ToggleReserved(preset.Id)">
+                            <span class="strategy-reserve-check">@(reserved ? "✓" : pinned ? "D" : "+")</span>
+                            <span>
+                                <strong>@preset.Name</strong>
+                                <small>@FriendlyUse(preset.Use) · @(preset.IsFleet ? "Flota" : _selectedFormat)@(pinned ? " · fijado en defensa" : string.Empty)</small>
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+
+    <section class="strategy-actions-panel">
+        <div>
+            <span class="section-kicker">Generador</span>
+            <h2>Construir mi defensa</h2>
+            <p>Prioriza presets marcados como Defensa, después Flexibles y finalmente Ataque; dentro de cada grupo escoge el equipo con más GP y evita reutilizar unidades.</p>
+        </div>
+        <div class="strategy-actions">
+            <button type="button" class="secondary-button" @onclick="SaveAsync" disabled="@_saving">Guardar plantilla</button>
+            <button type="button" class="ghost-button" @onclick="PreviewAsync" disabled="@(!CanGenerate || _saving)">Vista previa</button>
+            <button type="button" class="primary-button" @onclick="ApplyAsync" disabled="@(!CanGenerate || _saving)">Generar y aplicar</button>
+        </div>
+        @if (!CanGenerate)
+        {
+            <small class="strategy-format-warning">La ronda actual es @_currentFormat. Puedes editar @_selectedFormat, pero solo generar cuando coincida con la ronda.</small>
+        }
+    </section>
+
+    @if (_generation is not null)
+    {
+        <section class="strategy-generation">
+            <div class="strategy-panel-heading">
+                <div><span class="section-kicker">@(_generation.Applied ? "Aplicado" : "Vista previa")</span><h2>Defensa propuesta</h2></div>
+                <span class="count-badge">@_generation.Assignments.Count</span>
+            </div>
+            <div class="strategy-generated-list">
+                @foreach (GacDefenseStrategyApiClient.GeneratedAssignmentViewModel item in _generation.Assignments.OrderBy(item => item.Position))
+                {
+                    <article>
+                        <span>@item.Position</span>
+                        <div><small>@item.Zone</small><strong>@item.TeamName</strong></div>
+                        <div class="strategy-generated-meta"><span>@(item.Pinned ? "Fijado" : "Auto")</span><span>@item.GalacticPower.ToString("N0") GP</span></div>
+                    </article>
+                }
+            </div>
+            @if (_generation.Warnings.Count > 0)
+            {
+                <div class="strategy-warnings">
+                    @foreach (string warning in _generation.Warnings)
+                    {
+                        <p>⚠ @warning</p>
+                    }
+                </div>
+            }
+            @if (_generation.Applied)
+            {
+                <a class="primary-button" href="@($"/gac/{AllyCode}/planner")">Ver defensa en Planner</a>
+            }
+        </section>
+    }
+}
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private GacDefenseStrategyApiClient.StrategyViewModel? _strategy;
+    private GacDefenseStrategyApiClient.GenerationViewModel? _generation;
+    private readonly List<SlotDraft> _slots = [];
+    private readonly HashSet<Guid> _reserved = [];
+    private string _selectedFormat = "5v5";
+    private string? _currentFormat;
+    private string? _error;
+    private string? _success;
+    private bool _loading = true;
+    private bool _saving;
+
+    private bool CanGenerate => !string.IsNullOrWhiteSpace(_currentFormat) &&
+        string.Equals(_currentFormat, _selectedFormat, StringComparison.OrdinalIgnoreCase) &&
+        _slots.Count > 0;
+
+    private string FiveFormatClass => FormatClass("5v5");
+    private string ThreeFormatClass => FormatClass("3v3");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            GacPlannerPerformanceApiClient.PlannerContextResult context = await PlannerClient.GetContextAsync(AllyCode);
+            _currentFormat = context.Context?.Planner.Opponent.Format;
+            if (_currentFormat is "3v3" or "5v5")
+            {
+                _selectedFormat = _currentFormat;
+            }
+
+            await LoadAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _error = "La API no está disponible en este momento.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task ChangeToFiveAsync() => ChangeFormatAsync("5v5");
+
+    private Task ChangeToThreeAsync() => ChangeFormatAsync("3v3");
+
+    private async Task ChangeFormatAsync(string format)
+    {
+        if (_saving || string.Equals(format, _selectedFormat, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _selectedFormat = format;
+        _generation = null;
+        _success = null;
+        _error = null;
+        _loading = true;
+        try
+        {
+            await LoadAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido cargar la plantilla seleccionada.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _strategy = await StrategyClient.GetAsync(AllyCode, _selectedFormat);
+        _slots.Clear();
+        _reserved.Clear();
+        if (_strategy is null)
+        {
+            return;
+        }
+
+        _slots.AddRange(_strategy.Slots
+            .OrderBy(slot => slot.Position)
+            .Select(slot => new SlotDraft(Guid.NewGuid(), slot.Position, slot.Zone, slot.PinnedTeamPresetId)));
+        _reserved.UnionWith(_strategy.ReservedAttackPresetIds);
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            _strategy = await StrategyClient.SaveAsync(AllyCode, BuildSaveRequest());
+            _success = $"Plantilla {_selectedFormat} guardada.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se ha podido guardar la plantilla. Revisa que un mismo equipo no esté fijado en defensa y reservado para ataque.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private Task PreviewAsync() => GenerateAsync(apply: false);
+
+    private Task ApplyAsync() => GenerateAsync(apply: true);
+
+    private async Task GenerateAsync(bool apply)
+    {
+        if (!CanGenerate)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            _strategy = await StrategyClient.SaveAsync(AllyCode, BuildSaveRequest());
+            _generation = await StrategyClient.GenerateAsync(AllyCode, apply);
+            if (_generation?.Applied == true)
+            {
+                _success = $"Defensa {_generation.Format} generada y aplicada al plan de la ronda.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = apply
+                ? "No se ha podido aplicar la defensa automática."
+                : "No se ha podido generar la vista previa de defensa.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private GacDefenseStrategyApiClient.SaveStrategyRequest BuildSaveRequest() => new(
+        _selectedFormat,
+        [.. _slots.OrderBy(slot => slot.Position).Select((slot, index) =>
+            new GacDefenseStrategyApiClient.StrategySlotViewModel(
+                index + 1,
+                string.IsNullOrWhiteSpace(slot.Zone) ? "Sur frontal" : slot.Zone.Trim(),
+                slot.PinnedTeamPresetId))],
+        [.. _reserved]);
+
+    private void AddSlot()
+    {
+        int position = _slots.Count + 1;
+        _slots.Add(new SlotDraft(Guid.NewGuid(), position, "Sur frontal", null));
+        NormalizePositions();
+    }
+
+    private void RemoveSlot(SlotDraft slot)
+    {
+        _slots.Remove(slot);
+        NormalizePositions();
+    }
+
+    private void NormalizePositions()
+    {
+        for (int index = 0; index < _slots.Count; index++)
+        {
+            _slots[index].Position = index + 1;
+        }
+    }
+
+    private void SetZone(SlotDraft slot, string? zone) =>
+        slot.Zone = string.IsNullOrWhiteSpace(zone) ? "Sur frontal" : zone.Trim();
+
+    private void SetPinned(SlotDraft slot, string? value)
+    {
+        slot.PinnedTeamPresetId = Guid.TryParse(value, out Guid id) ? id : null;
+        if (slot.PinnedTeamPresetId is Guid pinned)
+        {
+            _reserved.Remove(pinned);
+            foreach (SlotDraft other in _slots.Where(item => item.Key != slot.Key && item.PinnedTeamPresetId == pinned))
+            {
+                other.PinnedTeamPresetId = null;
+            }
+        }
+    }
+
+    private void ToggleReserved(Guid id)
+    {
+        if (_reserved.Contains(id))
+        {
+            _reserved.Remove(id);
+        }
+        else
+        {
+            _reserved.Add(id);
+        }
+    }
+
+    private IEnumerable<GacDefenseStrategyApiClient.StrategyPresetViewModel> PresetsForSlot(SlotDraft slot)
+    {
+        if (_strategy is null)
+        {
+            return [];
+        }
+
+        bool fleet = slot.Zone.Contains("flota", StringComparison.OrdinalIgnoreCase) ||
+            slot.Zone.Contains("fleet", StringComparison.OrdinalIgnoreCase);
+        return _strategy.Presets
+            .Where(preset => preset.IsFleet == fleet)
+            .Where(preset => !_reserved.Contains(preset.Id) || slot.PinnedTeamPresetId == preset.Id)
+            .OrderBy(preset => preset.Use == "Defense" ? 0 : preset.Use == "Flexible" ? 1 : 2)
+            .ThenBy(preset => preset.Name, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private string FormatClass(string format) =>
+        string.Equals(format, _selectedFormat, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+
+    private static string PinnedValue(SlotDraft slot) => slot.PinnedTeamPresetId?.ToString() ?? string.Empty;
+
+    private static string FriendlyUse(string use) => use switch
+    {
+        "Defense" => "Defensa",
+        "Offense" => "Ataque",
+        "Flexible" => "Flexible",
+        _ => use
+    };
+
+    private sealed class SlotDraft(Guid key, int position, string zone, Guid? pinnedTeamPresetId)
+    {
+        public Guid Key { get; } = key;
+        public int Position { get; set; } = position;
+        public string Zone { get; set; } = zone;
+        public Guid? PinnedTeamPresetId { get; set; } = pinnedTeamPresetId;
+    }
+}
