@@ -24,6 +24,7 @@ internal sealed class CurrentGacScoutingService(
     IPlayerRosterService playerRosterService,
     IGacHistorySyncService historySyncService,
     IGacCounterStatisticsService counterStatisticsService,
+    IGacTelemetry gacTelemetry,
     IClock? clock = null) : ICurrentGacScoutingService
 {
     private const int MaxRounds = 200;
@@ -54,12 +55,12 @@ internal sealed class CurrentGacScoutingService(
         CurrentGacOpponentStatus finalStatus = CurrentGacOpponentStatus.OpponentUnavailable;
         string? telemetryFormat = formatOverride?.ToString();
         int warningCount = 0;
-        using Activity? activity = GacTelemetry.ActivitySource.StartActivity("gac.scouting.pipeline", ActivityKind.Internal);
+        using Activity? activity = gacTelemetry.ActivitySource.StartActivity("gac.scouting.pipeline", ActivityKind.Internal);
         activity?.SetTag("gac.ally_code", allyCode);
 
         try
         {
-            CurrentGacOpponentLookup lookup = await GacTelemetry.MeasurePhaseAsync(
+            CurrentGacOpponentLookup lookup = await gacTelemetry.MeasurePhaseAsync(
                 "opponent_lookup",
                 () => opponentSource.GetAsync(allyCode, formatOverride, cancellationToken),
                 telemetryFormat).ConfigureAwait(false);
@@ -81,7 +82,7 @@ internal sealed class CurrentGacScoutingService(
             int historyRoundLimit = Math.Clamp(maxRounds, 1, MaxRounds);
             var warnings = new ConcurrentQueue<string>();
 
-            Task<GacHistorySyncResult?> historySyncTask = GacTelemetry.MeasurePhaseAsync(
+            Task<GacHistorySyncResult?> historySyncTask = gacTelemetry.MeasurePhaseAsync(
                 "history_sync",
                 () => TryHistorySyncAsync(
                     opponent,
@@ -89,7 +90,7 @@ internal sealed class CurrentGacScoutingService(
                     warnings,
                     cancellationToken),
                 telemetryFormat);
-            Task<OpponentScoutingReport?> historicalScoutingTask = GacTelemetry.MeasurePhaseAsync(
+            Task<OpponentScoutingReport?> historicalScoutingTask = gacTelemetry.MeasurePhaseAsync(
                 "historical_scouting",
                 () => TryHistoricalScoutingAfterSyncAsync(
                     opponent,
@@ -98,7 +99,7 @@ internal sealed class CurrentGacScoutingService(
                     warnings,
                     cancellationToken),
                 telemetryFormat);
-            Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = GacTelemetry.MeasurePhaseAsync(
+            Task<IReadOnlyCollection<GacCounterStatistics>> counterStatisticsTask = gacTelemetry.MeasurePhaseAsync(
                 "counter_statistics",
                 () => TryCounterStatisticsAsync(
                     opponent.Format,
@@ -133,11 +134,11 @@ internal sealed class CurrentGacScoutingService(
             PlayerRosterContext opponentData = await opponentDataTask.ConfigureAwait(false);
             PlayerRosterContext playerData = await playerDataTask.ConfigureAwait(false);
 
-            CurrentOpponentRosterScouting? rosterScouting = GacTelemetry.MeasurePhase(
+            CurrentOpponentRosterScouting? rosterScouting = gacTelemetry.MeasurePhase(
                 "opponent_roster_analysis",
                 () => BuildRosterScouting(opponentData.Profile, opponentData.Snapshot),
                 telemetryFormat);
-            CurrentGacBattlePlan? battlePlan = GacTelemetry.MeasurePhase(
+            CurrentGacBattlePlan? battlePlan = gacTelemetry.MeasurePhase(
                 "battle_plan",
                 () => BuildBattlePlan(
                     opponent,
@@ -170,7 +171,7 @@ internal sealed class CurrentGacScoutingService(
         finally
         {
             total.Stop();
-            GacTelemetry.RecordPipeline(total.Elapsed, finalStatus, telemetryFormat, warningCount);
+            gacTelemetry.RecordPipeline(total.Elapsed, finalStatus, telemetryFormat, warningCount);
         }
     }
 
@@ -182,7 +183,7 @@ internal sealed class CurrentGacScoutingService(
         ConcurrentQueue<string> warnings,
         CancellationToken cancellationToken)
     {
-        PlayerProfile? profile = await GacTelemetry.MeasurePhaseAsync(
+        PlayerProfile? profile = await gacTelemetry.MeasurePhaseAsync(
             $"{role}_profile_refresh",
             () => RefreshOrFallbackAsync(
                 allyCode,
@@ -191,7 +192,7 @@ internal sealed class CurrentGacScoutingService(
                 cancellationToken),
             format).ConfigureAwait(false);
 
-        PlayerRosterSnapshot? snapshot = await GacTelemetry.MeasurePhaseAsync(
+        PlayerRosterSnapshot? snapshot = await gacTelemetry.MeasurePhaseAsync(
             $"{role}_roster_snapshot",
             () => TrySnapshotAsync(
                 allyCode,
