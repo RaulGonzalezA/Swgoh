@@ -38,6 +38,19 @@ public sealed class GacDefenseStrategyApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<GenerationViewModel>(cancellationToken);
     }
 
+    public async Task<SmartGenerationViewModel?> GenerateSmartAsync(
+        long allyCode,
+        bool apply,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.PostAsJsonAsync(
+            $"/api/v1/gac/players/{allyCode}/planner/strategy/generate-smart-defense",
+            new GenerateDefenseRequest(apply),
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SmartGenerationViewModel>(cancellationToken);
+    }
+
     public sealed record StrategyViewModel(
         string Format,
         IReadOnlyCollection<StrategySlotViewModel> Slots,
@@ -76,6 +89,35 @@ public sealed class GacDefenseStrategyApiClient(HttpClient httpClient)
         bool Pinned,
         bool IsFleet,
         long GalacticPower);
+
+    public sealed record SmartGenerationViewModel(
+        string Format,
+        bool Applied,
+        string IntelligenceMode,
+        int OpponentRoundsAnalyzed,
+        decimal? OpponentFullClearRate,
+        IReadOnlyCollection<SmartGeneratedAssignmentViewModel> Assignments,
+        IReadOnlyCollection<string> Warnings,
+        DateTimeOffset? PlanUpdatedAtUtc);
+
+    public sealed record SmartGeneratedAssignmentViewModel(
+        int Position,
+        string Zone,
+        Guid TeamPresetId,
+        string TeamName,
+        bool Pinned,
+        bool IsFleet,
+        long GalacticPower,
+        decimal Score,
+        decimal DefensiveValue,
+        decimal OffensiveOpportunityCost,
+        string Confidence,
+        bool ContainsGalacticLegend,
+        int OmicronCount,
+        int EligibleDatacronTier,
+        int OpponentSamples,
+        int PersonalSamples,
+        IReadOnlyCollection<string> Reasons);
 
     private sealed record GenerateDefenseRequest(bool Apply);
 }
