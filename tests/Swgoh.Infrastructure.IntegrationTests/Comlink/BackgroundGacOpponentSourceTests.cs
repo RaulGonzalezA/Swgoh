@@ -152,7 +152,7 @@ public sealed class BackgroundGacOpponentSourceTests
         }
     }
 
-    private sealed class DeferredSource : ICurrentGacOpponentSource
+    private sealed class DeferredSource : ILiveGacOpponentSource
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<CurrentGacOpponentLookup> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -168,7 +168,7 @@ public sealed class BackgroundGacOpponentSourceTests
         }
     }
 
-    private sealed class SequencedDeferredSource : ICurrentGacOpponentSource
+    private sealed class SequencedDeferredSource : ILiveGacOpponentSource
     {
         private readonly Channel<Invocation> invocations = Channel.CreateUnbounded<Invocation>();
         private int calls;
@@ -192,7 +192,7 @@ public sealed class BackgroundGacOpponentSourceTests
         public sealed record Invocation(TaskCompletionSource<CurrentGacOpponentLookup> Result);
     }
 
-    private sealed class ConcurrentDeferredSource : ICurrentGacOpponentSource
+    private sealed class ConcurrentDeferredSource : ILiveGacOpponentSource
     {
         private readonly Channel<Invocation> invocations = Channel.CreateUnbounded<Invocation>();
         private int calls;
