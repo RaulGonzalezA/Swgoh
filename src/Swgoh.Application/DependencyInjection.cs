@@ -40,6 +40,7 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<GacDefenseStrategyService>());
         services.AddScoped<IGacSmartDefenseService, GacSmartDefenseService>();
         services.AddScoped<IGacAttackPlanOptimizerService, GacAttackPlanOptimizerService>();
+        services.AddScoped<IGacJointRoundOptimizerService, GacJointRoundOptimizerService>();
         services.AddScoped<IGacAttackExecutionService, GacAttackExecutionService>();
         return services;
     }
