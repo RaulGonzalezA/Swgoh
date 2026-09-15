@@ -82,28 +82,25 @@ internal sealed class GacDefenseStrategyService(
     IGacPlannerService plannerService,
     IClock clock) : IGacDefenseStrategyService
 {
-    private static readonly string[] DefaultZones =
-    [
-        "Sur frontal",
-        "Norte frontal",
-        "Sur trasera",
-        "Norte trasera",
-        "Flota"
-    ];
-
     public async Task<GacDefenseStrategySnapshot> GetAsync(
         long allyCode,
         GacFormat format,
         CancellationToken cancellationToken = default)
     {
         ValidateFormat(format);
-        GacDefenseStrategyProfile profile = await repository
-            .FindAsync(allyCode, format, cancellationToken)
-            .ConfigureAwait(false)
-            ?? CreateDefaultProfile(allyCode, format);
         IReadOnlyCollection<GacTeamPreset> presets = await presetRepository
             .GetAsync(allyCode, format, cancellationToken)
             .ConfigureAwait(false);
+        GacDefenseStrategyProfile? stored = await repository
+            .FindAsync(allyCode, format, cancellationToken)
+            .ConfigureAwait(false);
+        GacLeague? league = await TryGetCurrentLeagueAsync(allyCode, format, cancellationToken).ConfigureAwait(false);
+        GacDefenseStrategyProfile profile = league is GacLeague currentLeague
+            ? ReconcileProfile(
+                stored ?? CreateDefaultProfile(allyCode, format, currentLeague),
+                currentLeague,
+                presets)
+            : stored ?? CreateDefaultProfile(allyCode, format, GacLeague.Carbonite);
 
         return new GacDefenseStrategySnapshot(profile, [.. presets.Select(ToSummary)]);
     }
@@ -161,6 +158,12 @@ internal sealed class GacDefenseStrategyService(
             [.. input.Slots.OrderBy(slot => slot.Position)],
             [.. reserved],
             clock.UtcNow);
+        GacLeague? league = await TryGetCurrentLeagueAsync(allyCode, input.Format, cancellationToken).ConfigureAwait(false);
+        if (league is GacLeague currentLeague)
+        {
+            profile = ReconcileProfile(profile, currentLeague, presets);
+        }
+
         await repository.UpsertAsync(profile, cancellationToken).ConfigureAwait(false);
         return new GacDefenseStrategySnapshot(profile, [.. presets.Select(ToSummary)]);
     }
@@ -180,10 +183,14 @@ internal sealed class GacDefenseStrategyService(
 
         GacPlannerState state = lookup.State;
         GacFormat format = state.Plan.Format;
-        GacDefenseStrategyProfile profile = await repository
+        IReadOnlyCollection<GacTeamPreset> rawPresets = await presetRepository
+            .GetAsync(allyCode, format, cancellationToken)
+            .ConfigureAwait(false);
+        GacDefenseStrategyProfile stored = await repository
             .FindAsync(allyCode, format, cancellationToken)
             .ConfigureAwait(false)
-            ?? CreateDefaultProfile(allyCode, format);
+            ?? CreateDefaultProfile(allyCode, format, state.Plan.League);
+        GacDefenseStrategyProfile profile = ReconcileProfile(stored, state.Plan.League, rawPresets);
 
         Generation generation = Generate(profile, state.Presets);
         if (!apply)
@@ -230,7 +237,7 @@ internal sealed class GacDefenseStrategyService(
         GacPlannerLookup saved = await plannerService
             .SaveCurrentAsync(
                 allyCode,
-                new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks),
+                new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks, state.Plan.Version),
                 cancellationToken)
             .ConfigureAwait(false);
         if (!saved.IsAvailable || saved.State is null)
@@ -329,12 +336,62 @@ internal sealed class GacDefenseStrategyService(
         return new Generation(assignments, warnings);
     }
 
-    private GacDefenseStrategyProfile CreateDefaultProfile(long allyCode, GacFormat format) => new(
+    private async Task<GacLeague?> TryGetCurrentLeagueAsync(
+        long allyCode,
+        GacFormat format,
+        CancellationToken cancellationToken)
+    {
+        GacPlannerLookup current = await plannerService.GetCurrentAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        return current.IsAvailable && current.State?.Plan.Format == format
+            ? current.State.Plan.League
+            : null;
+    }
+
+    private GacDefenseStrategyProfile CreateDefaultProfile(long allyCode, GacFormat format, GacLeague league) => new(
         allyCode,
         format,
-        [.. DefaultZones.Select((zone, index) => new GacDefenseTemplateSlot(index + 1, zone, null))],
+        [.. GacBoardLayouts.Get(league, format).Slots.Select(slot =>
+            new GacDefenseTemplateSlot(slot.Position, slot.Zone, null))],
         [],
         clock.UtcNow);
+
+    private static GacDefenseStrategyProfile ReconcileProfile(
+        GacDefenseStrategyProfile profile,
+        GacLeague league,
+        IReadOnlyCollection<GacTeamPreset> presets)
+    {
+        GacBoardLayout layout = GacBoardLayouts.Get(league, profile.Format);
+        Dictionary<Guid, GacTeamPreset> presetsById = presets.ToDictionary(item => item.Id);
+        var pendingPins = profile.Slots
+            .Where(slot => slot.PinnedTeamPresetId is not null)
+            .Select(slot => new PendingPin(slot.Zone, slot.PinnedTeamPresetId!.Value))
+            .Where(pin => presetsById.ContainsKey(pin.PresetId))
+            .ToList();
+        var slots = new List<GacDefenseTemplateSlot>(layout.TotalDefenseSlots);
+
+        foreach (GacBoardDefenseSlot layoutSlot in layout.Slots.OrderBy(slot => slot.Position))
+        {
+            int matchingIndex = pendingPins.FindIndex(pin =>
+                string.Equals(pin.Zone, layoutSlot.Zone, StringComparison.OrdinalIgnoreCase) &&
+                presetsById[pin.PresetId].Squad.IsFleet == layoutSlot.IsFleet);
+            if (matchingIndex < 0)
+            {
+                matchingIndex = pendingPins.FindIndex(pin =>
+                    presetsById[pin.PresetId].Squad.IsFleet == layoutSlot.IsFleet);
+            }
+
+            Guid? pinnedId = null;
+            if (matchingIndex >= 0)
+            {
+                pinnedId = pendingPins[matchingIndex].PresetId;
+                pendingPins.RemoveAt(matchingIndex);
+            }
+
+            slots.Add(new GacDefenseTemplateSlot(layoutSlot.Position, layoutSlot.Zone, pinnedId));
+        }
+
+        return profile with { Slots = slots };
+    }
 
     private static void ValidateSlots(IReadOnlyCollection<GacDefenseTemplateSlot> slots)
     {
@@ -403,4 +460,6 @@ internal sealed class GacDefenseStrategyService(
     internal sealed record Generation(
         IReadOnlyCollection<GacGeneratedDefenseAssignment> Assignments,
         IReadOnlyCollection<string> Warnings);
+
+    private sealed record PendingPin(string Zone, Guid PresetId);
 }
