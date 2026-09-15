@@ -53,8 +53,10 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             string personalNote = recommendation.PersonalSamples > 0
                 ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
                 : string.Empty;
-            string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
-                $"coste {recommendation.StrategicCost:0.#} (reserva {recommendation.OpportunityCost:0.#}); " +
+            string notes = $"Counter Engine 2.0: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
+                $"win estimado {recommendation.EstimatedWinProbability:0.#}%; riesgo {recommendation.Risk}; " +
+                $"timeout {recommendation.TimeoutRisk}; coste {recommendation.StrategicCost:0.#} " +
+                $"(piezas críticas {recommendation.CriticalPieceCost:0.#}); " +
                 $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
                 $"datacron {recommendation.DatacronStatus}.";
             retainedAttacks.Add(GacAttackAssignment.Create(
