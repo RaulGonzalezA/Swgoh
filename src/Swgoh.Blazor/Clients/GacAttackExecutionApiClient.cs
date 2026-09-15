@@ -43,7 +43,11 @@ public sealed class GacAttackExecutionApiClient(HttpClient httpClient)
         GacPlannerApiClient.PlannerViewModel Planner,
         GacPlannerApiClient.OptimizationViewModel? Optimization,
         ExecutedAttackViewModel Execution,
-        GacPlannerApiClient.OptimizationRecommendationViewModel? NextRecommendation);
+        GacPlannerApiClient.OptimizationRecommendationViewModel? NextRecommendation,
+        IReadOnlyCollection<string>? Warnings = null)
+    {
+        public IReadOnlyCollection<string> PostCommitWarnings => Warnings ?? [];
+    }
 
     public sealed record ExecutedAttackViewModel(
         Guid AttackId,
