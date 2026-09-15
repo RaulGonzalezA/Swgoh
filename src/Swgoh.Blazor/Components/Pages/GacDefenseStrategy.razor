@@ -17,8 +17,8 @@
 </div>
 
 <nav class="strategy-format-tabs" aria-label="Formato GAC">
-    <button type="button" class="@FormatClass("5v5")" @onclick="() => ChangeFormatAsync("5v5")">5v5</button>
-    <button type="button" class="@FormatClass("3v3")" @onclick="() => ChangeFormatAsync("3v3")">3v3</button>
+    <button type="button" class="@FiveFormatClass" @onclick="ChangeToFiveAsync">5v5</button>
+    <button type="button" class="@ThreeFormatClass" @onclick="ChangeToThreeAsync">3v3</button>
     @if (!string.IsNullOrWhiteSpace(_currentFormat))
     {
         <span>Ronda actual: <strong>@_currentFormat</strong></span>
@@ -103,7 +103,10 @@ else if (_strategy is not null)
                                 disabled="@pinned"
                                 @onclick="() => ToggleReserved(preset.Id)">
                             <span class="strategy-reserve-check">@(reserved ? "✓" : pinned ? "D" : "+")</span>
-                            <span><strong>@preset.Name</strong><small>@FriendlyUse(preset.Use) · @(preset.IsFleet ? "Flota" : _selectedFormat)@(pinned ? " · fijado en defensa" : string.Empty)</small></span>
+                            <span>
+                                <strong>@preset.Name</strong>
+                                <small>@FriendlyUse(preset.Use) · @(preset.IsFleet ? "Flota" : _selectedFormat)@(pinned ? " · fijado en defensa" : string.Empty)</small>
+                            </span>
                         </button>
                     }
                 </div>
@@ -181,6 +184,9 @@ else if (_strategy is not null)
         string.Equals(_currentFormat, _selectedFormat, StringComparison.OrdinalIgnoreCase) &&
         _slots.Count > 0;
 
+    private string FiveFormatClass => FormatClass("5v5");
+    private string ThreeFormatClass => FormatClass("3v3");
+
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
@@ -205,6 +211,10 @@ else if (_strategy is not null)
             _loading = false;
         }
     }
+
+    private Task ChangeToFiveAsync() => ChangeFormatAsync("5v5");
+
+    private Task ChangeToThreeAsync() => ChangeFormatAsync("3v3");
 
     private async Task ChangeFormatAsync(string format)
     {
