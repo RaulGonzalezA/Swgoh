@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Swgoh.Application.Caching;
@@ -47,7 +49,7 @@ public sealed class BoundedMemoryCache<TKey, TValue> : IDisposable
         set => Set(key, value);
     }
 
-    public bool TryGetValue(TKey key, out TValue? value)
+    public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value)
     {
         if (cache.TryGetValue(key, out object? cached) && cached is TValue typed)
         {
@@ -87,7 +89,7 @@ public sealed class BoundedMemoryCache<TKey, TValue> : IDisposable
         cache.Set(key, value, options);
     }
 
-    public bool TryRemove(TKey key, out TValue? value)
+    public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value)
     {
         bool found = TryGetValue(key, out value);
         cache.Remove(key);
