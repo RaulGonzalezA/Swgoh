@@ -161,7 +161,33 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         decimal? KnownAverageBanners,
         IReadOnlyCollection<Guid> UncoveredDefenseIds,
         IReadOnlyCollection<OptimizationRecommendationViewModel> Recommendations,
-        bool SearchLimitReached);
+        bool SearchLimitReached,
+        IReadOnlyCollection<CounterDefenseAnalysisViewModel> CounterAnalyses);
+
+    public sealed record CounterDefenseAnalysisViewModel(
+        Guid DefenseId,
+        string DefenseName,
+        string Zone,
+        IReadOnlyCollection<CounterCandidateAnalysisViewModel> Candidates);
+
+    public sealed record CounterCandidateAnalysisViewModel(
+        int Rank,
+        Guid TeamPresetId,
+        string TeamName,
+        decimal Score,
+        decimal EstimatedWinProbability,
+        decimal? ExpectedBanners,
+        string Risk,
+        string TimeoutRisk,
+        decimal StrategicCost,
+        decimal CriticalPieceCost,
+        string Evidence,
+        string Confidence,
+        string Rationale,
+        string DatacronStatus,
+        decimal TacticalAdjustment,
+        decimal PersonalAdjustment,
+        int FutureDefensesAtRisk);
 
     public sealed record OptimizationRecommendationViewModel(
         Guid DefenseId,
@@ -196,7 +222,11 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         decimal? PersonalOneShotRate,
         decimal? PersonalAverageBanners,
         string PersonalScope,
-        string PersonalRationale);
+        string PersonalRationale,
+        decimal EstimatedWinProbability,
+        string Risk,
+        string TimeoutRisk,
+        decimal CriticalPieceCost);
 
     public sealed record PlannerViewModel(
         PlannerOpponentViewModel Opponent,
