@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using Swgoh.Application.Caching;
 using Swgoh.Application.Gac;
 using Swgoh.Domain.Gac;
 
@@ -13,10 +14,21 @@ internal sealed class BackgroundGacOpponentSource(
     ICurrentGacOpponentSource source,
     ILogger<BackgroundGacOpponentSource> logger) : BackgroundService, ICurrentGacOpponentSource
 {
+    private const long EntryCacheSizeLimit = 512;
+    private const long GenerationCacheSizeLimit = 2_048;
+    private static readonly TimeSpan GenerationCacheDuration = TimeSpan.FromHours(2);
+    private static readonly TimeSpan PendingEntryDuration = TimeSpan.FromMinutes(7);
+
     private readonly object gate = new();
-    private readonly Dictionary<(long AllyCode, GacFormat? Format), Entry> entries = [];
-    private readonly Dictionary<long, long> generations = [];
+    private readonly BoundedMemoryCache<(long AllyCode, GacFormat? Format), Entry> entries = new(
+        EntryCacheSizeLimit,
+        absoluteExpirationSelector: static entry => entry.ExpiresAt);
+    private readonly BoundedMemoryCache<long, long> generations = new(
+        GenerationCacheSizeLimit,
+        defaultLifetime: GenerationCacheDuration);
     private readonly Channel<LookupWorkItem> queue = Channel.CreateBounded<LookupWorkItem>(32);
+    private long generationSequence;
+    private int disposed;
 
     public Task<CurrentGacOpponentLookup> GetAsync(long allyCode, GacFormat? formatOverride, CancellationToken cancellationToken = default)
     {
@@ -29,11 +41,6 @@ internal sealed class BackgroundGacOpponentSource(
         Stopwatch stopwatch = Stopwatch.StartNew();
         lock (gate)
         {
-            foreach (var expired in entries.Where(item => item.Value.ExpiresAt <= DateTimeOffset.UtcNow).Select(item => item.Key).ToArray())
-            {
-                entries.Remove(expired);
-            }
-
             var key = (allyCode, formatOverride);
             if (entries.TryGetValue(key, out Entry? existing))
             {
@@ -42,7 +49,7 @@ internal sealed class BackgroundGacOpponentSource(
                 return Task.FromResult(existing.Result);
             }
 
-            long generation = generations.GetValueOrDefault(allyCode);
+            long generation = GetGeneration(allyCode);
             var pending = CurrentGacOpponentLookup.Unavailable(CurrentGacOpponentStatus.Pending, "Buscando rival de Gran Arena en segundo plano…");
             if (!queue.Writer.TryWrite(new LookupWorkItem(key, generation)))
             {
@@ -54,7 +61,7 @@ internal sealed class BackgroundGacOpponentSource(
                 return Task.FromResult(unavailable);
             }
 
-            entries[key] = new Entry(pending, DateTimeOffset.MaxValue);
+            entries[key] = new Entry(pending, DateTimeOffset.UtcNow.Add(PendingEntryDuration));
             stopwatch.Stop();
             GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, pending.Status, cacheHit: false, "background-queued");
             return Task.FromResult(pending);
@@ -65,12 +72,23 @@ internal sealed class BackgroundGacOpponentSource(
     {
         lock (gate)
         {
-            generations[allyCode] = generations.GetValueOrDefault(allyCode) + 1;
+            generations[allyCode] = ++generationSequence;
             foreach (var key in entries.Keys.Where(key => key.AllyCode == allyCode).ToArray())
             {
-                entries.Remove(key);
+                entries.TryRemove(key, out _);
             }
         }
+    }
+
+    public override void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) == 0)
+        {
+            entries.Dispose();
+            generations.Dispose();
+        }
+
+        base.Dispose();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -111,7 +129,7 @@ internal sealed class BackgroundGacOpponentSource(
 
             lock (gate)
             {
-                long currentGeneration = generations.GetValueOrDefault(key.AllyCode);
+                long currentGeneration = GetGeneration(key.AllyCode);
                 if (currentGeneration != workItem.Generation)
                 {
                     logger.LogDebug(
@@ -125,6 +143,18 @@ internal sealed class BackgroundGacOpponentSource(
                 entries[key] = new Entry(result, DateTimeOffset.UtcNow.AddMinutes(result.Status == CurrentGacOpponentStatus.Found ? 5 : 1));
             }
         }
+    }
+
+    private long GetGeneration(long allyCode)
+    {
+        if (generations.TryGetValue(allyCode, out long generation))
+        {
+            return generation;
+        }
+
+        generation = ++generationSequence;
+        generations[allyCode] = generation;
+        return generation;
     }
 
     private sealed record Entry(CurrentGacOpponentLookup Result, DateTimeOffset ExpiresAt);
