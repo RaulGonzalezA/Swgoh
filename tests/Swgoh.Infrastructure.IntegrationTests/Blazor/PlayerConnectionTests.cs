@@ -60,7 +60,7 @@ public sealed class PlayerConnectionTests
         Assert.Equal(987654321L, session.AllyCode);
     }
 
-    private sealed class PlayerHandler(bool exists, HttpStatusCode importStatus = HttpStatusCode.OK) : HttpMessageHandler
+    private sealed class PlayerHandler(bool exists, HttpStatusCode importStatus = HttpStatusCode.NoContent) : HttpMessageHandler
     {
         public int Imports { get; private set; }
 
@@ -71,7 +71,7 @@ public sealed class PlayerConnectionTests
             {
                 Assert.Equal("/api/v1/players/123456789/refresh", request.RequestUri!.AbsolutePath);
                 Imports++;
-                exists = importStatus == HttpStatusCode.OK;
+                exists = importStatus is HttpStatusCode.OK or HttpStatusCode.NoContent;
                 return Task.FromResult(new HttpResponseMessage(importStatus));
             }
 
@@ -80,7 +80,7 @@ public sealed class PlayerConnectionTests
                 {
                     Content = JsonContent.Create(new PlayerApiClient.PlayerViewModel(
                         123456789, "test", "Test player", null, 85, 1000,
-                        DateTimeOffset.UnixEpoch, 1))
+                        DateTimeOffset.UnixEpoch, 1, DatacronCount: 2))
                 }
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
         }
