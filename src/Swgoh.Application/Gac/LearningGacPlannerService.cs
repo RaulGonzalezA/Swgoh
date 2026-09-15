@@ -112,6 +112,11 @@ internal sealed class LearningGacPlannerService(
                 origin: null,
                 cancellationToken)
             .ConfigureAwait(false);
+        GacPlannerState lifecycleState = lookup.State with { Plan = plan };
+        await generatedTeamLifecycleService
+            .PruneUnreferencedAsync(plan.PlayerAllyCode, lifecycleState, cancellationToken)
+            .ConfigureAwait(false);
+
         GacTeamPresetDetails[] reusablePresets =
         [
             .. lookup.State.Presets.Where(preset => !generatedPresetIds.Contains(preset.Id))
