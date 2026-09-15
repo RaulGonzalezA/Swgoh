@@ -30,6 +30,7 @@ internal sealed class GacRosterDefenseCandidateService(
     private const int CandidateBuffer = 2;
     private const int MaxSquadDefinitions = 200;
     private const int MaxFleetMembers = 7;
+    private static readonly TimeSpan MaterializationCleanupTimeout = TimeSpan.FromSeconds(10);
 
     public async Task<GacRosterDefenseCandidateSet> BuildAsync(
         long allyCode,
@@ -159,27 +160,35 @@ internal sealed class GacRosterDefenseCandidateService(
         var idMap = new Dictionary<Guid, Guid>();
         var created = new List<Guid>();
 
-        foreach (Guid virtualId in assignments
-                     .Select(item => item.TeamPresetId)
-                     .Distinct()
-                     .Where(candidates.GeneratedById.ContainsKey))
+        try
         {
-            GacTeamPresetDetails candidate = candidates.GeneratedById[virtualId];
-            GacTeamPresetDetails persisted = await plannerService.CreatePresetAsync(
-                allyCode,
-                new SaveGacTeamPreset(
-                    candidate.Name,
-                    format,
-                    GacPlannerTeamUse.Defense,
-                    candidate.Squad.Leader.DefinitionId,
-                    [.. candidate.Squad.Members.Select(unit => unit.DefinitionId)],
-                    candidate.Squad.IsFleet),
-                cancellationToken).ConfigureAwait(false);
-            idMap[virtualId] = persisted.Id;
-            created.Add(persisted.Id);
-        }
+            foreach (Guid virtualId in assignments
+                         .Select(item => item.TeamPresetId)
+                         .Distinct()
+                         .Where(candidates.GeneratedById.ContainsKey))
+            {
+                GacTeamPresetDetails candidate = candidates.GeneratedById[virtualId];
+                GacTeamPresetDetails persisted = await plannerService.CreatePresetAsync(
+                    allyCode,
+                    new SaveGacTeamPreset(
+                        candidate.Name,
+                        format,
+                        GacPlannerTeamUse.Defense,
+                        candidate.Squad.Leader.DefinitionId,
+                        [.. candidate.Squad.Members.Select(unit => unit.DefinitionId)],
+                        candidate.Squad.IsFleet),
+                    cancellationToken).ConfigureAwait(false);
+                idMap[virtualId] = persisted.Id;
+                created.Add(persisted.Id);
+            }
 
-        return new GacGeneratedPresetMaterialization(idMap, created);
+            return new GacGeneratedPresetMaterialization(idMap, created);
+        }
+        catch
+        {
+            await RollbackMaterializationAsync(plannerService, allyCode, created).ConfigureAwait(false);
+            throw;
+        }
     }
 
     public static GacSmartDefenseAssignment Remap(
@@ -192,18 +201,30 @@ internal sealed class GacRosterDefenseCandidateService(
     public static async Task RollbackMaterializationAsync(
         IGacPlannerService plannerService,
         long allyCode,
-        IReadOnlyCollection<Guid> createdPresetIds,
-        CancellationToken cancellationToken)
+        IReadOnlyCollection<Guid> createdPresetIds)
     {
+        ArgumentNullException.ThrowIfNull(plannerService);
+        if (createdPresetIds.Count == 0)
+        {
+            return;
+        }
+
+        using var cleanupSource = new CancellationTokenSource(MaterializationCleanupTimeout);
         foreach (Guid id in createdPresetIds.Reverse())
         {
             try
             {
-                await plannerService.DeletePresetAsync(allyCode, id, cancellationToken).ConfigureAwait(false);
+                await plannerService
+                    .DeletePresetAsync(allyCode, id, cleanupSource.Token)
+                    .ConfigureAwait(false);
             }
-            catch (ArgumentException)
+            catch (OperationCanceledException) when (cleanupSource.IsCancellationRequested)
             {
-                // Best effort cleanup after a failed apply.
+                break;
+            }
+            catch (Exception)
+            {
+                // Best effort compensation must not hide the original materialization/save failure.
             }
         }
     }

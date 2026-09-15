@@ -106,7 +106,6 @@ internal sealed class RosterAwareGacSmartDefenseService(
                 cancellationToken).ConfigureAwait(false);
             if (!saved.IsAvailable || saved.State is null)
             {
-                await RollbackAsync(allyCode, materialization, cancellationToken).ConfigureAwait(false);
                 throw new InvalidOperationException(saved.Message ?? "The smart defense could not be applied.");
             }
 
@@ -119,7 +118,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
         }
         catch
         {
-            await RollbackAsync(allyCode, materialization, cancellationToken).ConfigureAwait(false);
+            await RollbackAsync(allyCode, materialization).ConfigureAwait(false);
             throw;
         }
     }
@@ -167,22 +166,13 @@ internal sealed class RosterAwareGacSmartDefenseService(
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task RollbackAsync(
+    private Task RollbackAsync(
         long allyCode,
-        GacGeneratedPresetMaterialization materialization,
-        CancellationToken cancellationToken)
-    {
-        if (materialization.CreatedPresetIds.Count == 0)
-        {
-            return;
-        }
-
-        await GacRosterDefenseCandidateService.RollbackMaterializationAsync(
+        GacGeneratedPresetMaterialization materialization) =>
+        GacRosterDefenseCandidateService.RollbackMaterializationAsync(
             plannerService,
             allyCode,
-            materialization.CreatedPresetIds,
-            cancellationToken).ConfigureAwait(false);
-    }
+            materialization.CreatedPresetIds);
 
     private static GacSmartDefenseGenerationResult ToResult(
         GacFormat format,
