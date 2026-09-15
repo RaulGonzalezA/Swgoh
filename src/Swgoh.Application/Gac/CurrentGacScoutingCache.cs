@@ -92,7 +92,7 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache, IDispo
         CurrentGacScoutingCacheKey key,
         out CurrentGacScoutingResult? result)
     {
-        if (cache.TryGetValue(key, out CacheEntry? entry))
+        if (cache.TryGetValue(key, out CacheEntry? entry) && entry is not null)
         {
             result = entry.Result;
             return true;
