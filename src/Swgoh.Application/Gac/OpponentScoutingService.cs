@@ -289,10 +289,8 @@ internal sealed class OpponentScoutingService(
 
     private static void ValidateAllyCode(long allyCode)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
     }
 
     private sealed record DefenseObservation(string RoundId, GacDefensePlacement Placement);
