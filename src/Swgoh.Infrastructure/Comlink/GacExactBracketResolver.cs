@@ -189,9 +189,10 @@ internal sealed class GacExactBracketResolver(IComlinkGacClient client)
         GacBracketParticipant participant,
         CancellationToken cancellationToken)
     {
-        if (participant.AllyCode is long allyCode && GacBracketParser.IsValidAllyCode(allyCode))
+        if (participant.AllyCode is long participantAllyCode &&
+            GacBracketParser.IsValidAllyCode(participantAllyCode))
         {
-            return new OpponentProfile(allyCode, participant.Name, participant.PlayerId);
+            return new OpponentProfile(participantAllyCode, participant.Name, participant.PlayerId);
         }
 
         if (string.IsNullOrWhiteSpace(participant.PlayerId))
@@ -202,14 +203,14 @@ internal sealed class GacExactBracketResolver(IComlinkGacClient client)
         using JsonDocument profile = await client
             .GetPlayerByIdAsync(participant.PlayerId, cancellationToken)
             .ConfigureAwait(false);
-        long? allyCode = GacBracketParser.ReadAllyCode(profile.RootElement);
-        if (allyCode is null || !GacBracketParser.IsValidAllyCode(allyCode.Value))
+        long? resolvedAllyCode = GacBracketParser.ReadAllyCode(profile.RootElement);
+        if (resolvedAllyCode is null || !GacBracketParser.IsValidAllyCode(resolvedAllyCode.Value))
         {
             return null;
         }
 
         return new OpponentProfile(
-            allyCode.Value,
+            resolvedAllyCode.Value,
             GacBracketParser.ReadPlayerName(profile.RootElement, participant.Name),
             GacBracketParser.ReadPlayerId(profile.RootElement) ?? participant.PlayerId);
     }
