@@ -20,6 +20,7 @@ builder.Services.AddHttpClient<GacApiClient>(client => client.BaseAddress = new 
 builder.Services.AddHttpClient<GacScoutingCacheApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<GacPlannerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<GacPlannerPerformanceApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
+builder.Services.AddHttpClient<GacDefenseStrategyApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<GacAttackExecutionApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
