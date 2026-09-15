@@ -1,0 +1,134 @@
+@using Microsoft.AspNetCore.Components
+@using Swgoh.Blazor.Clients
+
+@if (Optimization is not null)
+{
+    <div class="conquest-optimization-meta">
+        <span><strong>@Optimization.PendingFeats</strong> hazañas pendientes</span>
+        <span><strong>@Optimization.CandidateCharacters</strong> candidatos con stamina</span>
+        <span><strong>@Optimization.Recommendations.Count</strong> equipos propuestos</span>
+        <span>coste <strong>@Optimization.StaminaCostPerBattle%</strong></span>
+        <span>reserva <strong>@Optimization.ReserveFloorPercent%</strong></span>
+        <span>discos <strong>@Optimization.DiskCapacityLimit cap</strong></span>
+        @if (Optimization.UncoveredFeatIds.Count > 0)
+        {
+            <span class="warning"><strong>@Optimization.UncoveredFeatIds.Count</strong> sin cubrir</span>
+        }
+    </div>
+
+    @if (Optimization.Recommendations.Count == 0)
+    {
+        <div class="conquest-empty"><strong>No hay una combinación válida todavía.</strong><p>Revisa las reglas, la stamina disponible o refresca el roster.</p></div>
+    }
+    else
+    {
+        <div class="conquest-team-list">
+            @foreach (ConquestApiClient.TeamViewModel recommendation in Optimization.Recommendations)
+            {
+                <article class="conquest-team-card">
+                    <div class="conquest-team-rank">#@recommendation.Rank</div>
+                    <div class="conquest-team-content">
+                        <div class="conquest-team-heading">
+                            <div>
+                                <h3>@recommendation.AdvancesFeats.Count hazaña(s) a la vez</h3>
+                                <p>@recommendation.Rationale</p>
+                            </div>
+                            <div class="conquest-team-score">
+                                <strong>@recommendation.Score.ToString("0.#")</strong>
+                                <span>score</span>
+                            </div>
+                        </div>
+
+                        <div class="rich-squad" aria-label="Equipo recomendado">
+                            @{ bool isLeader = true; }
+                            @foreach (ConquestApiClient.UnitViewModel unit in recommendation.Team)
+                            {
+                                PlayerApiClient.RosterUnitViewModel? rosterUnit = FindRosterUnit(unit.DefinitionId);
+                                <div class="conquest-stamina-portrait">
+                                    <RichUnitPortrait Name="@unit.Name"
+                                                      ThumbnailName="@unit.ThumbnailName"
+                                                      RelicTier="@unit.RelicTier"
+                                                      Speed="@(unit.Speed ?? rosterUnit?.Stats?.Speed)"
+                                                      EquippedMods="@(rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount)"
+                                                      SixDotMods="@rosterUnit?.Mods?.SixDotCount"
+                                                      ModSpeedBonus="@rosterUnit?.Mods?.SpeedBonus"
+                                                      IsLeader="@isLeader" />
+                                    <span class="conquest-stamina-badge @StaminaCss(unit.CurrentStamina)">@unit.CurrentStamina% → @unit.ExpectedPostBattleStamina%</span>
+                                </div>
+                                isLeader = false;
+                            }
+                        </div>
+
+                        @if (recommendation.DiskLoadout is not null)
+                        {
+                            <div class="conquest-disk-recommendation">
+                                <div><span class="section-kicker">Preset recomendado</span><strong>@recommendation.DiskLoadout.LoadoutName</strong><small>@recommendation.DiskLoadout.CapacityUsed / @recommendation.DiskLoadout.CapacityLimit cap · bonus @recommendation.DiskLoadout.PlannerBonus.ToString("0.#")</small></div>
+                                <div class="conquest-disk-recommendation-chips">
+                                    @foreach (ConquestApiClient.DataDiskViewModel disk in recommendation.DiskLoadout.Disks)
+                                    {
+                                        <span>@disk.Name · @disk.CapacityCost</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="conquest-visual-meta">
+                            <span>Stamina media <strong>@recommendation.AverageStamina.ToString("0")% → @recommendation.ExpectedPostBattleAverageStamina.ToString("0")%</strong></span>
+                            <span>Coste de oportunidad <strong>@recommendation.StaminaOpportunityCost.ToString("0.#")</strong></span>
+                            @if (recommendation.AverageSpeed is decimal averageSpeed)
+                            {
+                                <span>Velocidad media <strong>@averageSpeed.ToString("0")</strong></span>
+                            }
+                            @if (recommendation.ReserveRiskUnits > 0)
+                            {
+                                <span class="rich-team-warning">⚠ @recommendation.ReserveRiskUnits unidad(es) bajo reserva tras la batalla</span>
+                            }
+                            @if (IncompleteModCount(recommendation) > 0)
+                            {
+                                <span class="rich-team-warning">⚠ @IncompleteModCount(recommendation) unidad(es) con mods incompletos</span>
+                            }
+                            <span class="rich-team-warning">DC? Datacron no evaluado: verifica antes del combate</span>
+                        </div>
+
+                        <div class="conquest-contributions">
+                            @foreach (ConquestApiClient.ContributionViewModel contribution in recommendation.AdvancesFeats)
+                            {
+                                <span>
+                                    <strong>@contribution.FeatName</strong>
+                                    +@contribution.ExpectedProgress · valor @contribution.PointValueThisBattle.ToString("0.##") pts/batalla
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public ConquestApiClient.OptimizationViewModel? Optimization { get; set; }
+
+    [Parameter]
+    public IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> Roster { get; set; } = [];
+
+    private PlayerApiClient.RosterUnitViewModel? FindRosterUnit(string definitionId) =>
+        Roster.FirstOrDefault(unit => string.Equals(unit.DefinitionId, definitionId, StringComparison.OrdinalIgnoreCase));
+
+    private int IncompleteModCount(ConquestApiClient.TeamViewModel recommendation) =>
+        recommendation.Team.Count(unit =>
+        {
+            PlayerApiClient.RosterUnitViewModel? rosterUnit = FindRosterUnit(unit.DefinitionId);
+            int? equipped = rosterUnit?.Mods?.EquippedCount ?? rosterUnit?.EquippedModCount;
+            return equipped is < 6;
+        });
+
+    private static string StaminaCss(int stamina) => stamina switch
+    {
+        >= 80 => "high",
+        >= 60 => "medium",
+        >= 40 => "low",
+        _ => "critical"
+    };
+}
