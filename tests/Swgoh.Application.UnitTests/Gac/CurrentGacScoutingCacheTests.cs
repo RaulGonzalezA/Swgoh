@@ -19,10 +19,10 @@ public sealed class CurrentGacScoutingCacheTests
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int executions = 0;
 
-        async Task<CurrentGacScoutingResult> Factory()
+        async Task<CurrentGacScoutingResult> Factory(CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref executions);
-            await release.Task;
+            await release.Task.WaitAsync(cancellationToken);
             return expected;
         }
 
@@ -48,12 +48,12 @@ public sealed class CurrentGacScoutingCacheTests
         CurrentGacScoutingResult expected = CreateResult();
         int executions = 0;
 
-        CurrentGacScoutingResult first = await cache.GetOrCreateAsync(key, () =>
+        CurrentGacScoutingResult first = await cache.GetOrCreateAsync(key, _ =>
         {
             executions++;
             return Task.FromResult(expected);
         });
-        CurrentGacScoutingResult second = await cache.GetOrCreateAsync(key, () =>
+        CurrentGacScoutingResult second = await cache.GetOrCreateAsync(key, _ =>
         {
             executions++;
             return Task.FromResult(CreateResult());
@@ -65,12 +65,84 @@ public sealed class CurrentGacScoutingCacheTests
     }
 
     [Fact]
+    public async Task GetOrCreateAsync_WhenCallerCancels_KeepsSharedOperationForOtherCallers()
+    {
+        var cache = new CurrentGacScoutingCache(TimeSpan.FromSeconds(5));
+        CurrentGacScoutingCacheKey key = CreateKey(cache);
+        CurrentGacScoutingResult expected = CreateResult();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int executions = 0;
+        bool sharedTokenCancelled = false;
+
+        async Task<CurrentGacScoutingResult> Factory(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref executions);
+            started.TrySetResult();
+            try
+            {
+                await release.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                sharedTokenCancelled = true;
+                throw;
+            }
+
+            return expected;
+        }
+
+        using var callerCancellation = new CancellationTokenSource();
+        Task<CurrentGacScoutingResult> first = cache.GetOrCreateAsync(key, Factory, callerCancellation.Token);
+        await started.Task;
+
+        callerCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+
+        Task<CurrentGacScoutingResult> second = cache.GetOrCreateAsync(key, Factory);
+        release.SetResult();
+        CurrentGacScoutingResult result = await second;
+
+        Assert.Same(expected, result);
+        Assert.Equal(1, executions);
+        Assert.False(sharedTokenCancelled);
+    }
+
+    [Fact]
+    public async Task GetOrCreateAsync_WhenSharedOperationTimesOut_CancelsFactoryAndAllowsRetry()
+    {
+        var cache = new CurrentGacScoutingCache(TimeSpan.FromMilliseconds(100));
+        CurrentGacScoutingCacheKey key = CreateKey(cache);
+        CurrentGacScoutingResult expected = CreateResult();
+        int executions = 0;
+
+        async Task<CurrentGacScoutingResult> TimeoutFactory(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref executions);
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return expected;
+        }
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            cache.GetOrCreateAsync(key, TimeoutFactory));
+
+        CurrentGacScoutingResult retried = await cache.GetOrCreateAsync(key, _ =>
+        {
+            Interlocked.Increment(ref executions);
+            return Task.FromResult(expected);
+        });
+
+        Assert.Same(expected, retried);
+        Assert.Equal(2, executions);
+    }
+
+    [Fact]
     public async Task TryGet_WhenPlayerVersionChanges_DoesNotReturnPreviousScouting()
     {
         var cache = new CurrentGacScoutingCache();
         CurrentGacScoutingCacheKey originalKey = CreateKey(cache);
         CurrentGacScoutingResult expected = CreateResult();
-        await cache.GetOrCreateAsync(originalKey, () => Task.FromResult(expected));
+        await cache.GetOrCreateAsync(originalKey, _ => Task.FromResult(expected));
 
         CurrentGacScoutingCacheKey refreshedKey = originalKey with
         {
@@ -90,7 +162,7 @@ public sealed class CurrentGacScoutingCacheTests
         CurrentGacScoutingResult expected = CreateResult();
         CurrentGacScoutingCacheKey refreshedKey = default;
 
-        CurrentGacScoutingResult result = await cache.GetOrCreateAsync(originalKey, () =>
+        CurrentGacScoutingResult result = await cache.GetOrCreateAsync(originalKey, _ =>
         {
             cache.Invalidate(originalKey.AllyCode);
             refreshedKey = originalKey with
