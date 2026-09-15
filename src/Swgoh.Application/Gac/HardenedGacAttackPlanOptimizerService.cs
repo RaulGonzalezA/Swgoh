@@ -34,48 +34,68 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
         cancellationToken.ThrowIfCancellationRequested();
         GacPlannerState state = preview.State;
         GacAttackOptimizationResult optimization = preview.Optimization;
-        GacRoundPlan plan = await planRepository
-            .FindByIdAsync(state.Plan.Id, cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The current GAC round plan could not be loaded for optimization.");
-
-        List<GacAttackAssignment> retainedAttacks = mode == GacAttackOptimizationMode.RebuildPlanned
-            ? [.. plan.Attacks.Where(attack => attack.Status != GacAttackPlanStatus.Planned)]
-            : [.. plan.Attacks];
-
-        foreach (GacAttackOptimizationRecommendation recommendation in optimization.Recommendations)
-        {
-            int attempt = retainedAttacks
-                .Where(attack => attack.DefenseId == recommendation.DefenseId)
-                .Select(attack => attack.Attempt)
-                .DefaultIfEmpty(0)
-                .Max() + 1;
-            string personalNote = recommendation.PersonalSamples > 0
-                ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
-                : string.Empty;
-            string notes = $"Counter Engine 2.0: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
-                $"win estimado {recommendation.EstimatedWinProbability:0.#}%; riesgo {recommendation.Risk}; " +
-                $"timeout {recommendation.TimeoutRisk}; coste {recommendation.StrategicCost:0.#} " +
-                $"(piezas críticas {recommendation.CriticalPieceCost:0.#}); " +
-                $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
-                $"datacron {recommendation.DatacronStatus}.";
-            retainedAttacks.Add(GacAttackAssignment.Create(
-                Guid.NewGuid(),
-                recommendation.DefenseId,
-                recommendation.TeamPresetId,
-                attempt,
-                GacAttackPlanStatus.Planned,
-                notes));
-        }
-
-        plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
-        bool saved = await planRepository
-            .TrySaveAsync(plan, state.Plan.Version, cancellationToken)
+        GacAttackPresetMaterialization materialization = await GacAttackGeneratedPresetMaterializer
+            .MaterializeAsync(
+                plannerService,
+                allyCode,
+                state.Plan.Format,
+                optimization,
+                cancellationToken)
             .ConfigureAwait(false);
-        if (!saved)
+        optimization = GacAttackGeneratedPresetMaterializer.Remap(optimization, materialization.IdMap);
+
+        try
         {
-            throw new GacPlannerConcurrencyException(
-                "The GAC plan changed while the attack optimizer was running. Recalculate before applying the result.");
+            GacRoundPlan plan = await planRepository
+                .FindByIdAsync(state.Plan.Id, cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The current GAC round plan could not be loaded for optimization.");
+
+            List<GacAttackAssignment> retainedAttacks = mode == GacAttackOptimizationMode.RebuildPlanned
+                ? [.. plan.Attacks.Where(attack => attack.Status != GacAttackPlanStatus.Planned)]
+                : [.. plan.Attacks];
+
+            foreach (GacAttackOptimizationRecommendation recommendation in optimization.Recommendations)
+            {
+                int attempt = retainedAttacks
+                    .Where(attack => attack.DefenseId == recommendation.DefenseId)
+                    .Select(attack => attack.Attempt)
+                    .DefaultIfEmpty(0)
+                    .Max() + 1;
+                string personalNote = recommendation.PersonalSamples > 0
+                    ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
+                    : string.Empty;
+                string notes = $"Counter Engine 2.0: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
+                    $"win estimado {recommendation.EstimatedWinProbability:0.#}%; riesgo {recommendation.Risk}; " +
+                    $"timeout {recommendation.TimeoutRisk}; coste {recommendation.StrategicCost:0.#} " +
+                    $"(piezas críticas {recommendation.CriticalPieceCost:0.#}); " +
+                    $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
+                    $"datacron {recommendation.DatacronStatus}.";
+                retainedAttacks.Add(GacAttackAssignment.Create(
+                    Guid.NewGuid(),
+                    recommendation.DefenseId,
+                    recommendation.TeamPresetId,
+                    attempt,
+                    GacAttackPlanStatus.Planned,
+                    notes));
+            }
+
+            plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
+            bool saved = await planRepository
+                .TrySaveAsync(plan, state.Plan.Version, cancellationToken)
+                .ConfigureAwait(false);
+            if (!saved)
+            {
+                throw new GacPlannerConcurrencyException(
+                    "The GAC plan changed while the attack optimizer was running. Recalculate before applying the result.");
+            }
+        }
+        catch
+        {
+            await GacRosterDefenseCandidateService
+                .RollbackMaterializationAsync(plannerService, allyCode, materialization.CreatedPresetIds)
+                .ConfigureAwait(false);
+            throw;
         }
 
         GacPlannerLookup refreshed = await plannerService
