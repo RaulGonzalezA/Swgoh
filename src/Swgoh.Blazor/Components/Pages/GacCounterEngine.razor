@@ -1,0 +1,169 @@
+@page "/gac/{AllyCode:long}/counter-engine"
+@rendermode InteractiveServer
+@using Swgoh.Blazor.Clients
+@inject GacPlannerApiClient PlannerClient
+
+<PageTitle>Counter Engine · SWGOH Planner</PageTitle>
+
+<div class="page-heading-row planner-page-heading">
+    <div>
+        <a class="back-link" href="@($"/gac/{AllyCode}/planner")">← Planificador</a>
+        <span class="eyebrow">GAC · Counter Engine 2.0</span>
+        <h1>Counters para tu roster</h1>
+        <p class="page-lead">Compara hasta cinco alternativas por defensa, estima victoria y banners, mide riesgo de timeout y penaliza gastar piezas que hacen falta después.</p>
+    </div>
+</div>
+
+<nav class="player-subnav" aria-label="Secciones del jugador">
+    <a href="@($"/player/{AllyCode}")">Roster</a>
+    <a href="@($"/gac/{AllyCode}")">War Room</a>
+    <a href="@($"/gac/{AllyCode}/planner")">Planificador</a>
+    <a class="active" href="@($"/gac/{AllyCode}/counter-engine")">Counter Engine</a>
+</nav>
+
+@if (_loading)
+{
+    <UiLoadingState Title="Calculando counters"
+                    Description="Histórico, tu roster, mods, datacrons, aprendizaje personal y coste estratégico" />
+}
+else if (_error is not null)
+{
+    <UiAlert Tone="danger" Icon="!" Title="No se ha podido calcular los counters" Description="@_error" />
+}
+else if (_optimization is null)
+{
+    <UiEmptyState Icon="C"
+                  Title="No hay defensas visibles para analizar"
+                  Description="Añade las defensas del rival en el Planificador y vuelve a ejecutar el Counter Engine.">
+        <Actions>
+            <a class="primary-button" href="@($"/gac/{AllyCode}/planner")">Abrir Planificador</a>
+        </Actions>
+    </UiEmptyState>
+}
+else
+{
+    <section class="planner-summary-grid" aria-label="Resumen Counter Engine">
+        <div><span>Defensas</span><strong>@_optimization.TargetDefenses</strong><small>objetivos analizados</small></div>
+        <div><span>Cubiertas</span><strong>@_optimization.RecommendedAttacks</strong><small>sin reutilizar unidades</small></div>
+        <div><span>Histórico</span><strong>@_optimization.HistoricalMatches</strong><small>counters con evidencia</small></div>
+        <div><span>Score medio</span><strong>@_optimization.AverageScore.ToString("0.#")</strong><small>plan global</small></div>
+    </section>
+
+    <section class="planner-optimizer-panel" aria-labelledby="counter-engine-title">
+        <div class="planner-optimizer-heading">
+            <div>
+                <span class="section-kicker">Counter Engine 2.0</span>
+                <h2 id="counter-engine-title">Alternativas por defensa</h2>
+                <p>El ranking individual explica cada matchup. La recomendación global sigue evitando reutilizar unidades entre combates.</p>
+            </div>
+            <div class="planner-optimizer-actions">
+                <button class="secondary-button" type="button" @onclick="RefreshAsync" disabled="@_loading">Recalcular</button>
+                <a class="ghost-button" href="@($"/gac/{AllyCode}/round-optimizer")">Optimizar ronda completa</a>
+            </div>
+        </div>
+
+        @foreach (GacPlannerApiClient.CounterDefenseAnalysisViewModel defense in _optimization.CounterAnalyses)
+        {
+            <article class="optimizer-recommendation-card" @key="defense.DefenseId">
+                <div class="optimizer-route">
+                    <div><span>@defense.Zone</span><strong>@defense.DefenseName</strong></div>
+                    <span class="optimizer-arrow">→</span>
+                    <div><span>Alternativas</span><strong>@defense.Candidates.Count</strong></div>
+                </div>
+
+                @if (defense.Candidates.Count == 0)
+                {
+                    <p>No hay un equipo guardado compatible disponible para esta defensa.</p>
+                }
+                else
+                {
+                    @foreach (GacPlannerApiClient.CounterCandidateAnalysisViewModel candidate in defense.Candidates.OrderBy(item => item.Rank))
+                    {
+                        <div class="optimizer-meta">
+                            <span><strong>#@candidate.Rank</strong> @candidate.TeamName</span>
+                            <span>Win est. <strong>@candidate.EstimatedWinProbability.ToString("0.#")%</strong></span>
+                            @if (candidate.ExpectedBanners is decimal banners)
+                            {
+                                <span>Banners <strong>@banners.ToString("0.#")</strong></span>
+                            }
+                            <span>Riesgo <strong>@FriendlyRisk(candidate.Risk)</strong></span>
+                            <span>Timeout <strong>@FriendlyRisk(candidate.TimeoutRisk)</strong></span>
+                            <span>Coste <strong>@candidate.StrategicCost.ToString("0.#")</strong></span>
+                            @if (candidate.CriticalPieceCost > 0m)
+                            {
+                                <span>Piezas críticas <strong>@candidate.CriticalPieceCost.ToString("0.#")</strong></span>
+                            }
+                            @if (candidate.FutureDefensesAtRisk > 0)
+                            {
+                                <span>Compromete <strong>@candidate.FutureDefensesAtRisk</strong> combate(s)</span>
+                            }
+                        </div>
+                        <p><strong>@candidate.Evidence · @FriendlyConfidence(candidate.Confidence).</strong> @candidate.Rationale</p>
+                    }
+                }
+            </article>
+        }
+
+        @if (_optimization.UncoveredDefenseIds.Count > 0)
+        {
+            <div class="optimizer-warning">@_optimization.UncoveredDefenseIds.Count defensa(s) siguen sin counter global compatible.</div>
+        }
+        @if (_optimization.SearchLimitReached)
+        {
+            <div class="optimizer-warning">Se alcanzó el límite de búsqueda global; el plan es válido, aunque puede existir una combinación marginalmente mejor.</div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private GacPlannerApiClient.OptimizationViewModel? _optimization;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override Task OnParametersSetAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            GacPlannerApiClient.OptimizationResult result = await PlannerClient.OptimizeCurrentAsync(
+                AllyCode,
+                "RebuildPlanned",
+                apply: false);
+            _optimization = result.Envelope?.Optimization;
+            if (_optimization is null && result.Message is not null)
+            {
+                _error = result.Message;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = "La API no está disponible en este momento.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FriendlyRisk(string risk) => risk switch
+    {
+        "Low" => "Bajo",
+        "Medium" => "Medio",
+        "High" => "Alto",
+        _ => risk
+    };
+
+    private static string FriendlyConfidence(string confidence) => confidence switch
+    {
+        "High" => "confianza alta",
+        "Medium" => "confianza media",
+        "Low" => "confianza baja",
+        _ => confidence
+    };
+}

@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<GacDefenseStrategyService>();
         services.AddScoped<IGacDefenseStrategyService, GacDefenseStrategyService>();
         services.AddScoped<IGacRosterDefenseCandidateProvider, OptimizedGacRosterDefenseCandidateProvider>();
+        services.AddScoped<IGacRosterAttackCandidateProvider, GacRosterAttackCandidateProvider>();
         services.AddScoped<IGacSmartDefenseService, RosterAwareGacSmartDefenseService>();
         services.AddScoped<GacAttackPlanOptimizerService>();
         services.AddScoped<IGacAttackPlanOptimizerService, HardenedGacAttackPlanOptimizerService>();

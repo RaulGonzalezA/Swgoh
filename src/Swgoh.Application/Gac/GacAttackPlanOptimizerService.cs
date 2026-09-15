@@ -10,7 +10,8 @@ internal sealed partial class GacAttackPlanOptimizerService(
     IGacRoundPlanRepository planRepository,
     IClock clock,
     IPlayerProfileService? playerProfileService = null,
-    IGacPersonalLearningService? personalLearningService = null) : IGacAttackPlanOptimizerService
+    IGacPersonalLearningService? personalLearningService = null,
+    IGacRosterAttackCandidateProvider? rosterCandidateProvider = null) : IGacAttackPlanOptimizerService
 {
     private const int MaxCandidatesPerDefense = 6;
     private const int MaxSearchNodes = 100_000;
@@ -39,6 +40,15 @@ internal sealed partial class GacAttackPlanOptimizerService(
         }
 
         GacPlannerState state = plannerLookup.State;
+        GacRosterAttackCandidateSet rosterCandidates = await BuildRosterCandidatesAsync(
+            allyCode,
+            state,
+            mode,
+            cancellationToken).ConfigureAwait(false);
+        GacPlannerState effectiveState = rosterCandidates.Candidates.Count == 0
+            ? state
+            : state with { Presets = [.. state.Presets, .. rosterCandidates.Candidates] };
+
         GacTacticalOptimizationContext tacticalContext = await BuildTacticalContextAsync(
             allyCode,
             state.Plan.OpponentAllyCode,
@@ -48,54 +58,62 @@ internal sealed partial class GacAttackPlanOptimizerService(
             state.Plan.Format,
             cancellationToken).ConfigureAwait(false);
         GacAttackOptimizationResult optimization = Optimize(
-            state,
+            effectiveState,
             mode,
             tacticalContext,
             personalContext,
             cancellationToken);
+        HashSet<Guid> selectedIds = optimization.Recommendations
+            .Select(recommendation => recommendation.TeamPresetId)
+            .ToHashSet();
+        GacTeamPresetDetails[] selectedGenerated =
+        [
+            .. rosterCandidates.GeneratedById.Values
+                .Where(candidate => selectedIds.Contains(candidate.Id))
+        ];
+        optimization = optimization with { GeneratedTeamPresets = selectedGenerated };
+
         if (!apply || optimization.Recommendations.Count == 0)
         {
             return new GacAttackOptimizationLookup(
                 CurrentGacOpponentStatus.Found,
                 null,
-                state,
+                effectiveState,
                 optimization);
         }
 
-        GacRoundPlan plan = await planRepository
-            .FindByIdAsync(state.Plan.Id, cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The current GAC round plan could not be loaded for optimization.");
+        GacAttackPresetMaterialization materialization = await GacAttackGeneratedPresetMaterializer
+            .MaterializeAsync(
+                plannerService,
+                allyCode,
+                state.Plan.Format,
+                optimization,
+                cancellationToken)
+            .ConfigureAwait(false);
+        optimization = GacAttackGeneratedPresetMaterializer.Remap(optimization, materialization.IdMap);
 
-        List<GacAttackAssignment> retainedAttacks = mode == GacAttackOptimizationMode.RebuildPlanned
-            ? [.. plan.Attacks.Where(attack => attack.Status != GacAttackPlanStatus.Planned)]
-            : [.. plan.Attacks];
-
-        foreach (GacAttackOptimizationRecommendation recommendation in optimization.Recommendations)
+        try
         {
-            int attempt = retainedAttacks
-                .Where(attack => attack.DefenseId == recommendation.DefenseId)
-                .Select(attack => attack.Attempt)
-                .DefaultIfEmpty(0)
-                .Max() + 1;
-            string personalNote = recommendation.PersonalSamples > 0
-                ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
-                : string.Empty;
-            string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
-                $"coste {recommendation.StrategicCost:0.#} (reserva {recommendation.OpportunityCost:0.#}); " +
-                $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
-                $"datacron {recommendation.DatacronStatus}.";
-            retainedAttacks.Add(GacAttackAssignment.Create(
-                Guid.NewGuid(),
-                recommendation.DefenseId,
-                recommendation.TeamPresetId,
-                attempt,
-                GacAttackPlanStatus.Planned,
-                notes));
-        }
+            GacRoundPlan plan = await planRepository
+                .FindByIdAsync(state.Plan.Id, cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The current GAC round plan could not be loaded for optimization.");
 
-        plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
-        await planRepository.UpsertAsync(plan, cancellationToken).ConfigureAwait(false);
+            List<GacAttackAssignment> retainedAttacks = mode == GacAttackOptimizationMode.RebuildPlanned
+                ? [.. plan.Attacks.Where(attack => attack.Status != GacAttackPlanStatus.Planned)]
+                : [.. plan.Attacks];
+
+            AddRecommendedAttacks(retainedAttacks, optimization.Recommendations);
+            plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
+            await planRepository.UpsertAsync(plan, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await GacRosterDefenseCandidateService
+                .RollbackMaterializationAsync(plannerService, allyCode, materialization.CreatedPresetIds)
+                .ConfigureAwait(false);
+            throw;
+        }
 
         GacPlannerLookup refreshed = await plannerService
             .GetCurrentAsync(allyCode, cancellationToken)
@@ -214,6 +232,13 @@ internal sealed partial class GacAttackPlanOptimizerService(
                 .OrderBy(choice => choice.Candidates.Count)
                 .ThenByDescending(choice => choice.Candidates.FirstOrDefault()?.Score ?? 0m)
         ];
+        GacCounterDefenseAnalysis[] counterAnalyses =
+        [
+            .. choices
+                .Select(ToCounterDefenseAnalysis)
+                .OrderBy(analysis => analysis.Zone, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(analysis => analysis.DefenseName, StringComparer.OrdinalIgnoreCase)
+        ];
 
         var search = new SearchState();
         Search(
@@ -260,7 +285,58 @@ internal sealed partial class GacAttackPlanOptimizerService(
             knownBanners.Length == 0 ? null : Math.Round(knownBanners.Average(), 1),
             uncoveredDefenseIds,
             recommendations,
-            search.SearchLimitReached);
+            search.SearchLimitReached,
+            counterAnalyses);
+    }
+
+    private async Task<GacRosterAttackCandidateSet> BuildRosterCandidatesAsync(
+        long allyCode,
+        GacPlannerState state,
+        GacAttackOptimizationMode mode,
+        CancellationToken cancellationToken)
+    {
+        if (rosterCandidateProvider is null)
+        {
+            return GacRosterAttackCandidateSet.Empty;
+        }
+
+        HashSet<string> blocked = BuildBlockedUnits(state, mode);
+        return await rosterCandidateProvider.BuildAsync(
+            allyCode,
+            state.Plan.Format,
+            state.Presets,
+            blocked,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void AddRecommendedAttacks(
+        ICollection<GacAttackAssignment> retainedAttacks,
+        IReadOnlyCollection<GacAttackOptimizationRecommendation> recommendations)
+    {
+        foreach (GacAttackOptimizationRecommendation recommendation in recommendations)
+        {
+            int attempt = retainedAttacks
+                .Where(attack => attack.DefenseId == recommendation.DefenseId)
+                .Select(attack => attack.Attempt)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+            string personalNote = recommendation.PersonalSamples > 0
+                ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
+                : string.Empty;
+            string notes = $"Counter Engine 2.0: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
+                $"win estimado {recommendation.EstimatedWinProbability:0.#}%; riesgo {recommendation.Risk}; " +
+                $"timeout {recommendation.TimeoutRisk}; coste {recommendation.StrategicCost:0.#} " +
+                $"(piezas críticas {recommendation.CriticalPieceCost:0.#}); " +
+                $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
+                $"datacron {recommendation.DatacronStatus}.";
+            retainedAttacks.Add(GacAttackAssignment.Create(
+                Guid.NewGuid(),
+                recommendation.DefenseId,
+                recommendation.TeamPresetId,
+                attempt,
+                GacAttackPlanStatus.Planned,
+                notes));
+        }
     }
 
     private async Task<GacTacticalOptimizationContext> BuildTacticalContextAsync(
