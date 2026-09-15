@@ -195,7 +195,11 @@ jobs:
               ;;
           esac
 
-          curl --fail-with-body --silent --show-error --request POST "${base_url}/refresh" --output smoke-results/refresh.json
+          refresh_status=$(curl --silent --show-error \
+            --request POST "${base_url}/refresh" \
+            --output /dev/null \
+            --write-out '%{http_code}')
+          test "${refresh_status}" = "204"
 
           refresh_rate_limit_status=$(curl --silent --show-error \
             --request POST "${base_url}/refresh" \
@@ -206,12 +210,12 @@ jobs:
           grep -qi '^retry-after:' smoke-results/refresh-rate-limit-headers.txt
 
           curl --fail-with-body --silent --show-error "${base_url}" --output smoke-results/player.json
-          curl --fail-with-body --silent --show-error "${base_url}/roster?page=1&pageSize=10&orderBy=GalacticPower&direction=Descending" --output smoke-results/roster.json
+          curl --fail-with-body --silent --show-error "${base_url}/roster?page=1&pageSize=10&type=Character&orderBy=GalacticPower&direction=Descending" --output smoke-results/roster.json
           curl --fail-with-body --silent --show-error "${base_url}/analysis" --output smoke-results/analysis.json
           curl --fail-with-body --silent --show-error "${base_url}/history?limit=5" --output smoke-results/history.json
           curl --fail-with-body --silent --show-error "${base_url}/gl-progress" --output smoke-results/gl-progress.json
 
-          mapfile -t character_ids < <(jq -r '[.roster[] | select(.isShip == false)][0:5][].definitionId' smoke-results/player.json)
+          mapfile -t character_ids < <(jq -r '.items[0:5][].definitionId' smoke-results/roster.json)
           test "${#character_ids[@]}" -eq 5
           jq -n \
             --arg leader "${character_ids[0]}" \
@@ -310,7 +314,9 @@ jobs:
           jq -e '.name | length > 0' smoke-results/player.json > /dev/null
           jq -e '.rosterCount > 0' smoke-results/player.json > /dev/null
           jq -e '.galacticPower > 0' smoke-results/player.json > /dev/null
-          jq -e '(.roster | length) == .rosterCount' smoke-results/player.json > /dev/null
+          jq -e '.datacronCount >= 0' smoke-results/player.json > /dev/null
+          jq -e 'has("roster") | not' smoke-results/player.json > /dev/null
+          jq -e 'has("datacrons") | not' smoke-results/player.json > /dev/null
           jq -e '.total > 0 and .page == 1 and .pageSize == 10 and (.items | length) > 0 and (.items | length) <= 10' smoke-results/roster.json > /dev/null
           jq -e '.items[0].name | type == "string" and length > 0' smoke-results/roster.json > /dev/null
           jq -e '.items[0].nameKey | type == "string" and length > 0' smoke-results/roster.json > /dev/null
@@ -340,7 +346,7 @@ jobs:
 
           jq '{league, format, squadDefenseCount, fleetDefenseCount}' smoke-results/gac-requirements.json
           jq '{fromLeague, toLeague, format, squadDefenseDelta, fleetDefenseDelta, additionalSquadDefenses, additionalFleetDefenses}' smoke-results/gac-transition.json
-          jq '{name, level, galacticPower, rosterCount, guildName, updatedAtUtc}' smoke-results/player.json
+          jq '{name, level, galacticPower, rosterCount, datacronCount, guildName, updatedAtUtc}' smoke-results/player.json
           jq '{total, page, pageSize, totalPages, first: .items[0] | {definitionId, name, thumbnailName, factions, tags, galacticPower, relicTier, zetaCount, omicronCount}}' smoke-results/roster.json
           jq '{galacticPower, characterGalacticPower, shipGalacticPower, characterCount, shipCount, relicCharacters, relic7Plus, relic8Plus, relic9Plus, relic10, zetas, omicrons}' smoke-results/analysis.json
           jq '.[0] | {capturedAtUtc, galacticPower, zetas, omicrons}' smoke-results/history.json
