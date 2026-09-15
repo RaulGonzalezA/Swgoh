@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 
+using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
+using Swgoh.Domain.Players;
 
 namespace Swgoh.Application.Gac;
 
@@ -16,6 +18,8 @@ public interface ICurrentGacScoutingCache
         CurrentGacScoutingCacheKey key,
         Func<Task<CurrentGacScoutingResult>> factory);
 
+    void Set(CurrentGacScoutingCacheKey key, CurrentGacScoutingResult result);
+
     void Invalidate(long allyCode);
 }
 
@@ -26,6 +30,8 @@ public readonly record struct CurrentGacScoutingCacheKey(
     long OpponentAllyCode,
     GacFormat Format,
     int MaxRounds,
+    DateTimeOffset? PlayerUpdatedAtUtc,
+    DateTimeOffset? OpponentUpdatedAtUtc,
     long Generation);
 
 internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
@@ -77,9 +83,9 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
         try
         {
             CurrentGacScoutingResult result = await lazy.Value.ConfigureAwait(false);
-            if (result.Lookup.Status == CurrentGacOpponentStatus.Found && result.Lookup.Opponent is not null)
+            if (key.Generation == GetGeneration(key.AllyCode))
             {
-                cache[key] = new CacheEntry(result, DateTimeOffset.UtcNow.Add(CacheDuration));
+                Set(key, result);
             }
 
             return result;
@@ -88,6 +94,31 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
         {
             inFlight.TryRemove(key, out _);
         }
+    }
+
+    public void Set(CurrentGacScoutingCacheKey key, CurrentGacScoutingResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Lookup.Status != CurrentGacOpponentStatus.Found ||
+            result.Lookup.Opponent is null ||
+            key.Generation != GetGeneration(key.AllyCode))
+        {
+            return;
+        }
+
+        foreach (CurrentGacScoutingCacheKey staleKey in cache.Keys.Where(existing =>
+                     existing.AllyCode == key.AllyCode &&
+                     existing.EventInstanceId == key.EventInstanceId &&
+                     existing.RoundNumber == key.RoundNumber &&
+                     existing.OpponentAllyCode == key.OpponentAllyCode &&
+                     existing.Format == key.Format &&
+                     existing.MaxRounds == key.MaxRounds &&
+                     existing != key))
+        {
+            cache.TryRemove(staleKey, out _);
+        }
+
+        cache[key] = new CacheEntry(result, DateTimeOffset.UtcNow.Add(CacheDuration));
     }
 
     public void Invalidate(long allyCode)
@@ -106,7 +137,8 @@ internal sealed class CurrentGacScoutingCache : ICurrentGacScoutingCache
 internal sealed class CachedCurrentGacScoutingService(
     ICurrentGacOpponentSource opponentSource,
     CurrentGacScoutingService inner,
-    ICurrentGacScoutingCache cache) : ICurrentGacScoutingService
+    ICurrentGacScoutingCache cache,
+    IPlayerProfileService playerProfileService) : ICurrentGacScoutingService
 {
     public async Task<CurrentGacScoutingResult> GetAsync(
         long allyCode,
@@ -124,26 +156,109 @@ internal sealed class CachedCurrentGacScoutingService(
 
         CurrentGacOpponent opponent = lookup.Opponent;
         int normalizedMaxRounds = Math.Clamp(maxRounds, 1, 200);
-        var key = new CurrentGacScoutingCacheKey(
+        ProfileVersions? initialVersions = await TryReadProfileVersionsAsync(
             allyCode,
-            opponent.EventInstanceId,
-            opponent.RoundNumber,
             opponent.OpponentAllyCode,
-            opponent.Format,
+            cancellationToken).ConfigureAwait(false);
+        if (initialVersions is null)
+        {
+            return await inner.GetAsync(
+                allyCode,
+                formatOverride,
+                normalizedMaxRounds,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        CurrentGacScoutingCacheKey initialKey = CreateKey(
+            allyCode,
+            opponent,
             normalizedMaxRounds,
+            initialVersions.Value,
             cache.GetGeneration(allyCode));
 
-        if (cache.TryGet(key, out CurrentGacScoutingResult? cached) && cached is not null)
+        if (cache.TryGet(initialKey, out CurrentGacScoutingResult? cached) && cached is not null)
         {
             return cached;
         }
 
         return await cache.GetOrCreateAsync(
-            key,
-            () => inner.GetAsync(
-                allyCode,
-                formatOverride,
-                normalizedMaxRounds,
-                CancellationToken.None)).ConfigureAwait(false);
+            initialKey,
+            async () =>
+            {
+                CurrentGacScoutingResult result = await inner.GetAsync(
+                    allyCode,
+                    formatOverride,
+                    normalizedMaxRounds,
+                    CancellationToken.None).ConfigureAwait(false);
+
+                ProfileVersions? finalVersions = await TryReadProfileVersionsAsync(
+                    allyCode,
+                    opponent.OpponentAllyCode,
+                    CancellationToken.None).ConfigureAwait(false);
+                if (finalVersions is null)
+                {
+                    cache.Invalidate(allyCode);
+                    return result;
+                }
+
+                if (finalVersions.Value != initialVersions.Value)
+                {
+                    cache.Invalidate(allyCode);
+                    CurrentGacScoutingCacheKey finalKey = CreateKey(
+                        allyCode,
+                        opponent,
+                        normalizedMaxRounds,
+                        finalVersions.Value,
+                        cache.GetGeneration(allyCode));
+                    cache.Set(finalKey, result);
+                }
+
+                return result;
+            }).ConfigureAwait(false);
     }
+
+    private async Task<ProfileVersions?> TryReadProfileVersionsAsync(
+        long playerAllyCode,
+        long opponentAllyCode,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            Task<PlayerProfile?> playerTask = playerProfileService.GetAsync(playerAllyCode, cancellationToken);
+            Task<PlayerProfile?> opponentTask = playerProfileService.GetAsync(opponentAllyCode, cancellationToken);
+            await Task.WhenAll(playerTask, opponentTask).ConfigureAwait(false);
+
+            PlayerProfile? player = await playerTask.ConfigureAwait(false);
+            PlayerProfile? opponent = await opponentTask.ConfigureAwait(false);
+            return new ProfileVersions(player?.UpdatedAtUtc, opponent?.UpdatedAtUtc);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static CurrentGacScoutingCacheKey CreateKey(
+        long allyCode,
+        CurrentGacOpponent opponent,
+        int maxRounds,
+        ProfileVersions versions,
+        long generation) => new(
+        allyCode,
+        opponent.EventInstanceId,
+        opponent.RoundNumber,
+        opponent.OpponentAllyCode,
+        opponent.Format,
+        maxRounds,
+        versions.PlayerUpdatedAtUtc,
+        versions.OpponentUpdatedAtUtc,
+        generation);
+
+    private readonly record struct ProfileVersions(
+        DateTimeOffset? PlayerUpdatedAtUtc,
+        DateTimeOffset? OpponentUpdatedAtUtc);
 }
