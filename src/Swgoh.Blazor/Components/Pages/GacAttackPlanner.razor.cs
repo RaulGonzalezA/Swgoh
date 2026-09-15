@@ -50,10 +50,9 @@ public partial class GacAttackPlanner
 
     protected static IReadOnlyList<string> ZoneOptions { get; } =
     [
-        "Sur frontal",
         "Norte frontal",
+        "Sur frontal",
         "Sur trasera",
-        "Norte trasera",
         "Flota"
     ];
 
