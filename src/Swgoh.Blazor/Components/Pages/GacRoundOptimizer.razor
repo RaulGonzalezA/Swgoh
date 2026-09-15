@@ -1,0 +1,275 @@
+@page "/gac/{AllyCode:long}/round-optimizer"
+@rendermode InteractiveServer
+@using Swgoh.Blazor.Clients
+@inject GacJointRoundOptimizerApiClient OptimizerClient
+
+<PageTitle>Round Optimizer · SWGOH Planner</PageTitle>
+
+<div class="round-opt-heading">
+    <div>
+        <a class="back-link" href="@($"/gac/{AllyCode}/strategy")">← Estrategia</a>
+        <span class="eyebrow">GAC Strategy Lab · Joint Optimizer</span>
+        <h1>Optimizar la ronda completa</h1>
+        <p class="page-lead">Cruza defensa y ataque en la misma búsqueda. Cada escenario coloca una defensa completa, bloquea esas unidades y vuelve a optimizar todos los counters del rival antes de calcular el reparto global.</p>
+    </div>
+    <a class="secondary-button" href="@($"/gac/{AllyCode}/planner")">Abrir Planner</a>
+</div>
+
+<section class="round-opt-controls">
+    <div>
+        <span class="section-kicker">Objetivo</span>
+        <div class="round-opt-modes">
+            @foreach (ModeOption mode in Modes)
+            {
+                <button type="button"
+                        class="@ModeClass(mode.Value)"
+                        disabled="@_working"
+                        @onclick="() => SelectMode(mode.Value)">
+                    <strong>@mode.Label</strong>
+                    <small>@mode.Description</small>
+                </button>
+            }
+        </div>
+    </div>
+    <div class="round-opt-actions">
+        <button type="button" class="ghost-button" disabled="@_working" @onclick="PreviewAsync">Analizar ronda</button>
+        <button type="button" class="primary-button" disabled="@(_working || _result is null)" @onclick="ApplyAsync">Aplicar mejor reparto</button>
+    </div>
+</section>
+
+@if (_working)
+{
+    <UiLoadingState Title="Optimizando ronda completa" Description="Generando defensas alternativas y recalculando el plan de ataque para cada escenario" />
+}
+else if (_error is not null)
+{
+    <UiAlert Tone="danger" Icon="!" Title="No se ha podido optimizar la ronda" Description="@_error" />
+}
+else if (_result is null)
+{
+    <section class="round-opt-empty">
+        <span class="section-kicker">Cómo funciona</span>
+        <h2>No es una suma de dos recomendaciones independientes</h2>
+        <p>El motor prueba diferentes defensas completas. Para cada una bloquea las unidades colocadas, reconstruye todos los ataques disponibles, mide cobertura, calidad, banners y coste de oportunidad, y después compara el resultado global.</p>
+    </section>
+}
+else
+{
+    @if (_success is not null)
+    {
+        <UiAlert Tone="success" Icon="✓" Title="Plan conjunto aplicado" Description="@_success" />
+    }
+
+    <section class="round-opt-summary">
+        <div><span>Modo</span><strong>@FriendlyMode(_result.Mode)</strong><small>@_result.Format</small></div>
+        <div><span>Escenarios</span><strong>@_result.ScenariosEvaluated</strong><small>repartos completos evaluados</small></div>
+        <div><span>Round score</span><strong>@_result.Selected.JointScore.ToString("0.#")</strong><small>0–100, comparativo</small></div>
+        <div><span>Cobertura ataque</span><strong>@FormatPercent(_result.Selected.AttackCoverageRate)</strong><small>@_result.Selected.RecommendedAttacks / @_result.Selected.TargetDefenses defensas</small></div>
+        <div><span>Defensa</span><strong>@_result.Selected.DefenseScore.ToString("0.#")</strong><small>@FormatPercent(_result.Selected.DefenseCompletionRate) completa</small></div>
+        <div><span>Preserva ataque</span><strong>@_result.Selected.OffensePreservationScore.ToString("0.#")</strong><small>coste @_result.Selected.AverageDefenseOpportunityCost.ToString("0.#")</small></div>
+    </section>
+
+    <section class="round-opt-best">
+        <div class="round-opt-section-heading">
+            <div>
+                <span class="section-kicker">Mejor escenario</span>
+                <h2>Reparto recomendado</h2>
+            </div>
+            <div class="round-opt-score-badge">@_result.Selected.JointScore.ToString("0.#")</div>
+        </div>
+
+        <div class="round-opt-columns">
+            <div class="round-opt-panel">
+                <div class="round-opt-section-heading">
+                    <h3>Defensa</h3>
+                    <span>@_result.Selected.DefenseAssignments.Count equipos</span>
+                </div>
+                <div class="round-opt-list">
+                    @foreach (GacJointRoundOptimizerApiClient.JointDefenseAssignmentViewModel defense in _result.Selected.DefenseAssignments.OrderBy(item => item.Position))
+                    {
+                        <article class="round-opt-defense">
+                            <span class="round-opt-index">@defense.Position</span>
+                            <div>
+                                <small>@defense.Zone</small>
+                                <strong>@defense.TeamName</strong>
+                                <div class="round-opt-tags">
+                                    <span>Score @defense.Score.ToString("0.#")</span>
+                                    <span>@defense.GalacticPower.ToString("N0") GP</span>
+                                    @if (defense.ContainsGalacticLegend)
+                                    {
+                                        <span>GL</span>
+                                    }
+                                    @if (defense.EligibleDatacronTier > 0)
+                                    {
+                                        <span>DC @defense.EligibleDatacronTier</span>
+                                    }
+                                </div>
+                            </div>
+                            <span class="round-opt-cost">-@defense.OffensiveOpportunityCost.ToString("0.#") atk</span>
+                        </article>
+                    }
+                </div>
+            </div>
+
+            <div class="round-opt-panel">
+                <div class="round-opt-section-heading">
+                    <h3>Ataques</h3>
+                    <span>@_result.Selected.RecommendedAttacks / @_result.Selected.TargetDefenses cubiertos</span>
+                </div>
+                <div class="round-opt-list">
+                    @foreach (GacJointRoundOptimizerApiClient.AttackRecommendationViewModel attack in _result.Selected.AttackRecommendations.OrderByDescending(item => item.Score))
+                    {
+                        <article class="round-opt-attack">
+                            <div>
+                                <small>@attack.Zone · @attack.DefenseName</small>
+                                <strong>@attack.TeamName</strong>
+                                <div class="round-opt-tags">
+                                    <span>Score @attack.Score.ToString("0.#")</span>
+                                    <span>@FriendlyConfidence(attack.Confidence)</span>
+                                    @if (attack.WinRate is decimal winRate)
+                                    {
+                                        <span>@FormatRate(winRate) win</span>
+                                    }
+                                    @if (attack.AverageBanners is decimal banners)
+                                    {
+                                        <span>@banners.ToString("0.#") banners</span>
+                                    }
+                                </div>
+                            </div>
+                            <span class="round-opt-cost">coste @attack.StrategicCost.ToString("0.#")</span>
+                        </article>
+                    }
+                </div>
+                @if (_result.Selected.UncoveredDefenseIds.Count > 0)
+                {
+                    <p class="round-opt-warning">⚠ Quedan @_result.Selected.UncoveredDefenseIds.Count defensas visibles sin counter asignado.</p>
+                }
+            </div>
+        </div>
+    </section>
+
+    @if (_result.Alternatives.Count > 0)
+    {
+        <section class="round-opt-alternatives">
+            <div class="round-opt-section-heading">
+                <div><span class="section-kicker">Trade-offs</span><h2>Alternativas cercanas</h2></div>
+            </div>
+            <div class="round-opt-alt-grid">
+                @foreach (GacJointRoundOptimizerApiClient.JointScenarioViewModel alternative in _result.Alternatives)
+                {
+                    <article>
+                        <strong>@alternative.JointScore.ToString("0.#")</strong>
+                        <span>Defensa @alternative.DefenseScore.ToString("0.#")</span>
+                        <span>Ataque @alternative.AttackScore.ToString("0.#")</span>
+                        <span>Cobertura @FormatPercent(alternative.AttackCoverageRate)</span>
+                        <span>Preserva @alternative.OffensePreservationScore.ToString("0.#")</span>
+                        @if (alternative.KnownAverageBanners is decimal banners)
+                        {
+                            <span>@banners.ToString("0.#") banners medios</span>
+                        }
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
+    @if (_result.Warnings.Count > 0 || _result.Selected.Warnings.Count > 0)
+    {
+        <section class="round-opt-warnings">
+            @foreach (string warning in _result.Warnings.Concat(_result.Selected.Warnings).Distinct())
+            {
+                <p>⚠ @warning</p>
+            }
+        </section>
+    }
+}
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private readonly ModeOption[] Modes =
+    [
+        new("Balanced", "Equilibrado", "Defensa, cobertura y calidad de counters"),
+        new("DefenseFirst", "Defensa dura", "Acepta más coste ofensivo para endurecer zonas"),
+        new("OffenseFirst", "Ataque seguro", "Prioriza cobertura y counters fuertes"),
+        new("MaxBanners", "Máx. banners", "Sube el peso de los counters con mejores banners")
+    ];
+
+    private string _mode = "Balanced";
+    private GacJointRoundOptimizerApiClient.JointOptimizationViewModel? _result;
+    private string? _error;
+    private string? _success;
+    private bool _working;
+
+    private void SelectMode(string mode)
+    {
+        if (_working)
+        {
+            return;
+        }
+
+        _mode = mode;
+        _result = null;
+        _error = null;
+        _success = null;
+    }
+
+    private Task PreviewAsync() => OptimizeAsync(apply: false);
+
+    private Task ApplyAsync() => OptimizeAsync(apply: true);
+
+    private async Task OptimizeAsync(bool apply)
+    {
+        _working = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            _result = await OptimizerClient.OptimizeAsync(AllyCode, _mode, apply);
+            if (_result?.Applied == true)
+            {
+                _success = $"Se ha aplicado el reparto {_result.Mode}: {_result.Selected.DefenseAssignments.Count} defensas y {_result.Selected.RecommendedAttacks} ataques planificados.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = apply
+                ? "No se ha podido aplicar el plan conjunto. Revisa que la ronda y los presets sigan disponibles."
+                : "No se ha podido completar la optimización conjunta de la ronda.";
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+
+    private string ModeClass(string mode) =>
+        string.Equals(mode, _mode, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+
+    private static string FriendlyMode(string mode) => mode switch
+    {
+        "DefenseFirst" => "Defensa dura",
+        "OffenseFirst" => "Ataque seguro",
+        "MaxBanners" => "Máx. banners",
+        _ => "Equilibrado"
+    };
+
+    private static string FriendlyConfidence(string confidence) => confidence switch
+    {
+        "High" => "Alta",
+        "Medium" => "Media",
+        "Low" => "Baja",
+        _ => confidence
+    };
+
+    private static string FormatPercent(decimal value) => $"{value:0.#}%";
+
+    private static string FormatRate(decimal value)
+    {
+        decimal percent = value > 1m ? value : value * 100m;
+        return $"{percent:0.#}%";
+    }
+
+    private sealed record ModeOption(string Value, string Label, string Description);
+}
