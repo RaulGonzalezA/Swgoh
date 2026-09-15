@@ -1,7 +1,6 @@
-using System.Collections.Concurrent;
-
 using Microsoft.Extensions.Logging;
 
+using Swgoh.Application.Caching;
 using Swgoh.Application.Gac;
 using Swgoh.Domain.Gac;
 
@@ -11,13 +10,19 @@ internal sealed class PersistedGacOpponentSource(
     BackgroundGacOpponentSource fallback,
     IGacBracketLocationRepository locations,
     GacExactBracketResolver exactResolver,
-    ILogger<PersistedGacOpponentSource> logger) : ICurrentGacOpponentSource, ICurrentGacOpponentCache
+    ILogger<PersistedGacOpponentSource> logger) : ICurrentGacOpponentSource, ICurrentGacOpponentCache, IDisposable
 {
+    private const long ResultCacheSizeLimit = 2_048;
+    private const long PersistedAttemptCacheSizeLimit = 2_048;
     private static readonly TimeSpan ResultCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PersistedAttemptDuration = TimeSpan.FromMinutes(1);
 
-    private readonly ConcurrentDictionary<string, ResultCacheEntry> resultCache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, DateTimeOffset> persistedAttempts = new(StringComparer.Ordinal);
+    private readonly BoundedMemoryCache<string, ResultCacheEntry> resultCache = new(
+        ResultCacheSizeLimit,
+        absoluteExpirationSelector: static entry => entry.ExpiresAtUtc);
+    private readonly BoundedMemoryCache<string, DateTimeOffset> persistedAttempts = new(
+        PersistedAttemptCacheSizeLimit,
+        absoluteExpirationSelector: static expiresAt => expiresAt);
 
     public async Task<CurrentGacOpponentLookup> GetAsync(
         long allyCode,
@@ -30,13 +35,13 @@ internal sealed class PersistedGacOpponentSource(
         }
 
         string key = $"{allyCode}:{formatOverride?.ToString() ?? "auto"}";
-        if (resultCache.TryGetValue(key, out ResultCacheEntry? cached) && cached.ExpiresAtUtc > DateTimeOffset.UtcNow)
+        if (resultCache.TryGetValue(key, out ResultCacheEntry? cached))
         {
             GacTelemetry.RecordOpponentLookup(TimeSpan.Zero, cached.Lookup.Status, cacheHit: true, "persisted-wrapper-memory");
             return cached.Lookup;
         }
 
-        if (!persistedAttempts.TryGetValue(key, out DateTimeOffset attemptedUntil) || attemptedUntil <= DateTimeOffset.UtcNow)
+        if (!persistedAttempts.TryGetValue(key, out _))
         {
             persistedAttempts[key] = DateTimeOffset.UtcNow.Add(PersistedAttemptDuration);
             try
@@ -99,18 +104,24 @@ internal sealed class PersistedGacOpponentSource(
     public void Invalidate(long allyCode)
     {
         string prefix = $"{allyCode}:";
-        foreach (string key in resultCache.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)))
+        foreach (string key in resultCache.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToArray())
         {
             resultCache.TryRemove(key, out _);
         }
 
-        foreach (string key in persistedAttempts.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)))
+        foreach (string key in persistedAttempts.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToArray())
         {
             persistedAttempts.TryRemove(key, out _);
         }
 
         fallback.Invalidate(allyCode);
         logger.LogInformation("Invalidated GAC opponent caches for {AllyCode}", allyCode);
+    }
+
+    public void Dispose()
+    {
+        resultCache.Dispose();
+        persistedAttempts.Dispose();
     }
 
     private async Task<CurrentGacOpponentLookup?> TryResolvePersistedAsync(
