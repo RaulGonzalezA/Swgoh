@@ -122,6 +122,7 @@ else if (_strategy is not null)
         </div>
         <div class="strategy-actions">
             <button type="button" class="secondary-button" @onclick="SaveAsync" disabled="@_saving">Guardar plantilla</button>
+            <button type="button" class="ghost-button" @onclick="DeleteGeneratedDefenseTeamsAsync" disabled="@(_saving || GeneratedDefenseTeamCount == 0)" title="Borra solo los presets de defensa Auto y libera sus asignaciones actuales">Borrar defensas Auto (@GeneratedDefenseTeamCount)</button>
             <button type="button" class="ghost-button" @onclick="PreviewAsync" disabled="@(!CanGenerate || _saving)">Vista previa inteligente</button>
             <button type="button" class="primary-button" @onclick="ApplyAsync" disabled="@(!CanGenerate || _saving)">Generar y aplicar</button>
         </div>
@@ -232,6 +233,7 @@ else if (_strategy is not null)
     private bool CanGenerate => !string.IsNullOrWhiteSpace(_currentFormat) &&
         string.Equals(_currentFormat, _selectedFormat, StringComparison.OrdinalIgnoreCase) &&
         _slots.Count > 0;
+    private int GeneratedDefenseTeamCount => _strategy?.Presets.Count(preset => IsGeneratedDefensePreset(preset.Name)) ?? 0;
 
     private string FiveFormatClass => FormatClass("5v5");
     private string ThreeFormatClass => FormatClass("3v3");
@@ -347,6 +349,7 @@ else if (_strategy is not null)
             _generation = await StrategyClient.GenerateSmartAsync(AllyCode, apply);
             if (_generation?.Applied == true)
             {
+                await LoadAsync();
                 _success = $"Defensa inteligente {_generation.Format} generada y aplicada al plan de la ronda.";
             }
         }
@@ -355,6 +358,46 @@ else if (_strategy is not null)
             _error = apply
                 ? "No se ha podido aplicar la defensa inteligente."
                 : "No se ha podido generar la vista previa inteligente.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteGeneratedDefenseTeamsAsync()
+    {
+        if (GeneratedDefenseTeamCount == 0)
+        {
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            GacDefenseStrategyApiClient.CleanupViewModel? cleanup = await StrategyClient
+                .DeleteGeneratedDefenseTeamsAsync(AllyCode, _selectedFormat);
+            _generation = null;
+            await LoadAsync();
+
+            if (cleanup is null)
+            {
+                _success = "La limpieza de defensas Auto ha finalizado.";
+                return;
+            }
+
+            string warning = cleanup.Warnings.Count == 0
+                ? string.Empty
+                : $" {string.Join(" ", cleanup.Warnings)}";
+            _success = cleanup.DeletedPresets == 0
+                ? $"No había defensas Auto que se pudieran borrar.{warning}"
+                : $"Borrados {cleanup.DeletedPresets} equipo(s) Auto y liberadas {cleanup.RemovedDefenseAssignments} asignación(es) de defensa.{warning}";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "No se han podido borrar las defensas Auto. Revisa el plan actual y vuelve a intentarlo.";
         }
         finally
         {
@@ -440,6 +483,9 @@ else if (_strategy is not null)
         string.Equals(format, _selectedFormat, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
 
     private static string PinnedValue(SlotDraft slot) => slot.PinnedTeamPresetId?.ToString() ?? string.Empty;
+
+    private static bool IsGeneratedDefensePreset(string name) =>
+        name.StartsWith("Auto ·", StringComparison.OrdinalIgnoreCase);
 
     private static string FriendlyUse(string use) => use switch
     {
