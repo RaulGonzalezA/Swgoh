@@ -17,10 +17,7 @@ public sealed partial class ConquestPlan
         IEnumerable<ConquestDiskLoadout> newDiskLoadouts,
         DateTimeOffset updatedAtUtc)
     {
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ApplyDataDisks(diskCapacityLimit, newDataDisks, newDiskLoadouts);
         UpdatedAtUtc = updatedAtUtc;
