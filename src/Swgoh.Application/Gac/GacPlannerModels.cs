@@ -122,7 +122,12 @@ public sealed record GacPlannerDatacronDetails(
     bool Locked,
     int HighestRequiredRelicTier,
     bool HasAbilityAffix,
-    IReadOnlyCollection<GacPlannerDatacronAffixDetails> Affixes);
+    IReadOnlyCollection<GacPlannerDatacronAffixDetails> Affixes,
+    DateTimeOffset? ExpiresAtUtc = null)
+{
+    public bool IsExpired(DateTimeOffset nowUtc) =>
+        ExpiresAtUtc is DateTimeOffset expiresAtUtc && expiresAtUtc <= nowUtc;
+}
 
 public sealed record GacPlannerDatacronAffixDetails(
     string? AbilityId,

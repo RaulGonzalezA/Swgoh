@@ -20,7 +20,11 @@ public sealed record GacHistorySyncResult(
     int RoundsReceived,
     int RoundsImported,
     IReadOnlyCollection<string> Sources,
-    IReadOnlyCollection<string> Warnings);
+    IReadOnlyCollection<string> Warnings)
+{
+    public bool HasConfiguredProvider => ProvidersAttempted > 0;
+    public bool ImportedAnyRound => RoundsImported > 0;
+}
 
 public interface IGacHistorySyncService
 {
@@ -55,7 +59,13 @@ internal sealed class GacHistorySyncService(
         IGacHistoryProvider[] enabledProviders = [.. providers.Where(provider => provider.IsEnabled)];
         if (enabledProviders.Length == 0)
         {
-            return new GacHistorySyncResult(0, 0, 0, 0, [], []);
+            return new GacHistorySyncResult(
+                0,
+                0,
+                0,
+                0,
+                [],
+                ["No hay un proveedor histórico autorizado configurado. La importación manual normalizada sigue disponible."]);
         }
 
         int succeeded = 0;

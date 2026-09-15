@@ -8,25 +8,31 @@ internal static class GacDatacronRules
     public static GacPlannerDatacronDetails? BestEligible(
         GacTeamPresetDetails team,
         IEnumerable<GacPlannerDatacronDetails> datacrons,
-        IReadOnlySet<string>? unavailableIds = null)
+        IReadOnlySet<string>? unavailableIds = null,
+        DateTimeOffset? nowUtc = null)
     {
         ArgumentNullException.ThrowIfNull(team);
         ArgumentNullException.ThrowIfNull(datacrons);
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
 
         return datacrons
             .Where(datacron => unavailableIds is null || !unavailableIds.Contains(datacron.Id))
-            .Where(datacron => IsEligible(team, datacron))
+            .Where(datacron => IsEligible(team, datacron, now))
             .OrderByDescending(datacron => datacron.Tier)
             .ThenByDescending(datacron => datacron.HasAbilityAffix)
             .ThenBy(datacron => datacron.Id, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
     }
 
-    public static bool IsEligible(GacTeamPresetDetails team, GacPlannerDatacronDetails datacron)
+    public static bool IsEligible(
+        GacTeamPresetDetails team,
+        GacPlannerDatacronDetails datacron,
+        DateTimeOffset? nowUtc = null)
     {
         ArgumentNullException.ThrowIfNull(team);
         ArgumentNullException.ThrowIfNull(datacron);
-        if (team.Squad.IsFleet || datacron.Tier < 3)
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        if (team.Squad.IsFleet || datacron.Tier < 3 || datacron.IsExpired(now))
         {
             return false;
         }
@@ -43,12 +49,14 @@ internal static class GacDatacronRules
     public static bool IsEligible(
         GacPlannerSquad squad,
         PlayerDatacron datacron,
-        IReadOnlyDictionary<string, RosterUnit> roster)
+        IReadOnlyDictionary<string, RosterUnit> roster,
+        DateTimeOffset? nowUtc = null)
     {
         ArgumentNullException.ThrowIfNull(squad);
         ArgumentNullException.ThrowIfNull(datacron);
         ArgumentNullException.ThrowIfNull(roster);
-        if (squad.IsFleet || datacron.Tier < 3)
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        if (squad.IsFleet || datacron.Tier < 3 || datacron.IsExpired(now))
         {
             return false;
         }
@@ -79,7 +87,20 @@ internal static class GacDatacronRules
                     affix.StatValue,
                     affix.RequiredRelicTier,
                     affix.Tags))
-            ]);
+            ],
+            datacron.ExpiresAtUtc);
+    }
+
+    public static bool IsActive(PlayerDatacron datacron, DateTimeOffset? nowUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(datacron);
+        return !datacron.IsExpired(nowUtc ?? DateTimeOffset.UtcNow);
+    }
+
+    public static bool IsActive(GacPlannerDatacronDetails datacron, DateTimeOffset? nowUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(datacron);
+        return !datacron.IsExpired(nowUtc ?? DateTimeOffset.UtcNow);
     }
 
     public static string? NormalizeId(string? datacronId) =>

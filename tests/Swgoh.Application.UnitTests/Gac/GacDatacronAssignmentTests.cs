@@ -72,7 +72,8 @@ public sealed class GacDatacronAssignmentTests
         GacPlannerDatacronDetails? selected = GacDatacronRules.BestEligible(
             team,
             [fallback, best],
-            reserved);
+            reserved,
+            Now);
 
         Assert.NotNull(selected);
         Assert.Equal(fallback.Id, selected.Id);
@@ -84,9 +85,35 @@ public sealed class GacDatacronAssignmentTests
         GacTeamPresetDetails team = Team(relicTier: 6);
         GacPlannerDatacronDetails unavailable = Datacron("dc-r7", tier: 9, requiredRelic: 7, hasAbility: true);
 
-        GacPlannerDatacronDetails? selected = GacDatacronRules.BestEligible(team, [unavailable]);
+        GacPlannerDatacronDetails? selected = GacDatacronRules.BestEligible(team, [unavailable], nowUtc: Now);
 
         Assert.Null(selected);
+    }
+
+    [Fact]
+    public void BestEligible_SkipsExpiredHigherTierDatacron()
+    {
+        GacTeamPresetDetails team = Team(relicTier: 7);
+        GacPlannerDatacronDetails expired = Datacron(
+            "dc-expired",
+            tier: 9,
+            requiredRelic: 7,
+            hasAbility: true,
+            expiresAtUtc: Now.AddMinutes(-1));
+        GacPlannerDatacronDetails active = Datacron(
+            "dc-active",
+            tier: 6,
+            requiredRelic: 5,
+            hasAbility: false,
+            expiresAtUtc: Now.AddDays(7));
+
+        GacPlannerDatacronDetails? selected = GacDatacronRules.BestEligible(
+            team,
+            [expired, active],
+            nowUtc: Now);
+
+        Assert.NotNull(selected);
+        Assert.Equal(active.Id, selected.Id);
     }
 
     private static GacTeamPresetDetails Team(int relicTier)
@@ -123,7 +150,8 @@ public sealed class GacDatacronAssignmentTests
         string id,
         int tier,
         int requiredRelic,
-        bool hasAbility) => new(
+        bool hasAbility,
+        DateTimeOffset? expiresAtUtc = null) => new(
         id,
         "set",
         "template",
@@ -131,7 +159,8 @@ public sealed class GacDatacronAssignmentTests
         Locked: false,
         HighestRequiredRelicTier: requiredRelic,
         HasAbilityAffix: hasAbility,
-        Affixes: []);
+        Affixes: [],
+        ExpiresAtUtc: expiresAtUtc);
 
     private static GacRoundPlan CreatePlan() => GacRoundPlan.Create(
         PlayerAllyCode,

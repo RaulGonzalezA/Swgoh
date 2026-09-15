@@ -61,6 +61,7 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
                 TemplateId = datacron.TemplateId,
                 Tier = datacron.Tier,
                 Locked = datacron.Locked,
+                ExpiresAtUtc = datacron.ExpiresAtUtc,
                 Affixes =
                 [
                     .. datacron.Affixes.Select(affix => new PlayerDatacronAffixDocument
@@ -112,7 +113,8 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
                     affix.StatValue,
                     affix.RequiredRelicTier,
                     affix.Tags ?? []))
-            ])));
+            ],
+            datacron.ExpiresAtUtc)));
 
     private static RosterUnitStatsDocument? ToDocument(RosterUnitStats? stats) => stats is null
         ? null

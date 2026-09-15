@@ -47,7 +47,7 @@ public sealed class GacHistorySyncServiceTests
     }
 
     [Fact]
-    public async Task SyncAsync_WithNoEnabledProvider_IsNoOp()
+    public async Task SyncAsync_WithNoEnabledProvider_ReportsConfigurationWarning()
     {
         var history = new RecordingHistoryService();
         var service = new GacHistorySyncService(
@@ -62,6 +62,9 @@ public sealed class GacHistorySyncServiceTests
 
         Assert.Equal(0, result.ProvidersAttempted);
         Assert.Equal(0, result.RoundsImported);
+        Assert.False(result.HasConfiguredProvider);
+        Assert.Single(result.Warnings);
+        Assert.Contains("proveedor histórico", result.Warnings.Single(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, history.ImportCallCount);
     }
 
