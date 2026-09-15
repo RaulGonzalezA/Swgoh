@@ -143,7 +143,11 @@ internal sealed class GacGeneratedDefenseCleanupService(
         [
             .. state.Plan.OwnDefenses
                 .Where(item => !deletableIds.Contains(item.Team.Id))
-                .Select(item => new SaveGacOwnDefenseAssignment(item.Id, item.Zone, item.Team.Id))
+                .Select(item => new SaveGacOwnDefenseAssignment(
+                    item.Id,
+                    item.Zone,
+                    item.Team.Id,
+                    item.DatacronId))
         ];
         IReadOnlyCollection<SaveGacVisibleDefense> visibleDefenses =
         [
@@ -163,7 +167,8 @@ internal sealed class GacGeneratedDefenseCleanupService(
                 item.Team.Id,
                 item.Attempt,
                 item.Status,
-                item.Notes))
+                item.Notes,
+                item.DatacronId))
         ];
 
         GacPlannerLookup saved = await plannerService
