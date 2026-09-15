@@ -81,8 +81,10 @@ internal sealed partial class GacAttackPlanOptimizerService(
             string personalNote = recommendation.PersonalSamples > 0
                 ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
                 : string.Empty;
-            string notes = $"Optimizador: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
-                $"coste {recommendation.StrategicCost:0.#} (reserva {recommendation.OpportunityCost:0.#}); " +
+            string notes = $"Counter Engine 2.0: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
+                $"win estimado {recommendation.EstimatedWinProbability:0.#}%; riesgo {recommendation.Risk}; " +
+                $"timeout {recommendation.TimeoutRisk}; coste {recommendation.StrategicCost:0.#} " +
+                $"(piezas críticas {recommendation.CriticalPieceCost:0.#}); " +
                 $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
                 $"datacron {recommendation.DatacronStatus}.";
             retainedAttacks.Add(GacAttackAssignment.Create(
@@ -214,6 +216,13 @@ internal sealed partial class GacAttackPlanOptimizerService(
                 .OrderBy(choice => choice.Candidates.Count)
                 .ThenByDescending(choice => choice.Candidates.FirstOrDefault()?.Score ?? 0m)
         ];
+        GacCounterDefenseAnalysis[] counterAnalyses =
+        [
+            .. choices
+                .Select(ToCounterDefenseAnalysis)
+                .OrderBy(analysis => analysis.Zone, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(analysis => analysis.DefenseName, StringComparer.OrdinalIgnoreCase)
+        ];
 
         var search = new SearchState();
         Search(
@@ -260,7 +269,8 @@ internal sealed partial class GacAttackPlanOptimizerService(
             knownBanners.Length == 0 ? null : Math.Round(knownBanners.Average(), 1),
             uncoveredDefenseIds,
             recommendations,
-            search.SearchLimitReached);
+            search.SearchLimitReached,
+            counterAnalyses);
     }
 
     private async Task<GacTacticalOptimizationContext> BuildTacticalContextAsync(
