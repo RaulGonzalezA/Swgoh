@@ -7,7 +7,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
     IGacPlannerService plannerService,
     ICurrentGacScoutingService scoutingService,
     IGacPersonalLearningService personalLearningService,
-    GacRosterDefenseCandidateService rosterCandidateService) : IGacSmartDefenseService
+    IGacRosterDefenseCandidateProvider rosterCandidateProvider) : IGacSmartDefenseService
 {
     private const int HistoryRoundLimit = 30;
 
@@ -50,7 +50,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
                 .Select(unit => unit.DefinitionId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
         ];
-        GacRosterDefenseCandidateSet rosterCandidates = await rosterCandidateService.BuildAsync(
+        GacRosterDefenseCandidateSet rosterCandidates = await rosterCandidateProvider.BuildAsync(
             allyCode,
             state.Plan.Format,
             strategy.Profile,
@@ -187,5 +187,5 @@ internal sealed class RosterAwareGacSmartDefenseService(
         updatedAtUtc,
         scouting.Scouting?.RoundsAnalyzed ?? 0,
         scouting.Scouting?.FullClearRate,
-        "SmartBalancedRosterFallback");
+        "SmartBalancedRosterGlobalOptimization");
 }
