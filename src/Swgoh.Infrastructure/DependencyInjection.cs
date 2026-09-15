@@ -192,14 +192,9 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(gameDataBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
             client.Timeout = TimeSpan.FromMinutes(5);
         });
-        services.AddSingleton<ISwgohGameDataCatalog>(serviceProvider =>
-            new SwgohGameDataCatalogClient(
-                serviceProvider.GetRequiredService<IHttpClientFactory>(),
-                gameDataLocale));
-        services.AddSingleton<IRosterGameDataCatalog>(serviceProvider =>
-            new SwgohRosterGameDataCatalogClient(
-                serviceProvider.GetRequiredService<IHttpClientFactory>(),
-                gameDataLocale));
+        services.AddSingleton(new SwgohGameDataOptions(gameDataLocale));
+        services.AddSingleton<ISwgohGameDataCatalog, ConfiguredSwgohGameDataCatalog>();
+        services.AddSingleton<IRosterGameDataCatalog, ConfiguredSwgohRosterGameDataCatalog>();
 
         string statsBaseUrl = configuration["Swgoh:Stats:BaseUrl"] ?? "http://swgoh-stats:3223";
         services.AddHttpClient<ISwgohStatsClient, SwgohStatsClient>(client =>
@@ -231,10 +226,8 @@ public static class DependencyInjection
                 client.BaseAddress = new Uri(gacHistoryProviderBaseUrl.TrimEnd('/') + "/", UriKind.Absolute);
                 client.Timeout = TimeSpan.FromSeconds(30);
             });
-            services.AddSingleton<IGacHistoryProvider>(serviceProvider =>
-                new NormalizedHttpGacHistoryProvider(
-                    serviceProvider.GetRequiredService<IHttpClientFactory>(),
-                    gacHistoryProviderApiKey));
+            services.AddSingleton(new GacHistoryProviderOptions(gacHistoryProviderApiKey));
+            services.AddSingleton<IGacHistoryProvider, NormalizedHttpGacHistoryProvider>();
         }
 
         services.AddSingleton<IClock, SystemClock>();
@@ -252,13 +245,11 @@ public static class DependencyInjection
         services.AddSingleton<GacExactBracketResolver>();
         services.AddSingleton<SwgohComlinkFastGacOpponentSource>();
         services.AddSingleton<SwgohComlinkUnifiedGacOpponentSource>();
-        services.AddSingleton(provider => new BackgroundGacOpponentSource(
-            provider.GetRequiredService<SwgohComlinkUnifiedGacOpponentSource>(),
-            provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BackgroundGacOpponentSource>>()));
+        services.AddSingleton<BackgroundGacOpponentSource>();
         services.AddSingleton<PersistedGacOpponentSource>();
-        services.AddSingleton<ICurrentGacOpponentSource>(provider => provider.GetRequiredService<PersistedGacOpponentSource>());
-        services.AddSingleton<ICurrentGacOpponentCache>(provider => provider.GetRequiredService<PersistedGacOpponentSource>());
-        services.AddHostedService(provider => provider.GetRequiredService<BackgroundGacOpponentSource>());
+        services.AddSingleton<ICurrentGacOpponentSource, PersistedGacOpponentSourceAdapter>();
+        services.AddSingleton<ICurrentGacOpponentCache, PersistedGacOpponentCacheAdapter>();
+        services.AddHostedService<BackgroundGacOpponentHostedService>();
         return services;
     }
 }
