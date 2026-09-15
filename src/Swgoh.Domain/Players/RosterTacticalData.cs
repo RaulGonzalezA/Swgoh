@@ -28,7 +28,8 @@ public sealed record PlayerDatacron(
     string TemplateId,
     int Tier,
     bool Locked,
-    IReadOnlyCollection<PlayerDatacronAffix> Affixes)
+    IReadOnlyCollection<PlayerDatacronAffix> Affixes,
+    DateTimeOffset? ExpiresAtUtc = null)
 {
     public int HighestRequiredRelicTier => Affixes
         .Where(affix => affix.RequiredRelicTier is not null)
@@ -37,6 +38,9 @@ public sealed record PlayerDatacron(
         .Max();
 
     public bool HasAbilityAffix => Affixes.Any(affix => !string.IsNullOrWhiteSpace(affix.AbilityId));
+
+    public bool IsExpired(DateTimeOffset nowUtc) =>
+        ExpiresAtUtc is DateTimeOffset expiresAtUtc && expiresAtUtc <= nowUtc;
 }
 
 public sealed record PlayerDatacronAffix(
