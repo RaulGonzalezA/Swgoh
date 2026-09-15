@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Swgoh.Application.Players;
 using Swgoh.Domain.Gac;
 using Swgoh.Domain.Players;
@@ -67,7 +69,8 @@ internal sealed class GacJointRoundOptimizerService(
     IGacPlannerService plannerService,
     ICurrentGacScoutingService scoutingService,
     IGacPersonalLearningService personalLearningService,
-    IPlayerProfileService playerProfileService) : IGacJointRoundOptimizerService
+    IPlayerProfileService playerProfileService,
+    GacOptimizationCoordinator? optimizationCoordinator = null) : IGacJointRoundOptimizerService
 {
     private const int HistoryRoundLimit = 30;
     private const int CandidatesPerSlot = 5;
@@ -75,6 +78,7 @@ internal sealed class GacJointRoundOptimizerService(
     private const int PairCandidatesPerSlot = 2;
     private const int MaxDefenseScenarios = 80;
     private const int AlternativeLimit = 3;
+    private static readonly TimeSpan MaxOptimizationDuration = TimeSpan.FromSeconds(10);
 
     public async Task<GacJointRoundOptimizationLookup> OptimizeCurrentAsync(
         long allyCode,
@@ -86,6 +90,10 @@ internal sealed class GacJointRoundOptimizerService(
         {
             throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported joint round optimization mode.");
         }
+
+        using IDisposable? optimizationLease = optimizationCoordinator is null
+            ? null
+            : await optimizationCoordinator.AcquireAsync(cancellationToken).ConfigureAwait(false);
 
         GacPlannerLookup plannerLookup = await plannerService
             .GetCurrentAsync(allyCode, cancellationToken)
@@ -100,6 +108,7 @@ internal sealed class GacJointRoundOptimizerService(
         }
 
         GacPlannerState state = plannerLookup.State;
+        GacBoardLayout boardLayout = GacBoardLayouts.Get(state.Plan.League, state.Plan.Format);
         Task<GacDefenseStrategySnapshot> strategyTask = strategyService.GetAsync(
             allyCode,
             state.Plan.Format,
@@ -151,19 +160,28 @@ internal sealed class GacJointRoundOptimizerService(
         GacTacticalOptimizationContext tacticalContext = GacTacticalOptimizationContext.From(player, opponent);
         GacPersonalLearningContext personalContext = GacPersonalLearningContext.From(personal);
         var evaluated = new List<GacJointRoundScenario>(defenseScenarios.Count);
+        long startedAt = Stopwatch.GetTimestamp();
+        bool optimizationBudgetReached = false;
 
         foreach (DefenseScenario defenseScenario in defenseScenarios)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (evaluated.Count > 0 && Stopwatch.GetElapsedTime(startedAt) >= MaxOptimizationDuration)
+            {
+                optimizationBudgetReached = true;
+                break;
+            }
+
             GacPlannerState hypothetical = BuildHypotheticalState(state, defenseScenario.Generation.Assignments);
             GacAttackOptimizationResult attacks = GacAttackPlanOptimizerService.Optimize(
                 hypothetical,
                 GacAttackOptimizationMode.RebuildPlanned,
                 tacticalContext,
-                personalContext);
+                personalContext,
+                cancellationToken);
             evaluated.Add(EvaluateScenario(
                 defenseScenario.Id,
-                strategy.Profile.Slots.Count,
+                boardLayout.TotalDefenseSlots,
                 defenseScenario.Generation,
                 attacks,
                 mode));
@@ -185,6 +203,11 @@ internal sealed class GacJointRoundOptimizerService(
         ];
 
         var warnings = new List<string>();
+        if (selected.DefenseCompletionRate < 100m)
+        {
+            warnings.Add(
+                $"La defensa propuesta cubre {selected.DefenseAssignments.Count}/{boardLayout.TotalDefenseSlots} huecos requeridos para {state.Plan.League} {FormatName(state.Plan.Format)}.");
+        }
         if (selected.AttackCoverageRate < 100m && selected.TargetDefenses > 0)
         {
             warnings.Add(
@@ -193,6 +216,11 @@ internal sealed class GacJointRoundOptimizerService(
         if (evaluated.Any(item => item.AttackSearchLimitReached))
         {
             warnings.Add("Algún escenario alcanzó el límite interno de búsqueda del optimizador de ataques.");
+        }
+        if (optimizationBudgetReached)
+        {
+            warnings.Add(
+                $"El optimizador conjunto agotó su presupuesto de {MaxOptimizationDuration.TotalSeconds:0} s tras evaluar {evaluated.Count} escenario(s); se conserva el mejor resultado encontrado.");
         }
         if (alreadyConsumedUnits.Count > 0)
         {
@@ -472,7 +500,7 @@ internal sealed class GacJointRoundOptimizerService(
 
         return await plannerService.SaveCurrentAsync(
             allyCode,
-            new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks),
+            new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks, state.Plan.Version),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -545,6 +573,8 @@ internal sealed class GacJointRoundOptimizerService(
             GacJointRoundOptimizationMode.MaxBanners => (0.18m, 0.25m, 0.18m, 0.32m, 0.07m),
             _ => (0.32m, 0.28m, 0.25m, 0.08m, 0.07m)
         };
+
+    private static string FormatName(GacFormat format) => format == GacFormat.ThreeVsThree ? "3v3" : "5v5";
 
     private sealed record DefenseScenario(
         string Id,
