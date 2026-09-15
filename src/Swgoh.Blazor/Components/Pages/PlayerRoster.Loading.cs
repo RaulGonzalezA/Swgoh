@@ -272,4 +272,3 @@ public partial class PlayerRoster
         playerLoad?.Cancel();
         playerLoad?.Dispose();
     }
-}
