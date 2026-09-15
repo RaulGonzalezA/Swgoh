@@ -16,9 +16,13 @@ internal static class GacPlannerOptimizationEndpoints
             .WithTags("GAC Planner");
 
         group.MapPost("/current/optimize", OptimizeCurrentAsync)
-            .WithSummary("Preview or apply an optimized attack plan for the current GAC round");
+            .WithSummary("Preview or apply an optimized attack plan for the current GAC round")
+            .RequireRateLimiting("gac-optimizer")
+            .Produces(StatusCodes.Status429TooManyRequests);
         group.MapPost("/current/optimize-round", OptimizeRoundAsync)
-            .WithSummary("Preview or apply a joint defense and attack optimization for the current GAC round");
+            .WithSummary("Preview or apply a joint defense and attack optimization for the current GAC round")
+            .RequireRateLimiting("gac-optimizer")
+            .Produces(StatusCodes.Status429TooManyRequests);
 
         return endpoints;
     }
@@ -38,6 +42,10 @@ internal static class GacPlannerOptimizationEndpoints
                 request.Apply,
                 cancellationToken);
             return ToResult(lookup);
+        }
+        catch (GacPlannerConcurrencyException exception)
+        {
+            return Conflict(exception);
         }
         catch (ArgumentException exception)
         {
@@ -62,6 +70,10 @@ internal static class GacPlannerOptimizationEndpoints
                 cancellationToken);
             return ToJointResult(lookup);
         }
+        catch (GacPlannerConcurrencyException exception)
+        {
+            return Conflict(exception);
+        }
         catch (ArgumentException exception)
         {
             return Results.ValidationProblem(
@@ -72,6 +84,9 @@ internal static class GacPlannerOptimizationEndpoints
             return Results.Conflict(new { message = exception.Message });
         }
     }
+
+    private static IResult Conflict(GacPlannerConcurrencyException exception) =>
+        Results.Conflict(new GacPlannerEndpoints.PlannerUnavailableResponse("Conflict", exception.Message));
 
     private static IResult ToResult(GacAttackOptimizationLookup lookup)
     {
