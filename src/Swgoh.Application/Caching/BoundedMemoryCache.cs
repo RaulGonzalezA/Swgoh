@@ -20,17 +20,11 @@ public sealed class BoundedMemoryCache<TKey, TValue> : IDisposable
         Func<TValue, DateTimeOffset?>? absoluteExpirationSelector = null,
         Func<TValue, long>? sizeSelector = null)
     {
-        if (sizeLimit <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(sizeLimit), sizeLimit, "Cache size limit must be greater than zero.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sizeLimit);
 
-        if (defaultLifetime is TimeSpan lifetime && lifetime <= TimeSpan.Zero)
+        if (defaultLifetime is TimeSpan lifetime)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(defaultLifetime),
-                defaultLifetime,
-                "Default cache lifetime must be greater than zero.");
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(lifetime, TimeSpan.Zero, nameof(defaultLifetime));
         }
 
         cache = new MemoryCache(new MemoryCacheOptions
