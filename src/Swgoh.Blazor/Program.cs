@@ -23,6 +23,7 @@ builder.Services.AddHttpClient<GacPlannerPerformanceApiClient>(client => client.
 builder.Services.AddHttpClient<GacDefenseStrategyApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<GacJointRoundOptimizerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<GacAttackExecutionApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
+builder.Services.AddHttpClient<GacHistoryApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddScoped<PlayerSessionState>();
