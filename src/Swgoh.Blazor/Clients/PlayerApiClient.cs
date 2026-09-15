@@ -112,10 +112,7 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         long GalacticPower,
         DateTimeOffset UpdatedAtUtc,
         int RosterCount,
-        IReadOnlyCollection<PlayerDatacronViewModel>? Datacrons = null)
-    {
-        public IReadOnlyCollection<PlayerDatacronViewModel> AvailableDatacrons => Datacrons ?? [];
-    }
+        int DatacronCount = 0);
 
     public sealed record PlayerRosterAnalysisViewModel(
         long AllyCode,
@@ -188,21 +185,4 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         int SpeedPrimaryCount,
         decimal? SpeedBonus,
         bool IsComplete);
-
-    public sealed record PlayerDatacronViewModel(
-        string Id,
-        string SetId,
-        string TemplateId,
-        int Tier,
-        bool Locked,
-        int HighestRequiredRelicTier,
-        bool HasAbilityAffix,
-        IReadOnlyCollection<PlayerDatacronAffixViewModel> Affixes);
-
-    public sealed record PlayerDatacronAffixViewModel(
-        string? AbilityId,
-        int? StatType,
-        long? StatValue,
-        int? RequiredRelicTier,
-        IReadOnlyCollection<string> Tags);
 }
