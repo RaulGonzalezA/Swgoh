@@ -12,6 +12,7 @@ namespace Swgoh.Infrastructure.Comlink;
 
 internal sealed class BackgroundGacOpponentSource(
     ICurrentGacOpponentSource source,
+    IGacTelemetry gacTelemetry,
     ILogger<BackgroundGacOpponentSource> logger) : BackgroundService, ICurrentGacOpponentSource
 {
     internal const int WorkerCount = 3;
@@ -51,7 +52,7 @@ internal sealed class BackgroundGacOpponentSource(
             if (entries.TryGetValue(key, out Entry? existing))
             {
                 stopwatch.Stop();
-                GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, existing.Result.Status, cacheHit: true, "background-cache");
+                gacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, existing.Result.Status, cacheHit: true, "background-cache");
                 return Task.FromResult(existing.Result);
             }
 
@@ -63,13 +64,13 @@ internal sealed class BackgroundGacOpponentSource(
                     CurrentGacOpponentStatus.OpponentUnavailable,
                     "Hay demasiadas búsquedas pendientes. Inténtalo más tarde.");
                 stopwatch.Stop();
-                GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, unavailable.Status, cacheHit: false, "background-queue-full");
+                gacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, unavailable.Status, cacheHit: false, "background-queue-full");
                 return Task.FromResult(unavailable);
             }
 
             entries[key] = new Entry(pending, DateTimeOffset.UtcNow.Add(PendingEntryDuration));
             stopwatch.Stop();
-            GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, pending.Status, cacheHit: false, "background-queued");
+            gacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, pending.Status, cacheHit: false, "background-queued");
             return Task.FromResult(pending);
         }
     }
@@ -151,7 +152,7 @@ internal sealed class BackgroundGacOpponentSource(
             stopwatch.Stop();
         }
 
-        GacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, result.Status, cacheHit: false, "provider");
+        gacTelemetry.RecordOpponentLookup(stopwatch.Elapsed, result.Status, cacheHit: false, "provider");
         logger.LogInformation(
             "GAC background worker {WorkerId} completed provider lookup for {AllyCode} with {Status} in {ElapsedMs} ms",
             workerId,
