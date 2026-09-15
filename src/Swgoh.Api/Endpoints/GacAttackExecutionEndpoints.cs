@@ -41,6 +41,11 @@ internal static class GacAttackExecutionEndpoints
                 cancellationToken);
             return ToResult(lookup);
         }
+        catch (GacPlannerConcurrencyException exception)
+        {
+            return Results.Conflict(
+                new GacPlannerEndpoints.PlannerUnavailableResponse("Conflict", exception.Message));
+        }
         catch (ArgumentException exception)
         {
             return Results.ValidationProblem(
