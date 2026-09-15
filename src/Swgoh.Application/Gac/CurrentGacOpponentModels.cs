@@ -127,5 +127,9 @@ public sealed record CurrentGacScoutingResult(
     GacHistorySyncResult? HistorySync = null,
     IReadOnlyCollection<string>? Warnings = null)
 {
-    public IReadOnlyCollection<string> DegradationWarnings => Warnings ?? [];
+    public IReadOnlyCollection<string> DegradationWarnings =>
+    [
+        .. (Warnings ?? []),
+        .. (HistorySync?.Warnings ?? [])
+    ];
 }
