@@ -42,6 +42,7 @@ internal sealed class GacOwnDefenseAssignmentDocument
     public string Id { get; set; } = string.Empty;
     public string Zone { get; set; } = string.Empty;
     public string TeamPresetId { get; set; } = string.Empty;
+    public string? DatacronId { get; set; }
 }
 
 internal sealed class GacVisibleDefenseDocument
@@ -60,4 +61,5 @@ internal sealed class GacAttackAssignmentDocument
     public int Attempt { get; set; }
     public int Status { get; set; }
     public string? Notes { get; set; }
+    public string? DatacronId { get; set; }
 }

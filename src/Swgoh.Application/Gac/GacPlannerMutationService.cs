@@ -189,7 +189,8 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
             .. current.State.Plan.OwnDefenses.Select(item => new SaveGacOwnDefenseAssignment(
                 item.Id,
                 item.Zone,
-                item.Team.Id))
+                item.Team.Id,
+                item.DatacronId))
         ];
         List<SaveGacVisibleDefense> visibleDefenses =
         [
@@ -209,7 +210,8 @@ internal sealed class GacPlannerMutationService(IGacPlannerService plannerServic
                 item.Team.Id,
                 item.Attempt,
                 item.Status,
-                item.Notes))
+                item.Notes,
+                item.DatacronId))
         ];
 
         mutate(current.State, ownDefenses, visibleDefenses, attacks);

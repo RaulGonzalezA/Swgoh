@@ -35,6 +35,10 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
         cancellationToken.ThrowIfCancellationRequested();
         GacPlannerState state = preview.State;
         GacAttackOptimizationResult optimization = preview.Optimization;
+        IReadOnlyDictionary<Guid, string?> temporaryDatacrons = AllocateAttackDatacrons(
+            state,
+            optimization.Recommendations,
+            mode);
         GacAttackPresetMaterialization materialization = await GacAttackGeneratedPresetMaterializer
             .MaterializeAsync(
                 plannerService,
@@ -45,6 +49,9 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             .ConfigureAwait(false);
         string generationId = Guid.NewGuid().ToString("N");
         optimization = GacAttackGeneratedPresetMaterializer.Remap(optimization, materialization.IdMap);
+        Dictionary<Guid, string?> appliedDatacrons = temporaryDatacrons.ToDictionary(
+            item => materialization.IdMap.GetValueOrDefault(item.Key, item.Key),
+            item => item.Value);
 
         try
         {
@@ -67,19 +74,24 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
                 string personalNote = recommendation.PersonalSamples > 0
                     ? $" personal {recommendation.PersonalAdjustment:+0.#;-0.#;0} ({recommendation.PersonalWins}/{recommendation.PersonalSamples});"
                     : string.Empty;
+                string? datacronId = appliedDatacrons.GetValueOrDefault(recommendation.TeamPresetId);
+                string datacronNote = datacronId is null
+                    ? recommendation.DatacronStatus
+                    : $"{datacronId} ({recommendation.DatacronStatus})";
                 string notes = $"Counter Engine 2.0: {recommendation.Evidence}; score {recommendation.Score:0.#}; " +
                     $"win estimado {recommendation.EstimatedWinProbability:0.#}%; riesgo {recommendation.Risk}; " +
                     $"timeout {recommendation.TimeoutRisk}; coste {recommendation.StrategicCost:0.#} " +
                     $"(piezas críticas {recommendation.CriticalPieceCost:0.#}); " +
                     $"ajuste táctico {recommendation.TacticalAdjustment:+0.#;-0.#;0};{personalNote} " +
-                    $"datacron {recommendation.DatacronStatus}.";
+                    $"datacron {datacronNote}.";
                 retainedAttacks.Add(GacAttackAssignment.Create(
                     Guid.NewGuid(),
                     recommendation.DefenseId,
                     recommendation.TeamPresetId,
                     attempt,
                     GacAttackPlanStatus.Planned,
-                    notes));
+                    notes,
+                    datacronId));
             }
 
             plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
@@ -120,6 +132,54 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             refreshed.Message,
             refreshed.State,
             optimization with { Applied = true });
+    }
+
+    private static IReadOnlyDictionary<Guid, string?> AllocateAttackDatacrons(
+        GacPlannerState state,
+        IReadOnlyCollection<GacAttackOptimizationRecommendation> recommendations,
+        GacAttackOptimizationMode mode)
+    {
+        Dictionary<Guid, GacTeamPresetDetails> teams = state.Presets.ToDictionary(item => item.Id);
+        var used = state.Plan.OwnDefenses
+            .Select(defense => defense.DatacronId)
+            .Where(id => id is not null)
+            .Select(id => id!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (mode == GacAttackOptimizationMode.FillGaps)
+        {
+            foreach (string id in state.Plan.Attacks
+                         .Where(attack => attack.Status == GacAttackPlanStatus.Planned)
+                         .Select(attack => attack.DatacronId)
+                         .Where(id => id is not null)
+                         .Select(id => id!))
+            {
+                used.Add(id);
+            }
+        }
+
+        var result = new Dictionary<Guid, string?>();
+        foreach (GacAttackOptimizationRecommendation recommendation in recommendations
+                     .OrderByDescending(item => item.EstimatedWinProbability)
+                     .ThenByDescending(item => item.Score))
+        {
+            if (!teams.TryGetValue(recommendation.TeamPresetId, out GacTeamPresetDetails? team) || team.Squad.IsFleet)
+            {
+                result[recommendation.TeamPresetId] = null;
+                continue;
+            }
+
+            GacPlannerDatacronDetails? datacron = GacDatacronRules.BestEligible(
+                team,
+                state.PlayerDatacrons,
+                used);
+            result[recommendation.TeamPresetId] = datacron?.Id;
+            if (datacron is not null)
+            {
+                used.Add(datacron.Id);
+            }
+        }
+
+        return result;
     }
 
     private async Task RegisterLifecycleBestEffortAsync(

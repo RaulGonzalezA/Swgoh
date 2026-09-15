@@ -89,6 +89,10 @@ internal sealed class RosterAwareGacSmartDefenseService(
             return ToResult(state.Plan.Format, false, generation, state.Plan.UpdatedAtUtc, scouting);
         }
 
+        IReadOnlyDictionary<Guid, string?> temporaryDatacrons = AllocateDefenseDatacrons(
+            generation.Assignments,
+            candidates,
+            state);
         string generationId = Guid.NewGuid().ToString("N");
         GacGeneratedPresetMaterialization materialization = await GacRosterDefenseCandidateService.MaterializeAsync(
             plannerService,
@@ -102,6 +106,9 @@ internal sealed class RosterAwareGacSmartDefenseService(
             .. generation.Assignments.Select(item =>
                 GacRosterDefenseCandidateService.Remap(item, materialization.IdMap))
         ];
+        Dictionary<Guid, string?> appliedDatacrons = temporaryDatacrons.ToDictionary(
+            item => materialization.IdMap.GetValueOrDefault(item.Key, item.Key),
+            item => item.Value);
         GacSmartDefenseService.SmartGeneration appliedGeneration = generation with
         {
             Assignments = appliedAssignments
@@ -114,6 +121,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
                 allyCode,
                 state,
                 appliedAssignments,
+                appliedDatacrons,
                 cancellationToken).ConfigureAwait(false);
             if (!saved.IsAvailable || saved.State is null)
             {
@@ -194,6 +202,7 @@ internal sealed class RosterAwareGacSmartDefenseService(
         long allyCode,
         GacPlannerState state,
         IReadOnlyCollection<GacSmartDefenseAssignment> assignments,
+        IReadOnlyDictionary<Guid, string?> datacronsByTeamId,
         CancellationToken cancellationToken)
     {
         IReadOnlyCollection<SaveGacOwnDefenseAssignment> ownDefenses =
@@ -203,7 +212,11 @@ internal sealed class RosterAwareGacSmartDefenseService(
                 GacOwnDefenseAssignmentDetails? existing = state.Plan.OwnDefenses.FirstOrDefault(defense =>
                     defense.Team.Id == item.TeamPresetId &&
                     string.Equals(defense.Zone, item.Zone, StringComparison.OrdinalIgnoreCase));
-                return new SaveGacOwnDefenseAssignment(existing?.Id, item.Zone, item.TeamPresetId);
+                return new SaveGacOwnDefenseAssignment(
+                    existing?.Id,
+                    item.Zone,
+                    item.TeamPresetId,
+                    datacronsByTeamId.GetValueOrDefault(item.TeamPresetId));
             })
         ];
         IReadOnlyCollection<SaveGacVisibleDefense> visibleDefenses =
@@ -224,13 +237,50 @@ internal sealed class RosterAwareGacSmartDefenseService(
                 item.Team.Id,
                 item.Attempt,
                 item.Status,
-                item.Notes))
+                item.Notes,
+                item.DatacronId))
         ];
 
         return await plannerService.SaveCurrentAsync(
             allyCode,
             new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks, state.Plan.Version),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyDictionary<Guid, string?> AllocateDefenseDatacrons(
+        IReadOnlyCollection<GacSmartDefenseAssignment> assignments,
+        IReadOnlyCollection<GacTeamPresetDetails> candidates,
+        GacPlannerState state)
+    {
+        Dictionary<Guid, GacTeamPresetDetails> teams = candidates.ToDictionary(item => item.Id);
+        var used = state.Plan.Attacks
+            .Where(attack => attack.Status == GacAttackPlanStatus.Planned)
+            .Select(attack => attack.DatacronId)
+            .Where(id => id is not null)
+            .Select(id => id!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<Guid, string?>();
+
+        foreach (GacSmartDefenseAssignment assignment in assignments.OrderBy(item => item.Position))
+        {
+            if (!teams.TryGetValue(assignment.TeamPresetId, out GacTeamPresetDetails? team) || team.Squad.IsFleet)
+            {
+                result[assignment.TeamPresetId] = null;
+                continue;
+            }
+
+            GacPlannerDatacronDetails? datacron = GacDatacronRules.BestEligible(
+                team,
+                state.PlayerDatacrons,
+                used);
+            result[assignment.TeamPresetId] = datacron?.Id;
+            if (datacron is not null)
+            {
+                used.Add(datacron.Id);
+            }
+        }
+
+        return result;
     }
 
     private Task RollbackAsync(

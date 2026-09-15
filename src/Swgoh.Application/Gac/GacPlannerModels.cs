@@ -14,7 +14,8 @@ public sealed record SaveGacTeamPreset(
 public sealed record SaveGacOwnDefenseAssignment(
     Guid? Id,
     string Zone,
-    Guid TeamPresetId);
+    Guid TeamPresetId,
+    string? DatacronId = null);
 
 public sealed record SaveGacVisibleDefense(
     Guid? Id,
@@ -30,7 +31,8 @@ public sealed record SaveGacAttackAssignment(
     Guid TeamPresetId,
     int Attempt,
     GacAttackPlanStatus Status,
-    string? Notes);
+    string? Notes,
+    string? DatacronId = null);
 
 public sealed record SaveCurrentGacRoundPlan(
     IReadOnlyCollection<SaveGacOwnDefenseAssignment> OwnDefenses,
@@ -70,7 +72,8 @@ public sealed record GacTeamPresetDetails(
 public sealed record GacOwnDefenseAssignmentDetails(
     Guid Id,
     string Zone,
-    GacTeamPresetDetails Team);
+    GacTeamPresetDetails Team,
+    string? DatacronId = null);
 
 public sealed record GacVisibleDefenseDetails(
     Guid Id,
@@ -86,7 +89,8 @@ public sealed record GacAttackAssignmentDetails(
     int Attempt,
     GacAttackPlanStatus Status,
     string? Notes,
-    int? Banners = null);
+    int? Banners = null,
+    string? DatacronId = null);
 
 public sealed record GacPlannerConflict(
     string Code,

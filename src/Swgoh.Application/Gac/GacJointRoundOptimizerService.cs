@@ -258,6 +258,10 @@ internal sealed partial class GacJointRoundOptimizerService(
                 preview);
         }
 
+        IReadOnlyDictionary<Guid, string?> temporaryDefenseDatacrons = AllocateDefenseDatacrons(
+            selected.DefenseAssignments,
+            defenseEligiblePresets,
+            state.PlayerDatacrons);
         GacGeneratedPresetMaterialization materialization = await GacRosterDefenseCandidateService.MaterializeAsync(
             plannerService,
             allyCode,
@@ -270,6 +274,14 @@ internal sealed partial class GacJointRoundOptimizerService(
             .. selected.DefenseAssignments.Select(item =>
                 GacRosterDefenseCandidateService.Remap(item, materialization.IdMap))
         ];
+        Dictionary<Guid, string?> appliedDefenseDatacrons = temporaryDefenseDatacrons.ToDictionary(
+            item => materialization.IdMap.GetValueOrDefault(item.Key, item.Key),
+            item => item.Value);
+        IReadOnlyDictionary<Guid, string?> attackDatacrons = AllocateAttackDatacrons(
+            selected.AttackRecommendations,
+            state.Presets,
+            state.PlayerDatacrons,
+            appliedDefenseDatacrons.Values);
         GacJointRoundScenario appliedSelected = selected with
         {
             DefenseAssignments = appliedDefenseAssignments
@@ -282,6 +294,8 @@ internal sealed partial class GacJointRoundOptimizerService(
                 state,
                 appliedSelected,
                 mode,
+                appliedDefenseDatacrons,
+                attackDatacrons,
                 cancellationToken).ConfigureAwait(false);
             if (!saved.IsAvailable || saved.State is null)
             {
@@ -318,6 +332,8 @@ internal sealed partial class GacJointRoundOptimizerService(
         GacPlannerState state,
         GacJointRoundScenario selected,
         GacJointRoundOptimizationMode mode,
+        IReadOnlyDictionary<Guid, string?> defenseDatacrons,
+        IReadOnlyDictionary<Guid, string?> attackDatacrons,
         CancellationToken cancellationToken)
     {
         IReadOnlyCollection<SaveGacOwnDefenseAssignment> ownDefenses =
@@ -327,7 +343,11 @@ internal sealed partial class GacJointRoundOptimizerService(
                 GacOwnDefenseAssignmentDetails? existing = state.Plan.OwnDefenses.FirstOrDefault(defense =>
                     defense.Team.Id == item.TeamPresetId &&
                     string.Equals(defense.Zone, item.Zone, StringComparison.OrdinalIgnoreCase));
-                return new SaveGacOwnDefenseAssignment(existing?.Id, item.Zone, item.TeamPresetId);
+                return new SaveGacOwnDefenseAssignment(
+                    existing?.Id,
+                    item.Zone,
+                    item.TeamPresetId,
+                    defenseDatacrons.GetValueOrDefault(item.TeamPresetId));
             })
         ];
         IReadOnlyCollection<SaveGacVisibleDefense> visibleDefenses =
@@ -351,7 +371,8 @@ internal sealed partial class GacJointRoundOptimizerService(
                 existing.Team.Id,
                 existing.Attempt,
                 existing.Status,
-                existing.Notes));
+                existing.Notes,
+                existing.DatacronId));
         }
 
         foreach (GacAttackOptimizationRecommendation recommendation in selected.AttackRecommendations)
@@ -361,22 +382,85 @@ internal sealed partial class GacJointRoundOptimizerService(
                 .Select(attack => attack.Attempt)
                 .DefaultIfEmpty(0)
                 .Max() + 1;
+            string? datacronId = attackDatacrons.GetValueOrDefault(recommendation.TeamPresetId);
             string notes =
                 $"Optimizador conjunto {mode}: round score {selected.JointScore:0.#}; " +
                 $"counter {recommendation.Score:0.#}; {recommendation.Evidence}; " +
-                $"coste estratégico {recommendation.StrategicCost:0.#}.";
+                $"coste estratégico {recommendation.StrategicCost:0.#}; " +
+                $"datacron {(datacronId ?? "sin asignar")}.";
             attacks.Add(new SaveGacAttackAssignment(
                 null,
                 recommendation.DefenseId,
                 recommendation.TeamPresetId,
                 attempt,
                 GacAttackPlanStatus.Planned,
-                notes));
+                notes,
+                datacronId));
         }
 
         return await plannerService.SaveCurrentAsync(
             allyCode,
             new SaveCurrentGacRoundPlan(ownDefenses, visibleDefenses, attacks, state.Plan.Version),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyDictionary<Guid, string?> AllocateDefenseDatacrons(
+        IReadOnlyCollection<GacSmartDefenseAssignment> assignments,
+        IReadOnlyCollection<GacTeamPresetDetails> presets,
+        IReadOnlyCollection<GacPlannerDatacronDetails> datacrons)
+    {
+        Dictionary<Guid, GacTeamPresetDetails> teams = presets.ToDictionary(item => item.Id);
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<Guid, string?>();
+        foreach (GacSmartDefenseAssignment assignment in assignments.OrderBy(item => item.Position))
+        {
+            if (!teams.TryGetValue(assignment.TeamPresetId, out GacTeamPresetDetails? team) || team.Squad.IsFleet)
+            {
+                result[assignment.TeamPresetId] = null;
+                continue;
+            }
+
+            GacPlannerDatacronDetails? datacron = GacDatacronRules.BestEligible(team, datacrons, used);
+            result[assignment.TeamPresetId] = datacron?.Id;
+            if (datacron is not null)
+            {
+                used.Add(datacron.Id);
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<Guid, string?> AllocateAttackDatacrons(
+        IReadOnlyCollection<GacAttackOptimizationRecommendation> recommendations,
+        IReadOnlyCollection<GacTeamPresetDetails> presets,
+        IReadOnlyCollection<GacPlannerDatacronDetails> datacrons,
+        IEnumerable<string?> alreadyUsed)
+    {
+        Dictionary<Guid, GacTeamPresetDetails> teams = presets.ToDictionary(item => item.Id);
+        var used = alreadyUsed
+            .Where(id => id is not null)
+            .Select(id => id!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<Guid, string?>();
+        foreach (GacAttackOptimizationRecommendation recommendation in recommendations
+                     .OrderByDescending(item => item.EstimatedWinProbability)
+                     .ThenByDescending(item => item.Score))
+        {
+            if (!teams.TryGetValue(recommendation.TeamPresetId, out GacTeamPresetDetails? team) || team.Squad.IsFleet)
+            {
+                result[recommendation.TeamPresetId] = null;
+                continue;
+            }
+
+            GacPlannerDatacronDetails? datacron = GacDatacronRules.BestEligible(team, datacrons, used);
+            result[recommendation.TeamPresetId] = datacron?.Id;
+            if (datacron is not null)
+            {
+                used.Add(datacron.Id);
+            }
+        }
+
+        return result;
     }
 }

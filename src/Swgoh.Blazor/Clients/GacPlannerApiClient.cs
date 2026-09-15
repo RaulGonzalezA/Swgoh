@@ -231,7 +231,11 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
     public sealed record PlannerViewModel(
         PlannerOpponentViewModel Opponent,
         IReadOnlyCollection<TeamPresetViewModel> Presets,
-        RoundPlanViewModel Plan);
+        RoundPlanViewModel Plan,
+        IReadOnlyCollection<DatacronViewModel>? Datacrons = null)
+    {
+        public IReadOnlyCollection<DatacronViewModel> AvailableDatacrons => Datacrons ?? [];
+    }
 
     public sealed record PlannerOpponentViewModel(
         long OpponentAllyCode,
@@ -258,7 +262,11 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         DateTimeOffset UpdatedAtUtc,
         long Version);
 
-    public sealed record OwnDefenseViewModel(Guid Id, string Zone, TeamPresetViewModel Team);
+    public sealed record OwnDefenseViewModel(
+        Guid Id,
+        string Zone,
+        TeamPresetViewModel Team,
+        string? DatacronId = null);
 
     public sealed record VisibleDefenseViewModel(
         Guid Id,
@@ -274,7 +282,8 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         int Attempt,
         string Status,
         string? Notes,
-        int? Banners);
+        int? Banners,
+        string? DatacronId = null);
 
     public sealed record ConflictViewModel(
         string Code,
@@ -325,6 +334,15 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         int? ZetaCount,
         int? OmicronCount);
 
+    public sealed record DatacronViewModel(
+        string Id,
+        string SetId,
+        string TemplateId,
+        int Tier,
+        bool Locked,
+        int HighestRequiredRelicTier,
+        bool HasAbilityAffix);
+
     public sealed record SavePresetRequest(
         string Name,
         string Format,
@@ -339,7 +357,11 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         IReadOnlyCollection<SaveAttackRequest> Attacks,
         long ExpectedVersion);
 
-    public sealed record SaveOwnDefenseRequest(Guid? Id, string Zone, Guid TeamPresetId);
+    public sealed record SaveOwnDefenseRequest(
+        Guid? Id,
+        string Zone,
+        Guid TeamPresetId,
+        string? DatacronId = null);
 
     public sealed record SaveVisibleDefenseRequest(
         Guid? Id,
@@ -355,7 +377,8 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         Guid TeamPresetId,
         int Attempt,
         string Status,
-        string? Notes);
+        string? Notes,
+        string? DatacronId = null);
 
     public sealed record OptimizeRequest(string Mode, bool Apply);
 }
