@@ -35,7 +35,8 @@ public sealed record SaveGacAttackAssignment(
 public sealed record SaveCurrentGacRoundPlan(
     IReadOnlyCollection<SaveGacOwnDefenseAssignment> OwnDefenses,
     IReadOnlyCollection<SaveGacVisibleDefense> VisibleDefenses,
-    IReadOnlyCollection<SaveGacAttackAssignment> Attacks);
+    IReadOnlyCollection<SaveGacAttackAssignment> Attacks,
+    long? ExpectedVersion = null);
 
 public sealed record GacPlannerUnitDetails(
     string DefinitionId,
@@ -141,7 +142,8 @@ public sealed record GacRoundPlanDetails(
     IReadOnlyCollection<GacAttackAssignmentDetails> Attacks,
     IReadOnlyCollection<GacPlannerConflict> Conflicts,
     IReadOnlyCollection<GacPlannerCounterHint> CounterHints,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    long Version = 0);
 
 public sealed record GacPlannerState(
     CurrentGacOpponent Opponent,
