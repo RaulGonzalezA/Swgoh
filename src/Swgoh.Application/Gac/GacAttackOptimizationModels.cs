@@ -83,9 +83,11 @@ public sealed record GacAttackOptimizationResult(
     IReadOnlyCollection<Guid> UncoveredDefenseIds,
     IReadOnlyCollection<GacAttackOptimizationRecommendation> Recommendations,
     bool SearchLimitReached,
-    IReadOnlyCollection<GacCounterDefenseAnalysis>? CounterAnalyses = null)
+    IReadOnlyCollection<GacCounterDefenseAnalysis>? CounterAnalyses = null,
+    IReadOnlyCollection<GacTeamPresetDetails>? GeneratedTeamPresets = null)
 {
     public IReadOnlyCollection<GacCounterDefenseAnalysis> CounterEngine => CounterAnalyses ?? [];
+    public IReadOnlyCollection<GacTeamPresetDetails> GeneratedTeams => GeneratedTeamPresets ?? [];
 }
 
 public sealed record GacAttackOptimizationLookup(
