@@ -70,6 +70,7 @@ internal sealed class GacJointRoundOptimizerService(
     ICurrentGacScoutingService scoutingService,
     IGacPersonalLearningService personalLearningService,
     IPlayerProfileService playerProfileService,
+    GacRosterDefenseCandidateService rosterCandidateService,
     GacOptimizationCoordinator? optimizationCoordinator = null) : IGacJointRoundOptimizerService
 {
     private const int HistoryRoundLimit = 30;
@@ -139,10 +140,19 @@ internal sealed class GacJointRoundOptimizerService(
             .SelectMany(attack => attack.Team.Squad.AllUnits)
             .Select(unit => unit.DefinitionId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        GacRosterDefenseCandidateSet rosterCandidates = await rosterCandidateService.BuildAsync(
+            allyCode,
+            state.Plan.Format,
+            strategy.Profile,
+            state.Presets,
+            scouting.BattlePlan,
+            alreadyConsumedUnits,
+            cancellationToken).ConfigureAwait(false);
         GacTeamPresetDetails[] defenseEligiblePresets =
         [
             .. state.Presets.Where(preset =>
-                !preset.Squad.AllUnits.Any(unit => alreadyConsumedUnits.Contains(unit.DefinitionId)))
+                !preset.Squad.AllUnits.Any(unit => alreadyConsumedUnits.Contains(unit.DefinitionId))),
+            .. rosterCandidates.Candidates
         ];
 
         IReadOnlyCollection<DefenseScenario> defenseScenarios = BuildDefenseScenarios(
@@ -172,7 +182,10 @@ internal sealed class GacJointRoundOptimizerService(
                 break;
             }
 
-            GacPlannerState hypothetical = BuildHypotheticalState(state, defenseScenario.Generation.Assignments);
+            GacPlannerState hypothetical = BuildHypotheticalState(
+                state,
+                defenseScenario.Generation.Assignments,
+                defenseEligiblePresets);
             GacAttackOptimizationResult attacks = GacAttackPlanOptimizerService.Optimize(
                 hypothetical,
                 GacAttackOptimizationMode.RebuildPlanned,
@@ -202,7 +215,7 @@ internal sealed class GacJointRoundOptimizerService(
                 .Take(AlternativeLimit)
         ];
 
-        var warnings = new List<string>();
+        var warnings = new List<string>(rosterCandidates.Warnings);
         if (selected.DefenseCompletionRate < 100m)
         {
             warnings.Add(
@@ -245,31 +258,59 @@ internal sealed class GacJointRoundOptimizerService(
                 preview);
         }
 
-        GacPlannerLookup saved = await ApplyAsync(
+        GacGeneratedPresetMaterialization materialization = await GacRosterDefenseCandidateService.MaterializeAsync(
+            plannerService,
             allyCode,
-            state,
-            selected,
-            mode,
-            cancellationToken).ConfigureAwait(false);
-        if (!saved.IsAvailable || saved.State is null)
-        {
-            throw new InvalidOperationException(saved.Message ?? "The joint GAC round plan could not be applied.");
-        }
-
-        GacJointRoundOptimizationResult applied = new(
             state.Plan.Format,
-            mode,
-            Applied: true,
-            evaluated.Count,
-            selected,
-            alternatives,
-            saved.State.Plan.UpdatedAtUtc,
-            warnings);
-        return new GacJointRoundOptimizationLookup(
-            saved.Status,
-            saved.Message,
-            saved.State,
-            applied);
+            selected.DefenseAssignments,
+            rosterCandidates,
+            cancellationToken).ConfigureAwait(false);
+        GacSmartDefenseAssignment[] appliedDefenseAssignments =
+        [
+            .. selected.DefenseAssignments.Select(item =>
+                GacRosterDefenseCandidateService.Remap(item, materialization.IdMap))
+        ];
+        GacJointRoundScenario appliedSelected = selected with
+        {
+            DefenseAssignments = appliedDefenseAssignments
+        };
+
+        try
+        {
+            GacPlannerLookup saved = await ApplyAsync(
+                allyCode,
+                state,
+                appliedSelected,
+                mode,
+                cancellationToken).ConfigureAwait(false);
+            if (!saved.IsAvailable || saved.State is null)
+            {
+                throw new InvalidOperationException(saved.Message ?? "The joint GAC round plan could not be applied.");
+            }
+
+            GacJointRoundOptimizationResult applied = new(
+                state.Plan.Format,
+                mode,
+                Applied: true,
+                evaluated.Count,
+                appliedSelected,
+                alternatives,
+                saved.State.Plan.UpdatedAtUtc,
+                warnings);
+            return new GacJointRoundOptimizationLookup(
+                saved.Status,
+                saved.Message,
+                saved.State,
+                applied);
+        }
+        catch
+        {
+            await GacRosterDefenseCandidateService.RollbackMaterializationAsync(
+                plannerService,
+                allyCode,
+                materialization.CreatedPresetIds).ConfigureAwait(false);
+            throw;
+        }
     }
 
     internal static GacJointRoundScenario EvaluateScenario(
@@ -506,9 +547,10 @@ internal sealed class GacJointRoundOptimizerService(
 
     private static GacPlannerState BuildHypotheticalState(
         GacPlannerState state,
-        IReadOnlyCollection<GacSmartDefenseAssignment> assignments)
+        IReadOnlyCollection<GacSmartDefenseAssignment> assignments,
+        IReadOnlyCollection<GacTeamPresetDetails> defensePresets)
     {
-        Dictionary<Guid, GacTeamPresetDetails> presets = state.Presets.ToDictionary(item => item.Id);
+        Dictionary<Guid, GacTeamPresetDetails> presets = defensePresets.ToDictionary(item => item.Id);
         GacOwnDefenseAssignmentDetails[] ownDefenses =
         [
             .. assignments
