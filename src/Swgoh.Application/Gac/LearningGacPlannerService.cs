@@ -7,6 +7,7 @@ internal sealed class LearningGacPlannerService(
     IGacPersonalLearningService personalLearningService,
     IGacPersonalBattleRepository personalBattleRepository,
     IGacRoundPlanRepository planRepository,
+    IGacGeneratedTeamLifecycleService generatedTeamLifecycleService,
     GacPlannerWriteContext writeContext) : IGacPlannerService
 {
     public async Task<GacPlannerLookup> GetCurrentAsync(
@@ -104,6 +105,25 @@ internal sealed class LearningGacPlannerService(
             plan = plan with { Attacks = attacks };
         }
 
-        return lookup with { State = lookup.State with { Plan = plan } };
+        IReadOnlySet<Guid> generatedPresetIds = await generatedTeamLifecycleService
+            .GetGeneratedPresetIdsAsync(
+                plan.PlayerAllyCode,
+                plan.Format,
+                origin: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        GacTeamPresetDetails[] reusablePresets =
+        [
+            .. lookup.State.Presets.Where(preset => !generatedPresetIds.Contains(preset.Id))
+        ];
+
+        return lookup with
+        {
+            State = lookup.State with
+            {
+                Plan = plan,
+                Presets = reusablePresets
+            }
+        };
     }
 }
