@@ -18,10 +18,10 @@ public partial class GacAttackPlanner
     private readonly string[] enemyMemberIds = new string[7];
 
     [Inject]
-    private PlayerApiClient PlayerClient { get; set; } = null!;
+    private GacPlannerApiClient PlannerClient { get; set; } = null!;
 
     [Inject]
-    private GacPlannerApiClient PlannerClient { get; set; } = null!;
+    private GacPlannerPerformanceApiClient PerformanceClient { get; set; } = null!;
 
     [Parameter]
     public long AllyCode { get; set; }
@@ -115,30 +115,38 @@ public partial class GacAttackPlanner
         Loading = true;
         Error = null;
         UnavailableMessage = null;
+        bool hasCachedContext = false;
 
         try
         {
-            GacPlannerApiClient.PlannerResult result = await PlannerClient.GetCurrentAsync(AllyCode);
-            Planner = result.Planner;
-            UnavailableMessage = result.Message;
-            if (Planner is null)
+            if (PerformanceClient.TryGetCachedContext(AllyCode, out GacPlannerPerformanceApiClient.PlannerContextViewModel? cached)
+                && cached is not null)
             {
-                return;
+                ApplyContext(cached);
+                hasCachedContext = true;
+                Loading = false;
+                await InvokeAsync(StateHasChanged);
             }
 
-            MapDraftsFromPlanner();
-            IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> ownRoster = await LoadEntireRosterAsync(AllyCode);
-            IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel> rivalRoster =
-                await LoadEntireRosterAsync(Planner.Opponent.OpponentAllyCode);
-
-            playerRoster.Clear();
-            playerRoster.AddRange(ownRoster);
-            opponentRoster.Clear();
-            opponentRoster.AddRange(rivalRoster);
+            GacPlannerPerformanceApiClient.PlannerContextResult result =
+                await PerformanceClient.GetContextAsync(AllyCode);
+            if (result.Context is not null)
+            {
+                ApplyContext(result.Context);
+                UnavailableMessage = null;
+            }
+            else if (!hasCachedContext)
+            {
+                Planner = null;
+                UnavailableMessage = result.Message;
+            }
         }
         catch (HttpRequestException)
         {
-            Error = "La API no está disponible en este momento.";
+            if (!hasCachedContext)
+            {
+                Error = "La API no está disponible en este momento.";
+            }
         }
         finally
         {
@@ -233,7 +241,7 @@ public partial class GacAttackPlanner
 
     protected async Task AddOwnDefenseAsync()
     {
-        if (!Guid.TryParse(OwnDefensePresetId, out Guid presetId))
+        if (Planner is null || !Guid.TryParse(OwnDefensePresetId, out Guid presetId))
         {
             Error = "Selecciona un equipo antes de añadirlo a tu defensa.";
             return;
@@ -245,29 +253,45 @@ public partial class GacAttackPlanner
             return;
         }
 
-        string selectedPresetId = OwnDefensePresetId;
-        var draft = new OwnDefenseDraft(Guid.Empty, OwnDefenseZone, presetId);
-        ownDefenses.Add(draft);
-
-        if (await SavePlanAsync())
+        Saving = true;
+        Error = null;
+        try
         {
-            OwnDefensePresetId = string.Empty;
-            return;
+            GacPlannerApiClient.PlannerResult result = await PerformanceClient.AddOwnDefenseAsync(
+                AllyCode,
+                OwnDefenseZone,
+                presetId,
+                Planner.Plan.UpdatedAtUtc);
+            if (ApplyPlannerResult(result))
+            {
+                OwnDefensePresetId = string.Empty;
+            }
         }
-
-        ownDefenses.Remove(draft);
-        OwnDefensePresetId = selectedPresetId;
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido añadir el equipo a tu defensa.";
+        }
+        finally
+        {
+            Saving = false;
+        }
     }
 
     protected async Task RemoveOwnDefenseAsync(Guid id)
     {
-        ownDefenses.RemoveAll(item => item.Id == id);
-        await SavePlanAsync();
+        if (Planner is null)
+        {
+            return;
+        }
+
+        await ExecuteMutationAsync(
+            () => PerformanceClient.RemoveOwnDefenseAsync(AllyCode, id, Planner.Plan.UpdatedAtUtc),
+            "No se ha podido quitar el equipo de tu defensa.");
     }
 
     protected async Task AddVisibleDefenseAsync()
     {
-        if (!CanAddVisibleDefense)
+        if (Planner is null || !CanAddVisibleDefense)
         {
             return;
         }
@@ -276,24 +300,49 @@ public partial class GacAttackPlanner
             enemyMemberIds,
             EnemyMemberSlotCount,
             EnemyMembersRequired);
-        visibleDefenses.Add(new VisibleDefenseDraft(
-            Guid.Empty,
+        var request = new GacPlannerPerformanceApiClient.VisibleDefenseMutationRequest(
             EnemyZone,
             string.IsNullOrWhiteSpace(EnemyLabel) ? null : EnemyLabel.Trim(),
             EnemyLeaderId,
             members,
-            EnemyType == "Fleet"));
+            EnemyType == "Fleet",
+            Planner.Plan.UpdatedAtUtc);
 
-        await SavePlanAsync();
-        ResetEnemyBuilder();
+        Saving = true;
+        Error = null;
+        try
+        {
+            GacPlannerApiClient.PlannerResult result = await PerformanceClient.AddVisibleDefenseAsync(
+                AllyCode,
+                request);
+            if (ApplyPlannerResult(result))
+            {
+                ResetEnemyBuilder();
+            }
+        }
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido añadir la defensa rival al tablero.";
+        }
+        finally
+        {
+            Saving = false;
+        }
     }
 
     protected async Task RemoveVisibleDefenseAsync(Guid id)
     {
-        visibleDefenses.RemoveAll(item => item.Id == id);
-        attacks.RemoveAll(item => item.DefenseId == id);
-        selectedAttackPresets.Remove(id);
-        await SavePlanAsync();
+        if (Planner is null)
+        {
+            return;
+        }
+
+        if (await ExecuteMutationAsync(
+                () => PerformanceClient.RemoveVisibleDefenseAsync(AllyCode, id, Planner.Plan.UpdatedAtUtc),
+                "No se ha podido quitar la defensa rival."))
+        {
+            selectedAttackPresets.Remove(id);
+        }
     }
 
     protected void SetAttackPreset(Guid defenseId, string? value)
@@ -324,15 +373,22 @@ public partial class GacAttackPlanner
 
     protected async Task PlanAttackAsync(Guid defenseId, Guid presetId)
     {
-        attacks.Add(new AttackDraft(
-            Guid.Empty,
-            defenseId,
-            presetId,
-            NextAttempt(defenseId),
-            "Planned",
-            null));
-        selectedAttackPresets.Remove(defenseId);
-        await SavePlanAsync();
+        if (Planner is null)
+        {
+            return;
+        }
+
+        if (await ExecuteMutationAsync(
+                () => PerformanceClient.AddAttackAsync(
+                    AllyCode,
+                    defenseId,
+                    presetId,
+                    notes: null,
+                    Planner.Plan.UpdatedAtUtc),
+                "No se ha podido planificar el ataque."))
+        {
+            selectedAttackPresets.Remove(defenseId);
+        }
     }
 
     protected Task MarkAttackWonAsync(Guid attackId) => SetAttackStatusAsync(attackId, "Won");
@@ -431,81 +487,52 @@ public partial class GacAttackPlanner
         ? "?"
         : char.ToUpperInvariant(name.Trim()[0]).ToString();
 
-    private async Task<IReadOnlyCollection<PlayerApiClient.RosterUnitViewModel>> LoadEntireRosterAsync(long allyCode)
+    private void ApplyContext(GacPlannerPerformanceApiClient.PlannerContextViewModel context)
     {
-        var units = new List<PlayerApiClient.RosterUnitViewModel>();
-        int page = 1;
-        int totalPages;
-        do
+        Planner = context.Planner;
+        MapDraftsFromPlanner();
+
+        playerRoster.Clear();
+        if (context.PlayerRoster is not null)
         {
-            PlayerApiClient.RosterPageViewModel? result = await PlayerClient.GetRosterAsync(
-                allyCode,
-                page,
-                pageSize: 100,
-                orderBy: "GalacticPower",
-                direction: "Descending");
-            if (result is null)
-            {
-                break;
-            }
-
-            units.AddRange(result.Items);
-            totalPages = result.TotalPages;
-            page++;
+            playerRoster.AddRange(context.PlayerRoster.Items);
         }
-        while (page <= totalPages);
 
-        return units;
+        opponentRoster.Clear();
+        if (context.OpponentRoster is not null)
+        {
+            opponentRoster.AddRange(context.OpponentRoster.Items);
+        }
     }
 
-    private async Task<bool> SavePlanAsync()
+    private bool ApplyPlannerResult(GacPlannerApiClient.PlannerResult result)
     {
-        if (Planner is null)
+        if (result.Planner is null)
         {
-            Error = "No hay una ronda de Gran Arena disponible para guardar el plan.";
+            Error = result.Message ?? "No se ha podido actualizar el plan de la ronda.";
+            UnavailableMessage = result.Message;
             return false;
         }
 
+        Planner = result.Planner;
+        UnavailableMessage = null;
+        MapDraftsFromPlanner();
+        return true;
+    }
+
+    private async Task<bool> ExecuteMutationAsync(
+        Func<Task<GacPlannerApiClient.PlannerResult>> mutation,
+        string fallbackError)
+    {
         Saving = true;
         Error = null;
         try
         {
-            var request = new GacPlannerApiClient.SavePlanRequest(
-                [.. ownDefenses.Select(item => new GacPlannerApiClient.SaveOwnDefenseRequest(
-                    NullWhenEmpty(item.Id),
-                    item.Zone,
-                    item.TeamPresetId))],
-                [.. visibleDefenses.Select(item => new GacPlannerApiClient.SaveVisibleDefenseRequest(
-                    NullWhenEmpty(item.Id),
-                    item.Zone,
-                    item.Label,
-                    item.LeaderDefinitionId,
-                    item.MemberDefinitionIds,
-                    item.IsFleet))],
-                [.. attacks.Select(item => new GacPlannerApiClient.SaveAttackRequest(
-                    NullWhenEmpty(item.Id),
-                    item.DefenseId,
-                    item.TeamPresetId,
-                    item.Attempt,
-                    item.Status,
-                    item.Notes))]);
-
-            GacPlannerApiClient.PlannerResult result = await PlannerClient.SaveCurrentAsync(AllyCode, request);
-            if (result.Planner is null)
-            {
-                Error = result.Message ?? "No se ha podido guardar el plan de la ronda.";
-                UnavailableMessage = result.Message;
-                return false;
-            }
-
-            Planner = result.Planner;
-            UnavailableMessage = result.Message;
-            MapDraftsFromPlanner();
-            return true;
+            return ApplyPlannerResult(await mutation());
         }
         catch (HttpRequestException)
         {
-            Error = "No se ha podido guardar el plan. Revisa que los equipos tengan el tamaño correcto y no repitan unidades.";
+            Error = fallbackError;
             return false;
         }
         finally
@@ -517,24 +544,30 @@ public partial class GacAttackPlanner
     private async Task ReloadPlannerAsync()
     {
         GacPlannerApiClient.PlannerResult result = await PlannerClient.GetCurrentAsync(AllyCode);
-        Planner = result.Planner;
-        UnavailableMessage = result.Message;
-        if (Planner is not null)
-        {
-            MapDraftsFromPlanner();
-        }
+        ApplyPlannerResult(result);
     }
 
     private async Task SetAttackStatusAsync(Guid attackId, string status)
     {
-        int index = attacks.FindIndex(item => item.Id == attackId);
-        if (index < 0)
+        if (Planner is null)
         {
             return;
         }
 
-        attacks[index] = attacks[index] with { Status = status };
-        await SavePlanAsync();
+        AttackDraft? attack = attacks.FirstOrDefault(item => item.Id == attackId);
+        if (attack is null)
+        {
+            return;
+        }
+
+        await ExecuteMutationAsync(
+            () => PerformanceClient.UpdateAttackAsync(
+                AllyCode,
+                attackId,
+                status,
+                attack.Notes,
+                Planner.Plan.UpdatedAtUtc),
+            "No se ha podido actualizar el resultado del ataque.");
     }
 
     private void MapDraftsFromPlanner()
@@ -599,8 +632,6 @@ public partial class GacAttackPlanner
         string[] selected = [.. source.Take(count).Where(value => !string.IsNullOrWhiteSpace(value))];
         return allRequired && selected.Length != count ? [] : selected;
     }
-
-    private static Guid? NullWhenEmpty(Guid id) => id == Guid.Empty ? null : id;
 
     private static string ProgressLabel(PlayerApiClient.RosterUnitViewModel unit) =>
         unit.RelicTier > 0 ? $"R{unit.RelicTier}" : $"G{unit.GearTier}";
