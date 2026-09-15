@@ -206,24 +206,20 @@ internal sealed class PlayerRosterService(
 
     private static void Validate(PlayerRosterQuery query)
     {
-        if (query.Page < 1)
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.Page, 1, nameof(query));
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.PageSize, 1, nameof(query));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(query.PageSize, MaxPageSize, nameof(query));
+
+        if (query.MinRarity is int minRarity)
         {
-            throw new ArgumentOutOfRangeException(nameof(query), query.Page, "Page must be at least 1.");
+            ArgumentOutOfRangeException.ThrowIfLessThan(minRarity, 1, nameof(query));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(minRarity, 7, nameof(query));
         }
 
-        if (query.PageSize is < 1 or > MaxPageSize)
+        if (query.MinRelic is int minRelic)
         {
-            throw new ArgumentOutOfRangeException(nameof(query), query.PageSize, $"Page size must be between 1 and {MaxPageSize}.");
-        }
-
-        if (query.MinRarity is < 1 or > 7)
-        {
-            throw new ArgumentOutOfRangeException(nameof(query), query.MinRarity, "Minimum rarity must be between 1 and 7.");
-        }
-
-        if (query.MinRelic is < 0 or > 10)
-        {
-            throw new ArgumentOutOfRangeException(nameof(query), query.MinRelic, "Minimum relic tier must be between 0 and 10.");
+            ArgumentOutOfRangeException.ThrowIfNegative(minRelic, nameof(query));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(minRelic, 10, nameof(query));
         }
 
         if (!Enum.IsDefined(typeof(PlayerRosterUnitType), query.Type)
