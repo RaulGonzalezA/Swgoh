@@ -22,7 +22,7 @@ internal sealed class PlayerRosterSnapshotCache : IDisposable
 
     public bool TryGet(long allyCode, DateTimeOffset updatedAtUtc, out PlayerRosterSnapshot? snapshot)
     {
-        if (snapshots.TryGetValue(allyCode, out PlayerRosterSnapshot? cached))
+        if (snapshots.TryGetValue(allyCode, out PlayerRosterSnapshot? cached) && cached is not null)
         {
             if (cached.UpdatedAtUtc == updatedAtUtc)
             {
