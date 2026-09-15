@@ -27,6 +27,7 @@ internal sealed class GacRoundPlanDocument
     public List<GacAttackAssignmentDocument> Attacks { get; set; } = [];
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
+    public long Version { get; set; }
 }
 
 internal sealed class GacPlannerSquadDocument
