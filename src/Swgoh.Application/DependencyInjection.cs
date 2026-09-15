@@ -31,6 +31,8 @@ public static class DependencyInjection
         services.AddScoped<CurrentGacScoutingService>();
         services.AddScoped<ICurrentGacScoutingService, CachedCurrentGacScoutingService>();
         services.AddScoped<IGacPersonalLearningService, GacPersonalLearningService>();
+        services.AddSingleton<GacPlannerWriteContext>();
+        services.AddSingleton<GacOptimizationCoordinator>();
         services.AddScoped<GacPlannerService>();
         services.AddScoped<IGacPlannerService, LearningGacPlannerService>();
         services.AddScoped<IGacPlannerContextService, GacPlannerContextService>();
