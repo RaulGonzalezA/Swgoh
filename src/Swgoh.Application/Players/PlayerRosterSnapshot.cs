@@ -13,12 +13,15 @@ public sealed record PlayerRosterSnapshot(
 
 internal sealed class PlayerRosterSnapshotCache : IDisposable
 {
-    private const long CacheSizeLimit = 128;
+    private const long CacheWeightLimit = 50_000;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
 
     private readonly BoundedMemoryCache<long, PlayerRosterSnapshot> snapshots = new(
-        CacheSizeLimit,
-        defaultLifetime: CacheDuration);
+        CacheWeightLimit,
+        defaultLifetime: CacheDuration,
+        sizeSelector: static snapshot => Math.Max(
+            1,
+            snapshot.Units.Count + snapshot.AvailableFactions.Count));
 
     public bool TryGet(long allyCode, DateTimeOffset updatedAtUtc, out PlayerRosterSnapshot? snapshot)
     {
