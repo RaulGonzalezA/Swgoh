@@ -9,9 +9,9 @@
 <div class="strategy-heading">
     <div>
         <a class="back-link" href="@($"/gac/{AllyCode}/planner")">← Planificador</a>
-        <span class="eyebrow">GAC Strategy Lab</span>
-        <h1>Plantillas de defensa y reservas de ataque</h1>
-        <p class="page-lead">Prepara una plantilla distinta para 3v3 y 5v5, fija tus defensas imprescindibles y protege los equipos que quieres guardar para atacar.</p>
+        <span class="eyebrow">GAC Strategy Lab · Smart Defense</span>
+        <h1>Defensa inteligente y reservas de ataque</h1>
+        <p class="page-lead">Combina tus plantillas 3v3/5v5 con histórico del rival, counters, aprendizaje personal, GL, omicrons y datacrons para decidir qué merece defender y qué conviene conservar para atacar.</p>
     </div>
     <a class="secondary-button" href="@($"/gac/{AllyCode}/planner")">Abrir Planner</a>
 </div>
@@ -27,7 +27,7 @@
 
 @if (_loading)
 {
-    <UiLoadingState Title="Cargando estrategia" Description="Plantilla, equipos guardados y reservas" />
+    <UiLoadingState Title="Cargando estrategia" Description="Plantilla, equipos guardados, reservas y contexto GAC" />
 }
 else if (_error is not null)
 {
@@ -43,8 +43,8 @@ else if (_strategy is not null)
     <section class="strategy-summary">
         <div><span>Formato</span><strong>@_selectedFormat</strong><small>plantilla independiente</small></div>
         <div><span>Slots</span><strong>@_slots.Count</strong><small>posiciones de defensa</small></div>
-        <div><span>Fijados</span><strong>@_slots.Count(slot => slot.PinnedTeamPresetId is not null)</strong><small>no los cambia el generador</small></div>
-        <div><span>Reservas ataque</span><strong>@_reserved.Count</strong><small>nunca irán a defensa automática</small></div>
+        <div><span>Fijados</span><strong>@_slots.Count(slot => slot.PinnedTeamPresetId is not null)</strong><small>no los cambia el motor</small></div>
+        <div><span>Reservas ataque</span><strong>@_reserved.Count</strong><small>excluidas de defensa automática</small></div>
     </section>
 
     <div class="strategy-grid">
@@ -67,7 +67,7 @@ else if (_strategy is not null)
                         <label class="strategy-slot-team">
                             Equipo fijado
                             <select value="@PinnedValue(slot)" @onchange="eventArgs => SetPinned(slot, eventArgs.Value?.ToString())">
-                                <option value="">Automático</option>
+                                <option value="">Automático inteligente</option>
                                 @foreach (GacDefenseStrategyApiClient.StrategyPresetViewModel preset in PresetsForSlot(slot))
                                 {
                                     <option value="@preset.Id">@preset.Name · @FriendlyUse(preset.Use)</option>
@@ -85,7 +85,7 @@ else if (_strategy is not null)
                 <div><span class="section-kicker">Protección ofensiva</span><h2>Reservar para ataque</h2></div>
                 <span class="count-badge">@_reserved.Count</span>
             </div>
-            <p>Los equipos marcados aquí quedan fuera de la generación automática de defensa. El optimizador de ataques podrá seguir utilizándolos.</p>
+            <p>Las reservas manuales son una regla dura: nunca entran en la defensa automática. Además, Smart Defense penaliza automáticamente gastar equipos que el War Room considera counters importantes.</p>
 
             @if (_strategy.Presets.Count == 0)
             {
@@ -116,13 +116,13 @@ else if (_strategy is not null)
 
     <section class="strategy-actions-panel">
         <div>
-            <span class="section-kicker">Generador</span>
-            <h2>Construir mi defensa</h2>
-            <p>Prioriza presets marcados como Defensa, después Flexibles y finalmente Ataque; dentro de cada grupo escoge el equipo con más GP y evita reutilizar unidades.</p>
+            <span class="section-kicker">Smart Defense · Balanced</span>
+            <h2>Construir mi defensa inteligente</h2>
+            <p>El motor puntúa cada preset por fuerza defensiva y le resta el coste de oportunidad de perderlo para ataque. Usa historial del rival, tus counters, tus resultados anteriores, GL, omicrons y datacrons elegibles.</p>
         </div>
         <div class="strategy-actions">
             <button type="button" class="secondary-button" @onclick="SaveAsync" disabled="@_saving">Guardar plantilla</button>
-            <button type="button" class="ghost-button" @onclick="PreviewAsync" disabled="@(!CanGenerate || _saving)">Vista previa</button>
+            <button type="button" class="ghost-button" @onclick="PreviewAsync" disabled="@(!CanGenerate || _saving)">Vista previa inteligente</button>
             <button type="button" class="primary-button" @onclick="ApplyAsync" disabled="@(!CanGenerate || _saving)">Generar y aplicar</button>
         </div>
         @if (!CanGenerate)
@@ -135,16 +135,65 @@ else if (_strategy is not null)
     {
         <section class="strategy-generation">
             <div class="strategy-panel-heading">
-                <div><span class="section-kicker">@(_generation.Applied ? "Aplicado" : "Vista previa")</span><h2>Defensa propuesta</h2></div>
+                <div>
+                    <span class="section-kicker">@(_generation.Applied ? "Aplicado" : "Vista previa") · @_generation.IntelligenceMode</span>
+                    <h2>Defensa propuesta</h2>
+                </div>
                 <span class="count-badge">@_generation.Assignments.Count</span>
             </div>
-            <div class="strategy-generated-list">
-                @foreach (GacDefenseStrategyApiClient.GeneratedAssignmentViewModel item in _generation.Assignments.OrderBy(item => item.Position))
+
+            <div class="strategy-intelligence-summary">
+                <div><span>Rondas rival</span><strong>@_generation.OpponentRoundsAnalyzed</strong></div>
+                <div><span>Full clear rival</span><strong>@FormatRate(_generation.OpponentFullClearRate)</strong></div>
+                <div><span>Score medio</span><strong>@AverageScore(_generation.Assignments).ToString("0.#")</strong></div>
+            </div>
+
+            <div class="strategy-generated-list strategy-smart-list">
+                @foreach (GacDefenseStrategyApiClient.SmartGeneratedAssignmentViewModel item in _generation.Assignments.OrderBy(item => item.Position))
                 {
-                    <article>
-                        <span>@item.Position</span>
-                        <div><small>@item.Zone</small><strong>@item.TeamName</strong></div>
-                        <div class="strategy-generated-meta"><span>@(item.Pinned ? "Fijado" : "Auto")</span><span>@item.GalacticPower.ToString("N0") GP</span></div>
+                    <article class="strategy-smart-card">
+                        <span class="strategy-smart-position">@item.Position</span>
+                        <div class="strategy-smart-main">
+                            <small>@item.Zone</small>
+                            <strong>@item.TeamName</strong>
+                            <div class="strategy-smart-signals">
+                                <span>Score <strong>@item.Score.ToString("0.#")</strong></span>
+                                <span>Defensa <strong>@item.DefensiveValue.ToString("0.#")</strong></span>
+                                <span>Coste ataque <strong>@item.OffensiveOpportunityCost.ToString("0.#")</strong></span>
+                                <span>Confianza <strong>@FriendlyConfidence(item.Confidence)</strong></span>
+                            </div>
+                            <div class="strategy-smart-tags">
+                                <span>@(item.Pinned ? "Fijado" : "Smart")</span>
+                                <span>@item.GalacticPower.ToString("N0") GP</span>
+                                @if (item.ContainsGalacticLegend)
+                                {
+                                    <span>GL</span>
+                                }
+                                @if (item.OmicronCount > 0)
+                                {
+                                    <span>@item.OmicronCount O</span>
+                                }
+                                @if (item.EligibleDatacronTier > 0)
+                                {
+                                    <span>DC @item.EligibleDatacronTier</span>
+                                }
+                                @if (item.OpponentSamples > 0)
+                                {
+                                    <span>@item.OpponentSamples muestras rival</span>
+                                }
+                                @if (item.PersonalSamples > 0)
+                                {
+                                    <span>@item.PersonalSamples usos tuyos</span>
+                                }
+                            </div>
+                            <details class="strategy-smart-reasons">
+                                <summary>Por qué lo eligió</summary>
+                                @foreach (string reason in item.Reasons)
+                                {
+                                    <p>@reason</p>
+                                }
+                            </details>
+                        </div>
                     </article>
                 }
             </div>
@@ -170,7 +219,7 @@ else if (_strategy is not null)
     public long AllyCode { get; set; }
 
     private GacDefenseStrategyApiClient.StrategyViewModel? _strategy;
-    private GacDefenseStrategyApiClient.GenerationViewModel? _generation;
+    private GacDefenseStrategyApiClient.SmartGenerationViewModel? _generation;
     private readonly List<SlotDraft> _slots = [];
     private readonly HashSet<Guid> _reserved = [];
     private string _selectedFormat = "5v5";
@@ -295,17 +344,17 @@ else if (_strategy is not null)
         try
         {
             _strategy = await StrategyClient.SaveAsync(AllyCode, BuildSaveRequest());
-            _generation = await StrategyClient.GenerateAsync(AllyCode, apply);
+            _generation = await StrategyClient.GenerateSmartAsync(AllyCode, apply);
             if (_generation?.Applied == true)
             {
-                _success = $"Defensa {_generation.Format} generada y aplicada al plan de la ronda.";
+                _success = $"Defensa inteligente {_generation.Format} generada y aplicada al plan de la ronda.";
             }
         }
         catch (HttpRequestException)
         {
             _error = apply
-                ? "No se ha podido aplicar la defensa automática."
-                : "No se ha podido generar la vista previa de defensa.";
+                ? "No se ha podido aplicar la defensa inteligente."
+                : "No se ha podido generar la vista previa inteligente.";
         }
         finally
         {
@@ -399,6 +448,29 @@ else if (_strategy is not null)
         "Flexible" => "Flexible",
         _ => use
     };
+
+    private static string FriendlyConfidence(string confidence) => confidence switch
+    {
+        "High" => "Alta",
+        "Medium" => "Media",
+        "Low" => "Baja",
+        _ => confidence
+    };
+
+    private static string FormatRate(decimal? value)
+    {
+        if (value is not decimal rate)
+        {
+            return "—";
+        }
+
+        decimal percentage = rate > 1m ? rate : rate * 100m;
+        return $"{percentage:0.#}%";
+    }
+
+    private static decimal AverageScore(
+        IReadOnlyCollection<GacDefenseStrategyApiClient.SmartGeneratedAssignmentViewModel> assignments) =>
+        assignments.Count == 0 ? 0m : Math.Round(assignments.Average(item => item.Score), 1);
 
     private sealed class SlotDraft(Guid key, int position, string zone, Guid? pinnedTeamPresetId)
     {

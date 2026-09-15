@@ -20,7 +20,9 @@ internal static class GacDefenseStrategyEndpoints
         group.MapPut("", SaveAsync)
             .WithSummary("Save the reusable GAC defense template and attack reservations for a format");
         group.MapPost("/generate-defense", GenerateDefenseAsync)
-            .WithSummary("Preview or apply an automatically generated defense for the current GAC round");
+            .WithSummary("Preview or apply the classic automatically generated defense for the current GAC round");
+        group.MapPost("/generate-smart-defense", GenerateSmartDefenseAsync)
+            .WithSummary("Preview or apply an intelligent defense using opponent history, counters, personal learning and datacrons");
 
         return endpoints;
     }
@@ -81,6 +83,28 @@ internal static class GacDefenseStrategyEndpoints
             GacDefenseGenerationResult result = await service
                 .GenerateCurrentAsync(allyCode, request.Apply, cancellationToken);
             return Results.Ok(GenerationResponse.From(result));
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.Conflict(new { message = exception.Message });
+        }
+    }
+
+    private static async Task<IResult> GenerateSmartDefenseAsync(
+        long allyCode,
+        GenerateDefenseRequest request,
+        IGacSmartDefenseService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            GacSmartDefenseGenerationResult result = await service
+                .GenerateCurrentAsync(allyCode, request.Apply, cancellationToken);
+            return Results.Ok(SmartGenerationResponse.From(result));
         }
         catch (ArgumentException exception)
         {
@@ -184,4 +208,64 @@ internal static class GacDefenseStrategyEndpoints
         bool Pinned,
         bool IsFleet,
         long GalacticPower);
+
+    internal sealed record SmartGenerationResponse(
+        string Format,
+        bool Applied,
+        string IntelligenceMode,
+        int OpponentRoundsAnalyzed,
+        decimal? OpponentFullClearRate,
+        IReadOnlyCollection<SmartGeneratedAssignmentResponse> Assignments,
+        IReadOnlyCollection<string> Warnings,
+        DateTimeOffset? PlanUpdatedAtUtc)
+    {
+        public static SmartGenerationResponse From(GacSmartDefenseGenerationResult result) => new(
+            FormatName(result.Format),
+            result.Applied,
+            result.IntelligenceMode,
+            result.OpponentRoundsAnalyzed,
+            result.OpponentFullClearRate,
+            [.. result.Assignments.Select(SmartGeneratedAssignmentResponse.From)],
+            result.Warnings,
+            result.PlanUpdatedAtUtc);
+    }
+
+    internal sealed record SmartGeneratedAssignmentResponse(
+        int Position,
+        string Zone,
+        Guid TeamPresetId,
+        string TeamName,
+        bool Pinned,
+        bool IsFleet,
+        long GalacticPower,
+        decimal Score,
+        decimal DefensiveValue,
+        decimal OffensiveOpportunityCost,
+        string Confidence,
+        bool ContainsGalacticLegend,
+        int OmicronCount,
+        int EligibleDatacronTier,
+        int OpponentSamples,
+        int PersonalSamples,
+        IReadOnlyCollection<string> Reasons)
+    {
+        public static SmartGeneratedAssignmentResponse From(GacSmartDefenseAssignment item) => new(
+            item.Position,
+            item.Zone,
+            item.TeamPresetId,
+            item.TeamName,
+            item.Pinned,
+            item.IsFleet,
+            item.GalacticPower,
+            item.Score,
+            item.DefensiveValue,
+            item.OffensiveOpportunityCost,
+            item.Confidence,
+            item.ContainsGalacticLegend,
+            item.OmicronCount,
+            item.EligibleDatacronTier,
+            item.OpponentSamples,
+            item.PersonalSamples,
+            item.Reasons);
+    }
 }

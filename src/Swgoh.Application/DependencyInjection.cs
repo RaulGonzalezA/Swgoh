@@ -35,7 +35,10 @@ public static class DependencyInjection
         services.AddScoped<IGacPlannerService, LearningGacPlannerService>();
         services.AddScoped<IGacPlannerContextService, GacPlannerContextService>();
         services.AddScoped<IGacPlannerMutationService, GacPlannerMutationService>();
-        services.AddScoped<IGacDefenseStrategyService, GacDefenseStrategyService>();
+        services.AddScoped<GacDefenseStrategyService>();
+        services.AddScoped<IGacDefenseStrategyService>(serviceProvider =>
+            serviceProvider.GetRequiredService<GacDefenseStrategyService>());
+        services.AddScoped<IGacSmartDefenseService, GacSmartDefenseService>();
         services.AddScoped<IGacAttackPlanOptimizerService, GacAttackPlanOptimizerService>();
         services.AddScoped<IGacAttackExecutionService, GacAttackExecutionService>();
         return services;
