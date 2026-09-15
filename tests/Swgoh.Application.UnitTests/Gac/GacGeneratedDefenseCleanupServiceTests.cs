@@ -12,7 +12,7 @@ public sealed class GacGeneratedDefenseCleanupServiceTests
     private static readonly DateTimeOffset Now = new(2026, 9, 15, 16, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task DeleteAsync_RemovesOnlyAutoDefensePresetsAndReleasesCurrentDefense()
+    public async Task DeleteAsync_RemovesOnlyLifecycleTrackedSmartDefenseAndReleasesCurrentDefense()
     {
         GacTeamPreset autoDefense = Preset("Auto · Jedi · defensa", GacPlannerTeamUse.Defense, "AUTO");
         GacTeamPreset manualDefense = Preset("Mi defensa", GacPlannerTeamUse.Defense, "MANUAL");
@@ -34,10 +34,12 @@ public sealed class GacGeneratedDefenseCleanupServiceTests
                 new GacOwnDefenseAssignmentDetails(Guid.NewGuid(), "Norte frontal", Details(manualDefense))
             ]);
         var plannerService = new FakePlannerService(state);
+        var lifecycleService = new FakeLifecycleService([autoDefense.Id]);
         var service = new GacGeneratedDefenseCleanupService(
             strategyRepository,
             presetRepository,
             plannerService,
+            lifecycleService,
             new FixedClock(Now.AddMinutes(1)));
 
         GacGeneratedDefenseCleanupResult result = await service.DeleteAsync(
@@ -51,6 +53,7 @@ public sealed class GacGeneratedDefenseCleanupServiceTests
         Assert.DoesNotContain(autoDefense.Id, presetRepository.Presets.Keys);
         Assert.Contains(manualDefense.Id, presetRepository.Presets.Keys);
         Assert.Contains(autoAttack.Id, presetRepository.Presets.Keys);
+        Assert.DoesNotContain(autoDefense.Id, lifecycleService.GeneratedIds);
 
         SaveCurrentGacRoundPlan savedPlan = Assert.IsType<SaveCurrentGacRoundPlan>(plannerService.SavedPlan);
         SaveGacOwnDefenseAssignment remaining = Assert.Single(savedPlan.OwnDefenses);
@@ -63,14 +66,26 @@ public sealed class GacGeneratedDefenseCleanupServiceTests
     }
 
     [Fact]
-    public void IsGeneratedDefensePreset_DoesNotMatchAutoAttackOrManualTeams()
+    public async Task DeleteAsync_DoesNotDeleteAutoNamedTeamWhenLifecycleDoesNotOwnIt()
     {
-        Assert.True(GacGeneratedDefenseCleanupService.IsGeneratedDefensePreset(
-            Preset("Auto · Sith · defensa", GacPlannerTeamUse.Defense, "D")));
-        Assert.False(GacGeneratedDefenseCleanupService.IsGeneratedDefensePreset(
-            Preset("Auto ATK · Sith", GacPlannerTeamUse.Offense, "A")));
-        Assert.False(GacGeneratedDefenseCleanupService.IsGeneratedDefensePreset(
-            Preset("Auto · nombre manual", GacPlannerTeamUse.Offense, "M")));
+        GacTeamPreset manual = Preset("Auto · nombre elegido por usuario", GacPlannerTeamUse.Defense, "MANUAL");
+        var presetRepository = new FakePresetRepository([manual]);
+        var strategyRepository = new FakeStrategyRepository(null);
+        var lifecycleService = new FakeLifecycleService([]);
+        var service = new GacGeneratedDefenseCleanupService(
+            strategyRepository,
+            presetRepository,
+            new FakePlannerService(State([Details(manual)], [])),
+            lifecycleService,
+            new FixedClock(Now));
+
+        GacGeneratedDefenseCleanupResult result = await service.DeleteAsync(
+            AllyCode,
+            GacFormat.FiveVsFive,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.DeletedPresets);
+        Assert.Contains(manual.Id, presetRepository.Presets.Keys);
     }
 
     private static GacTeamPreset Preset(string name, GacPlannerTeamUse use, string seed) =>
@@ -185,6 +200,44 @@ public sealed class GacGeneratedDefenseCleanupServiceTests
             CancellationToken cancellationToken = default)
         {
             Stored = profile;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeLifecycleService(IEnumerable<Guid> generatedIds) : IGacGeneratedTeamLifecycleService
+    {
+        public HashSet<Guid> GeneratedIds { get; } = generatedIds.ToHashSet();
+
+        public Task<IReadOnlySet<Guid>> GetGeneratedPresetIdsAsync(
+            long allyCode,
+            GacFormat format,
+            GacGeneratedTeamOrigin? origin = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<Guid>>(GeneratedIds);
+
+        public Task RegisterAsync(
+            long allyCode,
+            GacFormat format,
+            GacGeneratedTeamOrigin origin,
+            string generationId,
+            string roundPlanId,
+            IReadOnlyCollection<Guid> presetIds,
+            CancellationToken cancellationToken = default)
+        {
+            GeneratedIds.UnionWith(presetIds);
+            return Task.CompletedTask;
+        }
+
+        public Task<int> PruneUnreferencedAsync(
+            long allyCode,
+            GacPlannerState state,
+            CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task ForgetAsync(
+            IReadOnlyCollection<Guid> presetIds,
+            CancellationToken cancellationToken = default)
+        {
+            GeneratedIds.ExceptWith(presetIds);
             return Task.CompletedTask;
         }
     }

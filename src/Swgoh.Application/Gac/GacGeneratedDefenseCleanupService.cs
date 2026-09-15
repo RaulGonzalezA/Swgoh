@@ -22,6 +22,7 @@ internal sealed class GacGeneratedDefenseCleanupService(
     IGacDefenseStrategyRepository strategyRepository,
     IGacTeamPresetRepository presetRepository,
     IGacPlannerService plannerService,
+    IGacGeneratedTeamLifecycleService generatedTeamLifecycleService,
     IClock clock) : IGacGeneratedDefenseCleanupService
 {
     public async Task<GacGeneratedDefenseCleanupResult> DeleteAsync(
@@ -31,19 +32,32 @@ internal sealed class GacGeneratedDefenseCleanupService(
     {
         ValidateFormat(format);
 
+        IReadOnlySet<Guid> generatedIds = await generatedTeamLifecycleService
+            .GetGeneratedPresetIdsAsync(
+                allyCode,
+                format,
+                GacGeneratedTeamOrigin.SmartDefense,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (generatedIds.Count == 0)
+        {
+            return new GacGeneratedDefenseCleanupResult(format, 0, 0, [], []);
+        }
+
         IReadOnlyCollection<GacTeamPreset> presets = await presetRepository
             .GetAsync(allyCode, format, cancellationToken)
             .ConfigureAwait(false);
         GacTeamPreset[] generated =
         [
-            .. presets.Where(IsGeneratedDefensePreset)
+            .. presets.Where(preset => generatedIds.Contains(preset.Id))
         ];
         if (generated.Length == 0)
         {
+            await generatedTeamLifecycleService.ForgetAsync(generatedIds.ToArray(), cancellationToken)
+                .ConfigureAwait(false);
             return new GacGeneratedDefenseCleanupResult(format, 0, 0, [], []);
         }
 
-        HashSet<Guid> generatedIds = generated.Select(item => item.Id).ToHashSet();
         var warnings = new List<string>();
         GacPlannerLookup current = await plannerService
             .GetCurrentAsync(allyCode, cancellationToken)
@@ -56,7 +70,7 @@ internal sealed class GacGeneratedDefenseCleanupService(
         if (protectedByAttack.Count > 0)
         {
             warnings.Add(
-                $"Se conservan {protectedByAttack.Count} equipo(s) Auto porque están usados por ataques activos de la ronda.");
+                $"Se conservan {protectedByAttack.Count} equipo(s) generados porque están usados por ataques activos de la ronda.");
         }
 
         HashSet<Guid> deletableIds = generatedIds
@@ -76,18 +90,24 @@ internal sealed class GacGeneratedDefenseCleanupService(
             cancellationToken).ConfigureAwait(false);
 
         var deletedNames = new List<string>();
+        var deletedIds = new List<Guid>();
         foreach (GacTeamPreset preset in generated.Where(item => deletableIds.Contains(item.Id)))
         {
             bool deleted = await presetRepository.DeleteAsync(preset.Id, cancellationToken).ConfigureAwait(false);
             if (deleted)
             {
                 deletedNames.Add(preset.Name);
+                deletedIds.Add(preset.Id);
             }
             else
             {
-                warnings.Add($"No se ha podido borrar el equipo Auto '{preset.Name}'.");
+                warnings.Add($"No se ha podido borrar el equipo generado '{preset.Name}'.");
             }
         }
+
+        await generatedTeamLifecycleService
+            .ForgetAsync(deletedIds, cancellationToken)
+            .ConfigureAwait(false);
 
         return new GacGeneratedDefenseCleanupResult(
             format,
@@ -96,10 +116,6 @@ internal sealed class GacGeneratedDefenseCleanupService(
             deletedNames,
             warnings);
     }
-
-    internal static bool IsGeneratedDefensePreset(GacTeamPreset preset) =>
-        preset.Use == GacPlannerTeamUse.Defense &&
-        preset.Name.StartsWith("Auto ·", StringComparison.OrdinalIgnoreCase);
 
     private async Task<int> RemoveCurrentDefenseAssignmentsAsync(
         long allyCode,
@@ -159,7 +175,7 @@ internal sealed class GacGeneratedDefenseCleanupService(
         if (!saved.IsAvailable || saved.State is null)
         {
             throw new InvalidOperationException(
-                saved.Message ?? "No se han podido retirar las defensas Auto del plan actual.");
+                saved.Message ?? "No se han podido retirar las defensas generadas del plan actual.");
         }
 
         return removed.Length;

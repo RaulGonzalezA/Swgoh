@@ -7,6 +7,7 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
     GacAttackPlanOptimizerService inner,
     IGacPlannerService plannerService,
     IGacRoundPlanRepository planRepository,
+    IGacGeneratedTeamLifecycleService generatedTeamLifecycleService,
     GacOptimizationCoordinator optimizationCoordinator,
     IClock clock) : IGacAttackPlanOptimizerService
 {
@@ -42,6 +43,7 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
                 optimization,
                 cancellationToken)
             .ConfigureAwait(false);
+        string generationId = Guid.NewGuid().ToString("N");
         optimization = GacAttackGeneratedPresetMaterializer.Remap(optimization, materialization.IdMap);
 
         try
@@ -98,13 +100,66 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             throw;
         }
 
+        await RegisterLifecycleBestEffortAsync(
+            allyCode,
+            state,
+            generationId,
+            materialization.CreatedPresetIds,
+            cancellationToken).ConfigureAwait(false);
+
         GacPlannerLookup refreshed = await plannerService
             .GetCurrentAsync(allyCode, cancellationToken)
             .ConfigureAwait(false);
+        if (refreshed.State is not null)
+        {
+            await PruneBestEffortAsync(allyCode, refreshed.State, cancellationToken).ConfigureAwait(false);
+        }
+
         return new GacAttackOptimizationLookup(
             refreshed.Status,
             refreshed.Message,
             refreshed.State,
             optimization with { Applied = true });
+    }
+
+    private async Task RegisterLifecycleBestEffortAsync(
+        long allyCode,
+        GacPlannerState state,
+        string generationId,
+        IReadOnlyCollection<Guid> createdPresetIds,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await generatedTeamLifecycleService.RegisterAsync(
+                allyCode,
+                state.Plan.Format,
+                GacGeneratedTeamOrigin.CounterEngine,
+                generationId,
+                state.Plan.Id,
+                createdPresetIds,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // The plan is already committed. Legacy generated-team detection keeps these teams isolated.
+        }
+    }
+
+    private async Task PruneBestEffortAsync(
+        long allyCode,
+        GacPlannerState state,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await generatedTeamLifecycleService
+                .PruneUnreferencedAsync(allyCode, state, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Cleanup is post-commit maintenance and must not turn a valid applied plan into a failure.
+        }
     }
 }
