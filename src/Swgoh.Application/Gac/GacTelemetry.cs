@@ -3,36 +3,74 @@ using System.Diagnostics.Metrics;
 
 namespace Swgoh.Application.Gac;
 
-public static class GacTelemetry
+public interface IGacTelemetry
+{
+    ActivitySource ActivitySource { get; }
+
+    Task<T> MeasurePhaseAsync<T>(
+        string phase,
+        Func<Task<T>> operation,
+        string? format = null);
+
+    T MeasurePhase<T>(
+        string phase,
+        Func<T> operation,
+        string? format = null);
+
+    void RecordPipeline(
+        TimeSpan elapsed,
+        CurrentGacOpponentStatus status,
+        string? format,
+        int warningCount);
+
+    void RecordOpponentLookup(
+        TimeSpan elapsed,
+        CurrentGacOpponentStatus status,
+        bool cacheHit,
+        string source);
+}
+
+public sealed class GacTelemetry : IGacTelemetry, IDisposable
 {
     public const string ActivitySourceName = "Swgoh.Gac";
     public const string MeterName = "Swgoh.Gac";
 
-    public static ActivitySource ActivitySource { get; } = new(ActivitySourceName);
+    private readonly Meter meter;
+    private readonly Histogram<double> phaseDuration;
+    private readonly Histogram<double> pipelineDuration;
+    private readonly Histogram<double> opponentLookupDuration;
+    private readonly Counter<long> opponentLookupRequests;
+    private readonly Counter<long> degradedPipelines;
 
-    private static readonly Meter Meter = new(MeterName);
-    private static readonly Histogram<double> PhaseDuration = Meter.CreateHistogram<double>(
-        "swgoh.gac.phase.duration",
-        unit: "ms",
-        description: "Duration of individual GAC pipeline phases.");
-    private static readonly Histogram<double> PipelineDuration = Meter.CreateHistogram<double>(
-        "swgoh.gac.pipeline.duration",
-        unit: "ms",
-        description: "End-to-end duration of the GAC scouting pipeline.");
-    private static readonly Histogram<double> OpponentLookupDuration = Meter.CreateHistogram<double>(
-        "swgoh.gac.opponent_lookup.duration",
-        unit: "ms",
-        description: "Duration of GAC opponent lookup operations.");
-    private static readonly Counter<long> OpponentLookupRequests = Meter.CreateCounter<long>(
-        "swgoh.gac.opponent_lookup.requests",
-        unit: "{request}",
-        description: "Number of GAC opponent lookup requests.");
-    private static readonly Counter<long> DegradedPipelines = Meter.CreateCounter<long>(
-        "swgoh.gac.pipeline.degraded",
-        unit: "{request}",
-        description: "Number of GAC scouting pipelines that completed with degradation warnings.");
+    public GacTelemetry()
+    {
+        ActivitySource = new ActivitySource(ActivitySourceName);
+        meter = new Meter(MeterName);
+        phaseDuration = meter.CreateHistogram<double>(
+            "swgoh.gac.phase.duration",
+            unit: "ms",
+            description: "Duration of individual GAC pipeline phases.");
+        pipelineDuration = meter.CreateHistogram<double>(
+            "swgoh.gac.pipeline.duration",
+            unit: "ms",
+            description: "End-to-end duration of the GAC scouting pipeline.");
+        opponentLookupDuration = meter.CreateHistogram<double>(
+            "swgoh.gac.opponent_lookup.duration",
+            unit: "ms",
+            description: "Duration of GAC opponent lookup operations.");
+        opponentLookupRequests = meter.CreateCounter<long>(
+            "swgoh.gac.opponent_lookup.requests",
+            unit: "{request}",
+            description: "Number of GAC opponent lookup requests.");
+        degradedPipelines = meter.CreateCounter<long>(
+            "swgoh.gac.pipeline.degraded",
+            unit: "{request}",
+            description: "Number of GAC scouting pipelines that completed with degradation warnings.");
+    }
 
-    public static async Task<T> MeasurePhaseAsync<T>(
+    public ActivitySource ActivitySource { get; }
+
+    public async Task<T> MeasurePhaseAsync<T>(
         string phase,
         Func<Task<T>> operation,
         string? format = null)
@@ -60,7 +98,7 @@ public static class GacTelemetry
         }
     }
 
-    public static T MeasurePhase<T>(
+    public T MeasurePhase<T>(
         string phase,
         Func<T> operation,
         string? format = null)
@@ -88,7 +126,7 @@ public static class GacTelemetry
         }
     }
 
-    public static void RecordPipeline(
+    public void RecordPipeline(
         TimeSpan elapsed,
         CurrentGacOpponentStatus status,
         string? format,
@@ -102,14 +140,14 @@ public static class GacTelemetry
         }
 
         tags.Add("gac.degraded", warningCount > 0);
-        PipelineDuration.Record(elapsed.TotalMilliseconds, tags);
+        pipelineDuration.Record(elapsed.TotalMilliseconds, tags);
         if (warningCount > 0)
         {
-            DegradedPipelines.Add(1, tags);
+            degradedPipelines.Add(1, tags);
         }
     }
 
-    public static void RecordOpponentLookup(
+    public void RecordOpponentLookup(
         TimeSpan elapsed,
         CurrentGacOpponentStatus status,
         bool cacheHit,
@@ -119,11 +157,17 @@ public static class GacTelemetry
         tags.Add("gac.status", status.ToString());
         tags.Add("gac.cache_hit", cacheHit);
         tags.Add("gac.lookup_source", source);
-        OpponentLookupDuration.Record(elapsed.TotalMilliseconds, tags);
-        OpponentLookupRequests.Add(1, tags);
+        opponentLookupDuration.Record(elapsed.TotalMilliseconds, tags);
+        opponentLookupRequests.Add(1, tags);
     }
 
-    private static Activity? StartPhaseActivity(string phase, string? format)
+    public void Dispose()
+    {
+        ActivitySource.Dispose();
+        meter.Dispose();
+    }
+
+    private Activity? StartPhaseActivity(string phase, string? format)
     {
         Activity? activity = ActivitySource.StartActivity($"gac.{phase}", ActivityKind.Internal);
         activity?.SetTag("gac.phase", phase);
@@ -135,7 +179,7 @@ public static class GacTelemetry
         return activity;
     }
 
-    private static void RecordPhase(string phase, string? format, TimeSpan elapsed)
+    private void RecordPhase(string phase, string? format, TimeSpan elapsed)
     {
         TagList tags = default;
         tags.Add("gac.phase", phase);
@@ -144,6 +188,6 @@ public static class GacTelemetry
             tags.Add("gac.format", format);
         }
 
-        PhaseDuration.Record(elapsed.TotalMilliseconds, tags);
+        phaseDuration.Record(elapsed.TotalMilliseconds, tags);
     }
 }
