@@ -38,8 +38,8 @@ public sealed class GacRoundPlanMongoConcurrencyTests(MongoDbContainerFixture fi
             repository.TrySaveAsync(first, 1, cancellationToken),
             repository.TrySaveAsync(second, 1, cancellationToken));
 
-        Assert.Single(results.Where(saved => saved));
-        Assert.Single(results.Where(saved => !saved));
+        Assert.Single(results, saved => saved);
+        Assert.Single(results, saved => !saved);
         Assert.Equal(2, await repository.GetVersionAsync(original.Id, cancellationToken));
     }
 
