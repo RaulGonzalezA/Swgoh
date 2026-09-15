@@ -139,25 +139,15 @@ public sealed record ConquestFeat(
             throw new ArgumentOutOfRangeException(nameof(sector), sector, "Sector must be between 1 and 5.");
         }
 
-        if (points < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(points));
-        }
-
-        if (target < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(target));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(points, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(target, 1);
 
         if (progress < 0 || progress > target)
         {
             throw new ArgumentOutOfRangeException(nameof(progress));
         }
 
-        if (expectedProgressPerBattle < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(expectedProgressPerBattle));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(expectedProgressPerBattle, 1);
 
         ArgumentNullException.ThrowIfNull(rule);
         return new ConquestFeat(
@@ -279,10 +269,7 @@ public sealed partial class ConquestPlan
             staminaCostPerBattle,
             reserveFloorPercent,
             stamina);
-        if (updatedAtUtc < createdAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, createdAtUtc);
 
         plan.UpdatedAtUtc = updatedAtUtc;
         return plan;
@@ -311,10 +298,7 @@ public sealed partial class ConquestPlan
         DateTimeOffset updatedAtUtc)
     {
         ValidateIdentity(AllyCode, EventId, name, difficulty);
-        if (updatedAtUtc < CreatedAtUtc)
-        {
-            throw new ArgumentOutOfRangeException(nameof(updatedAtUtc));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(updatedAtUtc, CreatedAtUtc);
 
         ConquestFeat[] normalizedFeats = ValidateFeats(newFeats);
         ValidateStaminaSettings(staminaCostPerBattle, reserveFloorPercent);
