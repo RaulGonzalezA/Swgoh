@@ -147,7 +147,7 @@ internal sealed class GacGeneratedTeamLifecycleService(
             allyCode,
             state.Plan.Format,
             origin: null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         if (generatedIds.Count == 0)
         {
             return 0;
@@ -243,13 +243,15 @@ internal sealed class GacGeneratedTeamLifecycleService(
         GacTeamPreset preset,
         out GacGeneratedTeamOrigin origin)
     {
-        if (preset.Name.StartsWith("Auto ATK ·", StringComparison.OrdinalIgnoreCase))
+        if (preset.Use != GacPlannerTeamUse.Defense &&
+            preset.Name.StartsWith("Auto ATK ·", StringComparison.OrdinalIgnoreCase))
         {
             origin = GacGeneratedTeamOrigin.CounterEngine;
             return true;
         }
 
-        if (preset.Name.StartsWith("Auto ·", StringComparison.OrdinalIgnoreCase))
+        if (preset.Use == GacPlannerTeamUse.Defense &&
+            preset.Name.StartsWith("Auto ·", StringComparison.OrdinalIgnoreCase))
         {
             origin = GacGeneratedTeamOrigin.SmartDefense;
             return true;
