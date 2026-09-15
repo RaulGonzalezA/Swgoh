@@ -16,7 +16,7 @@ internal static class GacPlannerOptimizationEndpoints
             .WithTags("GAC Planner");
 
         group.MapPost("/current/optimize", OptimizeCurrentAsync)
-            .WithSummary("Preview or apply an optimized attack plan for the current GAC round")
+            .WithSummary("Preview or apply an optimized attack plan with Counter Engine 2.0 analysis")
             .RequireRateLimiting("gac-optimizer")
             .Produces(StatusCodes.Status429TooManyRequests);
         group.MapPost("/current/optimize-round", OptimizeRoundAsync)
@@ -179,7 +179,8 @@ internal static class GacPlannerOptimizationEndpoints
         decimal? KnownAverageBanners,
         IReadOnlyCollection<Guid> UncoveredDefenseIds,
         IReadOnlyCollection<OptimizationRecommendationResponse> Recommendations,
-        bool SearchLimitReached)
+        bool SearchLimitReached,
+        IReadOnlyCollection<CounterDefenseAnalysisResponse> CounterAnalyses)
     {
         public static OptimizationResponse From(GacAttackOptimizationResult result) => new(
             result.Mode.ToString(),
@@ -191,7 +192,60 @@ internal static class GacPlannerOptimizationEndpoints
             result.KnownAverageBanners,
             result.UncoveredDefenseIds,
             [.. result.Recommendations.Select(OptimizationRecommendationResponse.From)],
-            result.SearchLimitReached);
+            result.SearchLimitReached,
+            [.. result.CounterEngine.Select(CounterDefenseAnalysisResponse.From)]);
+    }
+
+    internal sealed record CounterDefenseAnalysisResponse(
+        Guid DefenseId,
+        string DefenseName,
+        string Zone,
+        IReadOnlyCollection<CounterCandidateAnalysisResponse> Candidates)
+    {
+        public static CounterDefenseAnalysisResponse From(GacCounterDefenseAnalysis analysis) => new(
+            analysis.DefenseId,
+            analysis.DefenseName,
+            analysis.Zone,
+            [.. analysis.Candidates.Select(CounterCandidateAnalysisResponse.From)]);
+    }
+
+    internal sealed record CounterCandidateAnalysisResponse(
+        int Rank,
+        Guid TeamPresetId,
+        string TeamName,
+        decimal Score,
+        decimal EstimatedWinProbability,
+        decimal? ExpectedBanners,
+        string Risk,
+        string TimeoutRisk,
+        decimal StrategicCost,
+        decimal CriticalPieceCost,
+        string Evidence,
+        string Confidence,
+        string Rationale,
+        string DatacronStatus,
+        decimal TacticalAdjustment,
+        decimal PersonalAdjustment,
+        int FutureDefensesAtRisk)
+    {
+        public static CounterCandidateAnalysisResponse From(GacCounterCandidateAnalysis candidate) => new(
+            candidate.Rank,
+            candidate.TeamPresetId,
+            candidate.TeamName,
+            candidate.Score,
+            candidate.EstimatedWinProbability,
+            candidate.ExpectedBanners,
+            candidate.Risk,
+            candidate.TimeoutRisk,
+            candidate.StrategicCost,
+            candidate.CriticalPieceCost,
+            candidate.Evidence,
+            candidate.Confidence,
+            candidate.Rationale,
+            candidate.DatacronStatus,
+            candidate.TacticalAdjustment,
+            candidate.PersonalAdjustment,
+            candidate.FutureDefensesAtRisk);
     }
 
     internal sealed record JointOptimizationResponse(
@@ -326,7 +380,11 @@ internal static class GacPlannerOptimizationEndpoints
         decimal? PersonalOneShotRate,
         decimal? PersonalAverageBanners,
         string PersonalScope,
-        string PersonalRationale)
+        string PersonalRationale,
+        decimal EstimatedWinProbability,
+        string Risk,
+        string TimeoutRisk,
+        decimal CriticalPieceCost)
     {
         public static OptimizationRecommendationResponse From(GacAttackOptimizationRecommendation recommendation) => new(
             recommendation.DefenseId,
@@ -361,6 +419,10 @@ internal static class GacPlannerOptimizationEndpoints
             recommendation.PersonalOneShotRate,
             recommendation.PersonalAverageBanners,
             recommendation.PersonalScope,
-            recommendation.PersonalRationale);
+            recommendation.PersonalRationale,
+            recommendation.EstimatedWinProbability,
+            recommendation.Risk,
+            recommendation.TimeoutRisk,
+            recommendation.CriticalPieceCost);
     }
 }
