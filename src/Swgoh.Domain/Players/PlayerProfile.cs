@@ -84,16 +84,9 @@ public sealed class PlayerProfile
 
     private static void Validate(long allyCode, string name, long galacticPower)
     {
-        if (allyCode is < 100_000_000 or > 999_999_999)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode), allyCode, "Ally code must contain exactly nine digits.");
-        }
-
+        ArgumentOutOfRangeException.ThrowIfLessThan(allyCode, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(allyCode, 999_999_999);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-
-        if (galacticPower < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(galacticPower), galacticPower, "Galactic power cannot be negative.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(galacticPower);
     }
 }
