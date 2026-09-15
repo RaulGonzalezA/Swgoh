@@ -201,7 +201,8 @@ internal sealed class GacRoundPlanMongoRepository(
             {
                 Id = item.Id.ToString("D"),
                 Zone = item.Zone,
-                TeamPresetId = item.TeamPresetId.ToString("D")
+                TeamPresetId = item.TeamPresetId.ToString("D"),
+                DatacronId = item.DatacronId
             })
         ],
         VisibleDefenses =
@@ -223,7 +224,8 @@ internal sealed class GacRoundPlanMongoRepository(
                 TeamPresetId = item.TeamPresetId.ToString("D"),
                 Attempt = item.Attempt,
                 Status = (int)item.Status,
-                Notes = item.Notes
+                Notes = item.Notes,
+                DatacronId = item.DatacronId
             })
         ],
         CreatedAtUtc = plan.CreatedAtUtc,
@@ -245,7 +247,8 @@ internal sealed class GacRoundPlanMongoRepository(
             document.OwnDefenses.Select(item => GacOwnDefenseAssignment.Create(
                 Guid.ParseExact(item.Id, "D"),
                 item.Zone,
-                Guid.ParseExact(item.TeamPresetId, "D"))),
+                Guid.ParseExact(item.TeamPresetId, "D"),
+                item.DatacronId)),
             document.VisibleDefenses.Select(item => GacVisibleDefense.Create(
                 Guid.ParseExact(item.Id, "D"),
                 item.Zone,
@@ -257,7 +260,8 @@ internal sealed class GacRoundPlanMongoRepository(
                 Guid.ParseExact(item.TeamPresetId, "D"),
                 item.Attempt,
                 (GacAttackPlanStatus)item.Status,
-                item.Notes)),
+                item.Notes,
+                item.DatacronId)),
             document.CreatedAtUtc,
             document.UpdatedAtUtc);
     }
