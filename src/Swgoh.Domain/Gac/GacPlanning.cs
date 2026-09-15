@@ -219,9 +219,17 @@ public sealed class GacTeamPreset
     }
 }
 
-public sealed record GacOwnDefenseAssignment(Guid Id, string Zone, Guid TeamPresetId)
+public sealed record GacOwnDefenseAssignment(
+    Guid Id,
+    string Zone,
+    Guid TeamPresetId,
+    string? DatacronId = null)
 {
-    public static GacOwnDefenseAssignment Create(Guid id, string zone, Guid teamPresetId)
+    public static GacOwnDefenseAssignment Create(
+        Guid id,
+        string zone,
+        Guid teamPresetId,
+        string? datacronId = null)
     {
         if (id == Guid.Empty)
         {
@@ -234,8 +242,11 @@ public sealed record GacOwnDefenseAssignment(Guid Id, string Zone, Guid TeamPres
             throw new ArgumentException("Team preset ID cannot be empty.", nameof(teamPresetId));
         }
 
-        return new GacOwnDefenseAssignment(id, zone.Trim(), teamPresetId);
+        return new GacOwnDefenseAssignment(id, zone.Trim(), teamPresetId, NormalizeDatacronId(datacronId));
     }
+
+    private static string? NormalizeDatacronId(string? datacronId) =>
+        string.IsNullOrWhiteSpace(datacronId) ? null : datacronId.Trim();
 }
 
 public sealed record GacVisibleDefense(
@@ -273,7 +284,8 @@ public sealed record GacAttackAssignment(
     Guid TeamPresetId,
     int Attempt,
     GacAttackPlanStatus Status,
-    string? Notes)
+    string? Notes,
+    string? DatacronId = null)
 {
     public static GacAttackAssignment Create(
         Guid id,
@@ -281,7 +293,8 @@ public sealed record GacAttackAssignment(
         Guid teamPresetId,
         int attempt,
         GacAttackPlanStatus status,
-        string? notes)
+        string? notes,
+        string? datacronId = null)
     {
         if (id == Guid.Empty)
         {
@@ -311,7 +324,15 @@ public sealed record GacAttackAssignment(
             throw new ArgumentException("Attack notes cannot exceed 500 characters.", nameof(notes));
         }
 
-        return new GacAttackAssignment(id, defenseId, teamPresetId, attempt, status, normalizedNotes);
+        string? normalizedDatacronId = string.IsNullOrWhiteSpace(datacronId) ? null : datacronId.Trim();
+        return new GacAttackAssignment(
+            id,
+            defenseId,
+            teamPresetId,
+            attempt,
+            status,
+            normalizedNotes,
+            normalizedDatacronId);
     }
 }
 
@@ -463,6 +484,23 @@ public sealed class GacRoundPlan
         {
             throw new ArgumentException(
                 "Attack attempt numbers must be unique for each visible defense.",
+                nameof(attackAssignments));
+        }
+
+        string[] activeDatacronIds =
+        [
+            .. own
+                .Select(item => item.DatacronId)
+                .Concat(plannedAttacks
+                    .Where(attack => attack.Status == GacAttackPlanStatus.Planned)
+                    .Select(attack => attack.DatacronId))
+                .Where(id => id is not null)
+                .Select(id => id!)
+        ];
+        if (activeDatacronIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != activeDatacronIds.Length)
+        {
+            throw new ArgumentException(
+                "A datacron can only be assigned once across active GAC defense and planned attacks.",
                 nameof(attackAssignments));
         }
 
