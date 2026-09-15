@@ -13,6 +13,7 @@ internal sealed partial class OptimizedGacRosterDefenseCandidateProvider
     private const int MaxHeuristicLeaders = 24;
     private const int MaxFleetMembers = 7;
     private const decimal CuratedBonus = 250_000m;
+    private const decimal ExistingPresetReuseBonus = 300_000m;
 
     private static void AddCuratedOptions(
         IDictionary<string, CandidateOption> options,
@@ -283,7 +284,9 @@ internal sealed partial class OptimizedGacRosterDefenseCandidateProvider
     }
 
     private static decimal ScorePreset(GacTeamPresetDetails preset) =>
-        preset.Squad.AllUnits.Sum(unit => UnitStrength(unit)) + UseBonus(preset.Use);
+        preset.Squad.AllUnits.Sum(unit => UnitStrength(unit)) +
+        UseBonus(preset.Use) +
+        ExistingPresetReuseBonus;
 
     private static decimal ScoreUnits(
         IReadOnlyCollection<PlayerRosterUnit> units,
