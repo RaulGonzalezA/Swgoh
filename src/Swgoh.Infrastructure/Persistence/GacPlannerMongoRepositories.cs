@@ -142,13 +142,7 @@ internal sealed class GacRoundPlanMongoRepository(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        if (expectedVersion < 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(expectedVersion),
-                expectedVersion,
-                "Plan version cannot be negative.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(expectedVersion);
 
         FilterDefinitionBuilder<GacRoundPlanDocument> builder = Builders<GacRoundPlanDocument>.Filter;
         FilterDefinition<GacRoundPlanDocument> versionFilter = expectedVersion == 0
