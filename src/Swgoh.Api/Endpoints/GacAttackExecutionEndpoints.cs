@@ -71,7 +71,8 @@ internal static class GacAttackExecutionEndpoints
                 execution.NextRecommendation is null
                     ? null
                     : GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse.From(
-                        execution.NextRecommendation)));
+                        execution.NextRecommendation),
+                execution.PostCommitWarnings));
         }
 
         var unavailable = new GacPlannerEndpoints.PlannerUnavailableResponse(
@@ -104,7 +105,8 @@ internal static class GacAttackExecutionEndpoints
         GacPlannerEndpoints.GacPlannerResponse Planner,
         GacPlannerOptimizationEndpoints.OptimizationResponse? Optimization,
         ExecutedAttackResponse Execution,
-        GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse? NextRecommendation);
+        GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse? NextRecommendation,
+        IReadOnlyCollection<string> Warnings);
 
     internal sealed record ExecutedAttackResponse(
         Guid AttackId,

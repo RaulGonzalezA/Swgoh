@@ -14,7 +14,11 @@ public sealed record GacAttackExecutionResult(
     string? Notes,
     GacPlannerState State,
     GacAttackOptimizationResult? Optimization,
-    GacAttackOptimizationRecommendation? NextRecommendation);
+    GacAttackOptimizationRecommendation? NextRecommendation,
+    IReadOnlyCollection<string>? Warnings = null)
+{
+    public IReadOnlyCollection<string> PostCommitWarnings => Warnings ?? [];
+}
 
 public sealed record GacAttackExecutionLookup(
     CurrentGacOpponentStatus Status,

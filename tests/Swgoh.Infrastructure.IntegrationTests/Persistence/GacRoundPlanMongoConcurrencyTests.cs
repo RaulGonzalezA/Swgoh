@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Configuration;
-
 using MongoDB.Driver;
 
 using RepositoryMongoDb.Repository;
@@ -67,16 +65,10 @@ public sealed class GacRoundPlanMongoConcurrencyTests(MongoDbContainerFixture fi
         IMongoCollection<GacRoundPlanDocument> collection = database
             .GetCollection<GacRoundPlanDocument>(GacRoundPlanMongoRepository.CollectionName);
         var genericRepository = new RoundPlanGenericRepository(collection);
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:swgoh"] = fixture.ConnectionString
-            })
-            .Build();
         return new GacRoundPlanMongoRepository(
             genericRepository,
-            new GacPlannerWriteContext(),
-            configuration);
+            collection,
+            new GacPlannerWriteContext());
     }
 
     private static GacRoundPlan CreatePlan(DateTimeOffset now) => GacRoundPlan.Create(
