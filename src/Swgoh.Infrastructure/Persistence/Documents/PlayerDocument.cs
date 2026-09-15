@@ -62,6 +62,7 @@ internal sealed class PlayerDatacronDocument
     public string TemplateId { get; set; } = string.Empty;
     public int Tier { get; set; }
     public bool Locked { get; set; }
+    public DateTimeOffset? ExpiresAtUtc { get; set; }
     public List<PlayerDatacronAffixDocument> Affixes { get; set; } = [];
 }
 
