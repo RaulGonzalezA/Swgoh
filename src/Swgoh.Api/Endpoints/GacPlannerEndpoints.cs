@@ -18,7 +18,7 @@ internal static class GacPlannerEndpoints
         group.MapGet("/current", GetCurrentAsync)
             .WithSummary("Get the persisted attack plan for the current GAC round");
         group.MapPut("/current", SaveCurrentAsync)
-            .WithSummary("Save visible enemy defenses, own defenses and attack assignments for the current GAC round");
+            .WithSummary("Save visible enemy defenses, own defenses, datacrons and attack assignments for the current GAC round");
         group.MapPost("/presets", CreatePresetAsync)
             .WithSummary("Create a reusable personal GAC team preset");
         group.MapPut("/presets/{id:guid}", UpdatePresetAsync)
@@ -58,7 +58,8 @@ internal static class GacPlannerEndpoints
                 [.. (request.OwnDefenses ?? []).Select(item => new SaveGacOwnDefenseAssignment(
                     item.Id,
                     item.Zone,
-                    item.TeamPresetId))],
+                    item.TeamPresetId,
+                    item.DatacronId))],
                 [.. (request.VisibleDefenses ?? []).Select(item => new SaveGacVisibleDefense(
                     item.Id,
                     item.Zone,
@@ -72,7 +73,8 @@ internal static class GacPlannerEndpoints
                     item.TeamPresetId,
                     item.Attempt,
                     ParseAttackStatus(item.Status),
-                    item.Notes))],
+                    item.Notes,
+                    item.DatacronId))],
                 request.ExpectedVersion);
             GacPlannerLookup lookup = await service.SaveCurrentAsync(allyCode, input, cancellationToken);
             return ToLookupResult(lookup);
@@ -230,7 +232,11 @@ internal static class GacPlannerEndpoints
         IReadOnlyCollection<AttackRequest>? Attacks,
         long? ExpectedVersion);
 
-    internal sealed record OwnDefenseRequest(Guid? Id, string Zone, Guid TeamPresetId);
+    internal sealed record OwnDefenseRequest(
+        Guid? Id,
+        string Zone,
+        Guid TeamPresetId,
+        string? DatacronId = null);
 
     internal sealed record VisibleDefenseRequest(
         Guid? Id,
@@ -246,19 +252,22 @@ internal static class GacPlannerEndpoints
         Guid TeamPresetId,
         int Attempt,
         string Status,
-        string? Notes);
+        string? Notes,
+        string? DatacronId = null);
 
     internal sealed record PlannerUnavailableResponse(string Status, string? Message);
 
     internal sealed record GacPlannerResponse(
         PlannerOpponentResponse Opponent,
         IReadOnlyCollection<TeamPresetResponse> Presets,
-        RoundPlanResponse Plan)
+        RoundPlanResponse Plan,
+        IReadOnlyCollection<DatacronResponse> Datacrons)
     {
         public static GacPlannerResponse From(GacPlannerState state) => new(
             PlannerOpponentResponse.From(state.Opponent),
             [.. state.Presets.Select(TeamPresetResponse.From)],
-            RoundPlanResponse.From(state.Plan));
+            RoundPlanResponse.From(state.Plan),
+            [.. state.PlayerDatacrons.Select(DatacronResponse.From)]);
     }
 
     internal sealed record PlannerOpponentResponse(
@@ -313,10 +322,14 @@ internal static class GacPlannerEndpoints
             plan.Version);
     }
 
-    internal sealed record OwnDefenseResponse(Guid Id, string Zone, TeamPresetResponse Team)
+    internal sealed record OwnDefenseResponse(
+        Guid Id,
+        string Zone,
+        TeamPresetResponse Team,
+        string? DatacronId)
     {
         public static OwnDefenseResponse From(GacOwnDefenseAssignmentDetails assignment) =>
-            new(assignment.Id, assignment.Zone, TeamPresetResponse.From(assignment.Team));
+            new(assignment.Id, assignment.Zone, TeamPresetResponse.From(assignment.Team), assignment.DatacronId);
     }
 
     internal sealed record VisibleDefenseResponse(
@@ -341,7 +354,8 @@ internal static class GacPlannerEndpoints
         int Attempt,
         string Status,
         string? Notes,
-        int? Banners)
+        int? Banners,
+        string? DatacronId)
     {
         public static AttackResponse From(GacAttackAssignmentDetails attack) => new(
             attack.Id,
@@ -350,7 +364,8 @@ internal static class GacPlannerEndpoints
             attack.Attempt,
             attack.Status.ToString(),
             attack.Notes,
-            attack.Banners);
+            attack.Banners,
+            attack.DatacronId);
     }
 
     internal sealed record ConflictResponse(
@@ -448,5 +463,24 @@ internal static class GacPlannerEndpoints
             unit.RelicTier,
             unit.ZetaCount,
             unit.OmicronCount);
+    }
+
+    internal sealed record DatacronResponse(
+        string Id,
+        string SetId,
+        string TemplateId,
+        int Tier,
+        bool Locked,
+        int HighestRequiredRelicTier,
+        bool HasAbilityAffix)
+    {
+        public static DatacronResponse From(GacPlannerDatacronDetails datacron) => new(
+            datacron.Id,
+            datacron.SetId,
+            datacron.TemplateId,
+            datacron.Tier,
+            datacron.Locked,
+            datacron.HighestRequiredRelicTier,
+            datacron.HasAbilityAffix);
     }
 }
