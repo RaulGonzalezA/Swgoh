@@ -42,7 +42,7 @@ public sealed class GacSmartDefenseServiceTests
 
         GacSmartDefenseAssignment selected = Assert.Single(result.Assignments);
         Assert.Equal(defense.Id, selected.TeamPresetId);
-        Assert.Equal(0m, selected.OffensiveOpportunityCost);
+        Assert.Equal(3m, selected.OffensiveOpportunityCost);
     }
 
     [Fact]
