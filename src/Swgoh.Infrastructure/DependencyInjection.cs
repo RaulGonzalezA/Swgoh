@@ -244,7 +244,7 @@ public static class DependencyInjection
         services.AddSingleton<IComlinkGacClient, ComlinkGacClient>();
         services.AddSingleton<GacExactBracketResolver>();
         services.AddSingleton<SwgohComlinkFastGacOpponentSource>();
-        services.AddSingleton<SwgohComlinkUnifiedGacOpponentSource>();
+        services.AddSingleton<ILiveGacOpponentSource, SwgohComlinkUnifiedGacOpponentSource>();
         services.AddSingleton<BackgroundGacOpponentSource>();
         services.AddSingleton<PersistedGacOpponentSource>();
         services.AddSingleton<ICurrentGacOpponentSource, PersistedGacOpponentSourceAdapter>();
