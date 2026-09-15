@@ -12,9 +12,14 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find src -type f \( -name '*.cs' -o -name '*.razor' \) -print0 | sort -z)
 
+if grep -R --line-number --include='*.cs' 'GetRequiredService' src; then
+  echo 'Service Locator usage via GetRequiredService is forbidden in production source.' >&2
+  violations=1
+fi
+
 if (( violations != 0 )); then
-  echo 'Source files above the 600-line limit must be split before merge.' >&2
+  echo 'Architecture guard failed. Split oversized files and remove Service Locator usage before merge.' >&2
   exit 1
 fi
 
-echo 'Source-size guard passed: all .cs and .razor files are <= 600 lines.'
+echo 'Architecture guard passed: source files are <= 600 lines and production code has no GetRequiredService usage.'
