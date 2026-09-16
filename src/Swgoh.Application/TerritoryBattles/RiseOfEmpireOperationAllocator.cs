@@ -11,7 +11,8 @@ internal static class RiseOfEmpireOperationAllocator
     public static IReadOnlyCollection<RiseOfEmpireOperationPlan> Allocate(
         IReadOnlyCollection<PlayerProfile> players,
         IReadOnlyCollection<RiseOfEmpireOperationDefinition> operations,
-        GameDataCatalog gameData)
+        GameDataCatalog gameData,
+        RiseOfEmpireCombatReservationIndex? reservations = null)
     {
         var usedUnits = new HashSet<string>(StringComparer.Ordinal);
         var memberAssignments = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -31,7 +32,8 @@ internal static class RiseOfEmpireOperationAllocator
                     players,
                     gameData,
                     usedUnits,
-                    memberAssignments));
+                    memberAssignments,
+                    reservations));
             }
 
             int totalSlots = operation.Squads.Sum(squad => squad.Units.Count);
@@ -72,7 +74,8 @@ internal static class RiseOfEmpireOperationAllocator
         IReadOnlyCollection<PlayerProfile> players,
         GameDataCatalog gameData,
         HashSet<string> usedUnits,
-        Dictionary<string, int> memberAssignments)
+        Dictionary<string, int> memberAssignments,
+        RiseOfEmpireCombatReservationIndex? reservations)
     {
         var tentativeUsed = new HashSet<string>(usedUnits, StringComparer.Ordinal);
         var tentativeCounts = new Dictionary<string, int>(memberAssignments, StringComparer.Ordinal);
@@ -91,7 +94,7 @@ internal static class RiseOfEmpireOperationAllocator
         {
             OperationCandidate? candidate = EligibleCandidates(players, slot.Unit)
                 .Where(item => !tentativeUsed.Contains(UnitKey(operation.Phase, item.Player.AllyCode, slot.Unit.BaseId)))
-                .OrderBy(item => CombatCriticality(item, operation.Phase, gameData))
+                .OrderBy(item => CombatCriticality(item, operation.Phase, gameData, reservations))
                 .ThenBy(item => GetAssignmentCount(tentativeCounts, operation.Phase, item.Player.AllyCode))
                 .ThenBy(item => Math.Max(0, item.Unit.RelicTier - slot.Unit.RequiredRelicTier))
                 .ThenBy(item => item.Unit.GalacticPower)
@@ -108,7 +111,8 @@ internal static class RiseOfEmpireOperationAllocator
             tentativeUsed.Add(unitKey);
             string memberKey = MemberPhaseKey(operation.Phase, candidate.Player.AllyCode);
             tentativeCounts[memberKey] = GetAssignmentCount(tentativeCounts, operation.Phase, candidate.Player.AllyCode) + 1;
-            int criticality = CombatCriticality(candidate, operation.Phase, gameData);
+            int criticality = CombatCriticality(candidate, operation.Phase, gameData, reservations);
+            string? reservationReason = reservations?.GetReason(operation.Phase, candidate.Player.AllyCode, candidate.Unit.DefinitionId);
             assignments.Add(new RiseOfEmpireOperationAssignment(
                 slot.Unit.BaseId,
                 slot.Unit.Name,
@@ -119,11 +123,13 @@ internal static class RiseOfEmpireOperationAllocator
                 candidate.Unit.RelicTier,
                 candidate.Unit.GalacticPower,
                 criticality,
-                criticality >= 80
-                    ? "Asignación necesaria, pero la unidad es crítica para combate o desbloqueo en esta fase."
-                    : criticality > 0
-                        ? "Asignación válida; se ha preferido una copia con menor coste de oportunidad de combate."
-                        : "Asignación de bajo coste de oportunidad para combate."));
+                reservationReason is not null
+                    ? $"Asignación necesaria pese a reserva de combate RotE 2.2: {reservationReason}"
+                    : criticality >= 80
+                        ? "Asignación necesaria, pero la unidad es crítica para combate o desbloqueo en esta fase."
+                        : criticality > 0
+                            ? "Asignación válida; se ha preferido una copia con menor coste de oportunidad de combate."
+                            : "Asignación de bajo coste de oportunidad para combate."));
         }
 
         bool complete = missing.Count == 0 && assignments.Count == squad.Units.Count;
@@ -195,14 +201,18 @@ internal static class RiseOfEmpireOperationAllocator
             near);
     }
 
-    private static int CombatCriticality(OperationCandidate candidate, int phase, GameDataCatalog gameData)
+    private static int CombatCriticality(
+        OperationCandidate candidate,
+        int phase,
+        GameDataCatalog gameData,
+        RiseOfEmpireCombatReservationIndex? reservations)
     {
+        int score = reservations?.GetCriticality(phase, candidate.Player.AllyCode, candidate.Unit.DefinitionId) ?? 0;
         if (!gameData.Units.TryGetValue(candidate.Unit.DefinitionId, out GameUnitDefinition? definition))
         {
-            return 0;
+            return score;
         }
 
-        int score = 0;
         foreach (RiseOfEmpirePlanetDefinition planet in RiseOfEmpireCatalog.Planets.Where(planet => planet.Phase == phase))
         {
             IEnumerable<RiseOfEmpireMissionDefinition> missions = planet.Missions
