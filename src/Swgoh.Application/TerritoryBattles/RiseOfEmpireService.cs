@@ -143,7 +143,7 @@ internal sealed class RiseOfEmpireService(
                 .Select(candidate => ToView(candidate, planet.MinimumRelicTier))
         ];
 
-        decimal averageRelic = team.Length == 0 ? 0m : team.Average(candidate => candidate.Unit.RelicTier);
+        decimal averageRelic = team.Length == 0 ? 0m : team.Average(candidate => (decimal)candidate.Unit.RelicTier);
         decimal averageSpeed = team
             .Where(candidate => candidate.Unit.Stats?.Speed is not null)
             .Select(candidate => candidate.Unit.Stats!.Speed!.Value)
