@@ -10,6 +10,10 @@ public sealed record RiseOfEmpireAnalysis(
 {
     public int ReadyTeams => Phases.SelectMany(phase => phase.Planets).Sum(planet => planet.ReadyTeamCount);
     public int ReadyPlanets => Phases.SelectMany(phase => phase.Planets).Count(planet => planet.ReadinessPercent >= 100m);
+    public int ReadyMissionTeams => Phases
+        .SelectMany(phase => phase.Planets)
+        .SelectMany(planet => planet.MissionGuides)
+        .Sum(mission => mission.ReadyTeamCount);
 }
 
 public sealed record RiseOfEmpirePhaseAnalysis(
@@ -29,7 +33,8 @@ public sealed record RiseOfEmpirePlanetAnalysis(
     decimal ReadinessPercent,
     RiseOfEmpireMissionReadiness? AccessRequirement,
     IReadOnlyCollection<RiseOfEmpireTeamRecommendation> RecommendedTeams,
-    IReadOnlyCollection<RiseOfEmpireMissionReadiness> Missions);
+    IReadOnlyCollection<RiseOfEmpireMissionReadiness> Missions,
+    IReadOnlyCollection<RiseOfEmpireMissionGuide> MissionGuides);
 
 public sealed record RiseOfEmpireTeamRecommendation(
     string Archetype,
@@ -58,6 +63,41 @@ public sealed record RiseOfEmpireMissionReadiness(
     int MinimumRelicTier,
     bool Ready,
     IReadOnlyCollection<string> MissingRequirements);
+
+public sealed record RiseOfEmpireMissionGuide(
+    string Id,
+    string Name,
+    string Type,
+    string Requirement,
+    bool IsFleet,
+    int MinimumRelicTier,
+    bool Eligible,
+    IReadOnlyCollection<string> MissingRequirements,
+    IReadOnlyCollection<RiseOfEmpireConcreteTeamRecommendation> RecommendedTeams)
+{
+    public int ReadyTeamCount => RecommendedTeams.Count(team => team.Ready);
+}
+
+public sealed record RiseOfEmpireConcreteTeamRecommendation(
+    string Name,
+    string Confidence,
+    bool Ready,
+    int ReadyUnits,
+    int RequiredUnits,
+    IReadOnlyCollection<RiseOfEmpireGuideUnit> Units,
+    IReadOnlyCollection<string> MissingUnits,
+    string Rationale);
+
+public sealed record RiseOfEmpireGuideUnit(
+    string DefinitionId,
+    string Name,
+    string? ThumbnailName,
+    bool IsShip,
+    int Rarity,
+    int RelicTier,
+    long GalacticPower,
+    bool Ready,
+    string Requirement);
 
 public sealed record RiseOfEmpireUpgradePriority(
     int Rank,
