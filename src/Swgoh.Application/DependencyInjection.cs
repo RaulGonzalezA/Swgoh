@@ -4,6 +4,7 @@ using Swgoh.Application.Conquest;
 using Swgoh.Application.Gac;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
+using Swgoh.Application.TerritoryBattles;
 
 namespace Swgoh.Application;
 
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<ISquadService, SquadService>();
         services.AddScoped<IConquestService, ConquestService>();
         services.AddScoped<IConquestDailyPlanService, ConquestDailyPlanService>();
+        services.AddScoped<IRiseOfEmpireService, RiseOfEmpireService>();
         services.AddSingleton<IGacRulesService, GacRulesService>();
         services.AddSingleton<IGacTelemetry, GacTelemetry>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();
