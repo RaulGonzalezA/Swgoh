@@ -9,7 +9,7 @@
         <a class="back-link" href="@($"/player/{AllyCode}")">← Roster</a>
         <span class="eyebrow">Territory Battle · Rise of the Empire</span>
         <h1>Alzamiento del Imperio</h1>
-        <p class="page-lead">Planetas, equipos viables y mejoras de reliquias calculadas desde tu roster actual.</p>
+        <p class="page-lead">Planetas, equipos concretos, flotas y mejoras de reliquias calculadas desde tu roster actual.</p>
     </div>
     @if (Analysis is not null)
     {
@@ -50,6 +50,8 @@ else
         <div><span>Equipos listos</span><strong>@Analysis.ReadyTeams</strong><small>arquetipos completos</small></div>
         <div><span>Prioridades</span><strong>@Analysis.UpgradePriorities.Count</strong><small>mejoras con impacto</small></div>
     </section>
+
+    <RiseOfEmpireMissionGuidePanel AllyCode="@AllyCode" />
 
     <section class="rote-priorities">
         <div class="planner-section-heading">
