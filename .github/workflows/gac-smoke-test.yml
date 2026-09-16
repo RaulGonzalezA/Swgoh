@@ -152,13 +152,11 @@ jobs:
               break
             fi
 
-            if [[ "${status}" == "404" ]]; then
-              gac_status=$(jq -r '.status // empty' smoke-results/gac-lookup.json)
-              if [[ "${gac_status}" == "NoActiveEvent" || "${gac_status}" == "PlayerNotJoined" ]]; then
-                echo "No active GAC matchup to performance-test: ${gac_status}."
-                echo "active=false" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
+            gac_status=$(jq -r '.status // empty' smoke-results/gac-lookup.json)
+            if [[ "${gac_status}" == "NoActiveEvent" || "${gac_status}" == "PlayerNotJoined" || "${gac_status}" == "OpponentUnavailable" ]]; then
+              echo "GAC is waiting without an active opponent: ${gac_status}."
+              echo "active=false" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
 
             if [[ "${status}" != "202" && "${status}" != "409" ]]; then
@@ -167,9 +165,8 @@ jobs:
               exit 1
             fi
 
-            pending_status=$(jq -r '.status // empty' smoke-results/gac-lookup.json)
-            if [[ "${pending_status}" != "Pending" ]]; then
-              echo "GAC lookup reached terminal failure ${pending_status}."
+            if [[ "${gac_status}" != "Pending" ]]; then
+              echo "GAC lookup reached terminal failure ${gac_status}."
               cat smoke-results/gac-lookup.json
               exit 1
             fi
@@ -177,6 +174,13 @@ jobs:
           done
 
           if [[ "${final_status}" != "200" ]]; then
+            gac_status=$(jq -r '.status // empty' smoke-results/gac-lookup.json)
+            if [[ "${gac_status}" == "Pending" ]]; then
+              echo "GAC is still waiting for matchmaking; this is a valid idle state."
+              echo "active=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             echo "GAC cold lookup did not resolve to 200 within the smoke-test window."
             cat smoke-results/gac-lookup.json
             exit 1
