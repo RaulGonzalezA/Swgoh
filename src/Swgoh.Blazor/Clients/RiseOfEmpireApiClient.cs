@@ -43,6 +43,7 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         int EligibleCharacterCount,
         int ReadyTeamCount,
         decimal ReadinessPercent,
+        RiseOfEmpireMissionReadinessViewModel? AccessRequirement,
         IReadOnlyCollection<RiseOfEmpireTeamRecommendationViewModel> RecommendedTeams,
         IReadOnlyCollection<RiseOfEmpireMissionReadinessViewModel> Missions);
 
