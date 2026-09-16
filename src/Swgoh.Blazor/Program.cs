@@ -36,6 +36,11 @@ builder.Services.AddHttpClient<RiseOfEmpireMissionGuideApiClient>(client =>
     client.BaseAddress = new Uri("https+http://api");
     client.Timeout = TimeSpan.FromMinutes(2);
 });
+builder.Services.AddHttpClient<RiseOfEmpireExecutionApiClient>(client =>
+{
+    client.BaseAddress = new Uri("https+http://api");
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
 builder.Services.AddScoped<PlayerSessionState>();
 builder.Services.AddScoped<PlayerPreferenceService>();
 builder.Services.AddScoped<PlayerContextService>();

@@ -11,6 +11,7 @@ using Swgoh.Application.Gac;
 using Swgoh.Application.GameData;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
+using Swgoh.Application.TerritoryBattles;
 using Swgoh.Infrastructure.Comlink;
 using Swgoh.Infrastructure.Gac;
 using Swgoh.Infrastructure.GameData;
@@ -202,6 +203,23 @@ public static class DependencyInjection
                         Name = ConquestPlanMongoRepository.AllyCodeUpdatedIndexName
                     }));
 
+        IndexKeysDefinition<RiseOfEmpireExecutionDocument> roteExecutionIndexKeys =
+            Builders<RiseOfEmpireExecutionDocument>.IndexKeys
+                .Ascending(execution => execution.GuildId)
+                .Ascending(execution => execution.Status)
+                .Descending(execution => execution.UpdatedAtUtc);
+        services.AddMongoRepository<RiseOfEmpireExecutionDocument, string>(
+            RiseOfEmpireExecutionMongoRepository.CollectionName,
+            execution => execution.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    roteExecutionIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = RiseOfEmpireExecutionMongoRepository.GuildStatusUpdatedIndexName
+                    }));
+
         string gameDataBaseUrl = configuration["Swgoh:GameData:BaseUrl"]
             ?? "https://raw.githubusercontent.com/swgoh-utils/gamedata/main/";
         string gameDataLocale = configuration["Swgoh:GameData:Locale"] ?? "SPA_XM";
@@ -255,6 +273,7 @@ public static class DependencyInjection
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         services.AddSingleton<IConquestPlanRepository, ConquestPlanMongoRepository>();
+        services.AddSingleton<IRiseOfEmpireExecutionRepository, RiseOfEmpireExecutionMongoRepository>();
         services.AddSingleton<IGacHistoryRepository, GacHistoryMongoRepository>();
         services.AddSingleton<IGacBracketLocationRepository, GacBracketLocationMongoRepository>();
         services.AddSingleton<IGacTeamPresetRepository, GacTeamPresetMongoRepository>();

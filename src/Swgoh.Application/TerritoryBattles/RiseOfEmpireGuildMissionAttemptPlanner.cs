@@ -15,6 +15,7 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
     {
         var planned = new Dictionary<string, HashSet<long>>(StringComparer.OrdinalIgnoreCase);
         var blocked = new Dictionary<string, HashSet<long>>(StringComparer.OrdinalIgnoreCase);
+        var assignments = new List<RiseOfEmpirePlannedMissionAttempt>();
 
         foreach (PlayerProfile player in players)
         {
@@ -35,6 +36,17 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
                 {
                     AddMember(planned, attempt.MissionKey, player.AllyCode);
                     ReserveAttempt(reservations, player, attempt);
+                    assignments.Add(new RiseOfEmpirePlannedMissionAttempt(
+                        player.AllyCode,
+                        player.Name,
+                        attempt.Phase,
+                        attempt.PlanetId,
+                        attempt.PlanetName,
+                        attempt.MissionId,
+                        attempt.MissionName,
+                        attempt.Option.TeamName,
+                        [.. attempt.Option.UnitIds],
+                        [.. attempt.Option.RequiredUnitIds]));
                 }
 
                 foreach (MissionCandidate candidate in candidates.Where(candidate => candidate.Options.Count > 0))
@@ -47,7 +59,7 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
             }
         }
 
-        return new RiseOfEmpireGuildMissionAttemptPlanning(planned, blocked);
+        return new RiseOfEmpireGuildMissionAttemptPlanning(planned, blocked, assignments);
     }
 
     public static string MissionKey(int phase, string planetId, string missionId) =>
@@ -97,7 +109,9 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
                 candidates.Add(new MissionCandidate(
                     MissionKey(phase, planet.Id, mission.Id),
                     phase,
+                    planet.Id,
                     planet.Name,
+                    mission.Id,
                     mission.Name,
                     options));
             }
@@ -195,7 +209,9 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
                 current.Add(new SelectedAttempt(
                     mission.MissionKey,
                     mission.Phase,
+                    mission.PlanetId,
                     mission.PlanetName,
+                    mission.MissionId,
                     mission.MissionName,
                     option));
                 Search(index + 1, confidence + option.Confidence);
@@ -287,7 +303,9 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
     private sealed record MissionCandidate(
         string MissionKey,
         int Phase,
+        string PlanetId,
         string PlanetName,
+        string MissionId,
         string MissionName,
         IReadOnlyCollection<MissionTeamOption> Options);
 
@@ -300,14 +318,17 @@ internal static class RiseOfEmpireGuildMissionAttemptPlanner
     private sealed record SelectedAttempt(
         string MissionKey,
         int Phase,
+        string PlanetId,
         string PlanetName,
+        string MissionId,
         string MissionName,
         MissionTeamOption Option);
 }
 
 internal sealed record RiseOfEmpireGuildMissionAttemptPlanning(
     IReadOnlyDictionary<string, HashSet<long>> PlannedMembers,
-    IReadOnlyDictionary<string, HashSet<long>> BlockedMembers)
+    IReadOnlyDictionary<string, HashSet<long>> BlockedMembers,
+    IReadOnlyCollection<RiseOfEmpirePlannedMissionAttempt> PlannedAttempts)
 {
     public IReadOnlySet<long> PlannedFor(string missionKey) =>
         PlannedMembers.TryGetValue(missionKey, out HashSet<long>? members)
@@ -321,3 +342,15 @@ internal sealed record RiseOfEmpireGuildMissionAttemptPlanning(
 
     private static readonly HashSet<long> Empty = [];
 }
+
+internal sealed record RiseOfEmpirePlannedMissionAttempt(
+    long PlayerAllyCode,
+    string PlayerName,
+    int Phase,
+    string PlanetId,
+    string PlanetName,
+    string MissionId,
+    string MissionName,
+    string TeamName,
+    IReadOnlyCollection<string> UnitDefinitionIds,
+    IReadOnlyCollection<string> RequiredUnitDefinitionIds);
