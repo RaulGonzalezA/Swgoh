@@ -15,6 +15,7 @@ public static class RiseOfEmpireGuildDependencyInjection
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddSingleton<IRiseOfEmpireGuildPlayerRepository, TerritoryBattles.RiseOfEmpireGuildPlayerMongoRepository>();
         services.AddSingleton<IRiseOfEmpireOperationsCatalog, TerritoryBattles.SwgohRiseOfEmpireOperationsCatalogClient>();
 
         string comlinkBaseUrl = configuration["Swgoh:Comlink:BaseUrl"] ?? "http://comlink";
