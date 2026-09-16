@@ -114,6 +114,7 @@ app.MapPlayerEndpoints();
 app.MapSquadEndpoints();
 app.MapConquestEndpoints();
 app.MapConquestDailyPlanEndpoints();
+app.MapRiseOfEmpireEndpoints();
 app.MapGacEndpoints();
 app.MapGacScoutingCacheEndpoints();
 app.MapGacPlannerEndpoints();
