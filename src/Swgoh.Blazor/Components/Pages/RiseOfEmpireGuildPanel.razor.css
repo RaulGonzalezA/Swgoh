@@ -1,0 +1,46 @@
+.rote-guild-panel { margin:1.5rem 0 2rem; padding:1.1rem; border:1px solid var(--border-color); border-radius:1rem; background:var(--surface-1); }
+.rote-guild-heading { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
+.rote-guild-heading h2 { margin:.2rem 0 .35rem; }
+.rote-guild-heading p { margin:0; color:var(--text-muted); max-width:60rem; }
+.rote-guild-status,.rote-guild-empty { margin-top:1rem; padding:1rem; border:1px solid var(--border-color); border-radius:.8rem; background:var(--surface-2); display:flex; gap:.65rem; align-items:center; }
+.rote-guild-status.error { border-color:color-mix(in srgb,var(--danger) 45%,var(--border-color)); }
+.rote-guild-empty { flex-direction:column; align-items:flex-start; }
+.rote-guild-empty.compact { margin-top:.5rem; padding:.75rem; }
+.rote-guild-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; margin:1rem 0; }
+.rote-guild-summary > div { display:flex; flex-direction:column; gap:.18rem; padding:.8rem; border-radius:.75rem; background:var(--surface-2); }
+.rote-guild-summary span,.rote-guild-summary small { color:var(--text-muted); }
+.rote-guild-summary strong { font-size:1.15rem; }
+.rote-guild-bonus-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+.rote-guild-bonus { padding:.85rem; border:1px solid var(--border-color); border-radius:.8rem; display:flex; flex-direction:column; gap:.45rem; }
+.rote-guild-bonus.ready { border-color:color-mix(in srgb,var(--success) 55%,var(--border-color)); }
+.rote-guild-bonus.missing { border-color:color-mix(in srgb,var(--warning) 55%,var(--border-color)); }
+.rote-guild-bonus > div:first-child { display:flex; gap:.55rem; align-items:center; }
+.rote-guild-bonus > div:first-child > div { display:flex; flex-direction:column; }
+.rote-guild-bonus small { color:var(--text-muted); }
+.rote-guild-near { display:grid; gap:.2rem; margin-top:.25rem; }
+.rote-guild-near span { font-size:.76rem; color:var(--text-muted); }
+.rote-guild-section-heading { display:flex; justify-content:space-between; align-items:end; margin:1.15rem 0 .55rem; }
+.rote-guild-section-heading h3 { margin:.15rem 0 0; }
+.rote-guild-phase-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem; }
+.rote-guild-phase { padding:.8rem; border:1px solid var(--border-color); border-radius:.8rem; min-width:0; }
+.rote-guild-phase > header { display:flex; justify-content:space-between; align-items:center; margin-bottom:.2rem; }
+.rote-guild-phase > header span { font-weight:800; }
+.rote-guild-phase > small { color:var(--text-muted); }
+.rote-guild-route { margin-top:.55rem; padding:.55rem; border-radius:.65rem; background:var(--surface-2); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.2rem .5rem; }
+.rote-guild-route > div { display:flex; flex-direction:column; min-width:0; }
+.rote-guild-route small { color:var(--text-muted); line-height:1.3; }
+.rote-guild-route > span { font-weight:800; }
+.rote-guild-route > small { grid-column:1/-1; }
+.rote-guild-route.locked { opacity:.65; }
+.rote-guild-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.rote-guild-list { display:grid; gap:.45rem; }
+.rote-guild-list article { display:flex; gap:.65rem; align-items:center; padding:.65rem .7rem; border:1px solid var(--border-color); border-radius:.7rem; background:var(--surface-2); }
+.rote-guild-list article > div { flex:1; min-width:0; display:flex; flex-direction:column; }
+.rote-guild-list article small { color:var(--text-muted); line-height:1.3; }
+.rote-guild-list article > span:last-child { color:var(--text-muted); font-size:.76rem; text-align:right; }
+.rote-guild-list .rank { color:var(--accent); font-weight:800; }
+.rote-guild-warnings { margin-top:1rem; padding:.7rem .8rem; border:1px solid var(--border-color); border-radius:.7rem; }
+.rote-guild-warnings summary { cursor:pointer; font-weight:700; }
+.rote-guild-warnings p { margin:.45rem 0 0; color:var(--text-muted); font-size:.8rem; }
+@media (max-width:1100px) { .rote-guild-summary,.rote-guild-phase-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:760px) { .rote-guild-heading { flex-direction:column; } .rote-guild-summary,.rote-guild-bonus-grid,.rote-guild-phase-grid,.rote-guild-columns { grid-template-columns:1fr; } .rote-guild-heading button { width:100%; } }
