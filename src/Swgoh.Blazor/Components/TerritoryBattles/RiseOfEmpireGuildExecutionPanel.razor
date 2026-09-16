@@ -1,0 +1,435 @@
+@inject RiseOfEmpireExecutionApiClient ExecutionClient
+
+<section class="rote24-execution">
+    <div class="rote24-heading">
+        <div>
+            <span class="section-kicker">RotE 2.4 · Ejecución</span>
+            <h3>Plan operativo y resultados reales</h3>
+            <p>Cada miembro ve sus intentos en orden, el equipo exacto reservado y las donaciones de Operaciones que puede hacer sin romper ese plan.</p>
+        </div>
+        @if (ActiveSession is null)
+        {
+            <div class="rote24-start">
+                <input value="@SessionLabel" @onchange="OnLabelChanged" placeholder="RotE actual" />
+                <button class="primary-button" @onclick="StartExecutionAsync" disabled="@Saving">Iniciar ejecución</button>
+            </div>
+        }
+        else
+        {
+            <button class="secondary-button" @onclick="CloseExecutionAsync" disabled="@Saving">Cerrar TB</button>
+        }
+    </div>
+
+    @if (Error is not null)
+    {
+        <div class="rote24-error">@Error</div>
+    }
+
+    @if (Loading)
+    {
+        <div class="rote24-loading"><span class="spinner"></span><span>Cargando ejecución de RotE…</span></div>
+    }
+    else
+    {
+        @if (ActiveSession is not null)
+        {
+            <div class="rote24-summary">
+                <div><span>Sesión</span><strong>@ActiveSession.Label</strong></div>
+                <div><span>Finalizados</span><strong>@ActiveSession.FinishedAttempts</strong></div>
+                <div><span>En curso</span><strong>@ActiveSession.InProgressAttempts</strong></div>
+                <div><span>TP registrados</span><strong>@Compact(ActiveSession.RecordedTerritoryPoints)</strong></div>
+                <div><span>Conflictos ops</span><strong>@Guild.OperationConflicts</strong></div>
+            </div>
+        }
+
+        <div class="rote24-controls">
+            <label>
+                <span>Miembro</span>
+                <select value="@SelectedAllyCode" @onchange="OnMemberChanged">
+                    @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMemberOperationalPlanViewModel member in Guild.MemberPlans
+                        .OrderBy(member => member.PlayerName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        <option value="@member.AllyCode">@member.PlayerName</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Fase</span>
+                <select value="@SelectedPhase" @onchange="OnPhaseChanged">
+                    @foreach (int phase in AvailablePhases)
+                    {
+                        <option value="@phase">Fase @phase</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        @if (SelectedMember is not null && SelectedMemberPhase is not null)
+        {
+            <div class="rote24-member-head">
+                <div>
+                    <span>Plan de @SelectedMember.PlayerName</span>
+                    <strong>Fase @SelectedMemberPhase.Phase · @SelectedMemberPhase.MissionAttempts.Count intentos</strong>
+                </div>
+                <div>
+                    <span>@SelectedMemberPhase.SafeOperationDonations.Count donaciones seguras</span>
+                    @if (SelectedMemberPhase.OperationConflicts.Count > 0)
+                    {
+                        <strong>@SelectedMemberPhase.OperationConflicts.Count conflicto(s)</strong>
+                    }
+                </div>
+            </div>
+
+            <div class="rote24-attempts">
+                @foreach (RiseOfEmpireApiClient.RiseOfEmpireMemberMissionAttemptPlanViewModel attempt in SelectedMemberPhase.MissionAttempts.OrderBy(item => item.Order))
+                {
+                    RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionResultViewModel? result = ResultFor(SelectedMember.AllyCode, SelectedMemberPhase.Phase, attempt);
+                    string key = ResultKey(SelectedMember.AllyCode, SelectedMemberPhase.Phase, attempt);
+                    <article class="rote24-attempt @StateClass(result)">
+                        <header>
+                            <div class="rote24-order">@attempt.Order</div>
+                            <div>
+                                <span>@attempt.PlanetName</span>
+                                <strong>@attempt.MissionName</strong>
+                                <small>@attempt.TeamName</small>
+                            </div>
+                            <div class="rote24-result-label">@ResultLabel(result)</div>
+                        </header>
+
+                        <div class="rote24-units">
+                            @foreach (RiseOfEmpireApiClient.RiseOfEmpireOperationalUnitViewModel unit in attempt.Units)
+                            {
+                                <span class="@(unit.Required ? "required" : string.Empty)">@(unit.Required ? "★ " : string.Empty)@unit.UnitName</span>
+                            }
+                        </div>
+
+                        <div class="rote24-result-editor">
+                            <label>
+                                <span>TP reales</span>
+                                <input type="number" min="0" value="@PointsText(key, result)" @onchange="args => SetPoints(key, args)" />
+                            </label>
+                            <label class="notes">
+                                <span>Notas</span>
+                                <input value="@NotesText(key, result)" @onchange="args => SetNotes(key, args)" placeholder="Opcional" />
+                            </label>
+                            <div class="rote24-actions">
+                                <button @onclick="() => SaveResultAsync(attempt, RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.NotAttempted, 0)" disabled="@(ActiveSession is null || Saving)">Pendiente</button>
+                                <button @onclick="() => SaveResultAsync(attempt, RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.InProgress, result?.CompletedWaves ?? 0)" disabled="@(ActiveSession is null || Saving)">En curso</button>
+                                <button @onclick="() => SaveResultAsync(attempt, RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.Finished, 0)" disabled="@(ActiveSession is null || Saving)">0/2</button>
+                                <button @onclick="() => SaveResultAsync(attempt, RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.Finished, 1)" disabled="@(ActiveSession is null || Saving)">1/2</button>
+                                <button @onclick="() => SaveResultAsync(attempt, RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.Finished, 2)" disabled="@(ActiveSession is null || Saving)">2/2</button>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <div class="rote24-ops-grid">
+                <section>
+                    <div class="rote24-section-title"><span>Operaciones</span><strong>Donaciones seguras</strong></div>
+                    @if (SelectedMemberPhase.SafeOperationDonations.Count == 0)
+                    {
+                        <p class="rote24-empty">No tiene una donación asignada que sea necesaria en esta fase.</p>
+                    }
+                    else
+                    {
+                        @foreach (RiseOfEmpireApiClient.RiseOfEmpireMemberOperationDonationPlanViewModel donation in SelectedMemberPhase.SafeOperationDonations)
+                        {
+                            <div class="rote24-donation safe">
+                                <div><strong>@donation.UnitName</strong><small>@donation.PlanetName · @donation.SquadId</small></div>
+                                <span>R@donation.CurrentRelicTier → req. R@donation.RequiredRelicTier</span>
+                            </div>
+                        }
+                    }
+                </section>
+
+                <section>
+                    <div class="rote24-section-title"><span>Atención</span><strong>Conflictos de Operaciones</strong></div>
+                    @if (SelectedMemberPhase.OperationConflicts.Count == 0)
+                    {
+                        <p class="rote24-empty">Ninguna asignación de operación rompe sus intentos planificados.</p>
+                    }
+                    else
+                    {
+                        @foreach (RiseOfEmpireApiClient.RiseOfEmpireMemberOperationDonationPlanViewModel donation in SelectedMemberPhase.OperationConflicts)
+                        {
+                            <div class="rote24-donation conflict">
+                                <div><strong>@donation.UnitName</strong><small>@donation.PlanetName · @donation.SquadId</small></div>
+                                <span>NO donar antes de sus misiones</span>
+                            </div>
+                        }
+                    }
+                </section>
+            </div>
+
+            @if (SelectedMemberPhase.ReservedUnits.Count > 0)
+            {
+                <details class="rote24-reserved">
+                    <summary>Piezas reservadas para combate (@SelectedMemberPhase.ReservedUnits.Count)</summary>
+                    <div>
+                        @foreach (RiseOfEmpireApiClient.RiseOfEmpireReservedUnitPlanViewModel unit in SelectedMemberPhase.ReservedUnits)
+                        {
+                            <span title="@string.Join(", ", unit.MissionNames)">@unit.UnitName</span>
+                        }
+                    </div>
+                </details>
+            }
+        }
+        else
+        {
+            <div class="rote24-empty-card">Este miembro no tiene acciones planificadas para la fase seleccionada.</div>
+        }
+
+        @if (History.Count > 0)
+        {
+            <details class="rote24-history">
+                <summary>Histórico de ejecuciones (@History.Count)</summary>
+                @foreach (RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionSessionViewModel session in History)
+                {
+                    <div>
+                        <strong>@session.Label</strong>
+                        <span>@session.FinishedAttempts intentos finalizados · @Compact(session.RecordedTerritoryPoints) TP · @session.Status</span>
+                    </div>
+                }
+            </details>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public long AllyCode { get; set; }
+
+    [Parameter, EditorRequired]
+    public RiseOfEmpireApiClient.RiseOfEmpireGuildAnalysisViewModel Guild { get; set; } = default!;
+
+    private RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionSessionViewModel? ActiveSession { get; set; }
+    private IReadOnlyCollection<RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionSessionViewModel> History { get; set; } = [];
+    private readonly Dictionary<string, long?> points = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?> notes = new(StringComparer.OrdinalIgnoreCase);
+    private long SelectedAllyCode { get; set; }
+    private int SelectedPhase { get; set; } = 1;
+    private string? SessionLabel { get; set; }
+    private string? Error { get; set; }
+    private bool Loading { get; set; }
+    private bool Saving { get; set; }
+
+    private RiseOfEmpireApiClient.RiseOfEmpireGuildMemberOperationalPlanViewModel? SelectedMember =>
+        Guild.MemberPlans.FirstOrDefault(member => member.AllyCode == SelectedAllyCode);
+
+    private RiseOfEmpireApiClient.RiseOfEmpireGuildMemberPhaseOperationalPlanViewModel? SelectedMemberPhase =>
+        SelectedMember?.Phases.FirstOrDefault(phase => phase.Phase == SelectedPhase);
+
+    private IReadOnlyCollection<int> AvailablePhases => SelectedMember is null
+        ? [1, 2, 3, 4, 5, 6]
+        : [.. SelectedMember.Phases.Select(phase => phase.Phase).Distinct().OrderBy(phase => phase)];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Guild.MemberPlans.Any(member => member.AllyCode == SelectedAllyCode))
+        {
+            SelectedAllyCode = Guild.MemberPlans.Any(member => member.AllyCode == AllyCode)
+                ? AllyCode
+                : Guild.MemberPlans.FirstOrDefault()?.AllyCode ?? 0;
+        }
+
+        if (SelectedMember is not null && !SelectedMember.Phases.Any(phase => phase.Phase == SelectedPhase))
+        {
+            SelectedPhase = SelectedMember.Phases.FirstOrDefault()?.Phase ?? 1;
+        }
+
+        Loading = true;
+        Error = null;
+        try
+        {
+            Task<RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionSessionViewModel?> activeTask =
+                ExecutionClient.GetActiveAsync(AllyCode);
+            Task<IReadOnlyCollection<RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionSessionViewModel>> historyTask =
+                ExecutionClient.GetHistoryAsync(AllyCode);
+            await Task.WhenAll(activeTask, historyTask);
+            ActiveSession = await activeTask;
+            History = await historyTask;
+        }
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido cargar la ejecución activa de RotE.";
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    private async Task StartExecutionAsync()
+    {
+        Saving = true;
+        Error = null;
+        try
+        {
+            ActiveSession = await ExecutionClient.StartAsync(AllyCode, SessionLabel);
+            History = await ExecutionClient.GetHistoryAsync(AllyCode);
+        }
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido iniciar la ejecución de RotE.";
+        }
+        finally
+        {
+            Saving = false;
+        }
+    }
+
+    private async Task CloseExecutionAsync()
+    {
+        if (ActiveSession is null)
+        {
+            return;
+        }
+
+        Saving = true;
+        Error = null;
+        try
+        {
+            await ExecutionClient.CloseAsync(AllyCode, ActiveSession.Id);
+            ActiveSession = null;
+            History = await ExecutionClient.GetHistoryAsync(AllyCode);
+        }
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido cerrar la ejecución de RotE.";
+        }
+        finally
+        {
+            Saving = false;
+        }
+    }
+
+    private async Task SaveResultAsync(
+        RiseOfEmpireApiClient.RiseOfEmpireMemberMissionAttemptPlanViewModel attempt,
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel state,
+        int completedWaves)
+    {
+        if (ActiveSession is null || SelectedMember is null || SelectedMemberPhase is null)
+        {
+            return;
+        }
+
+        string key = ResultKey(SelectedMember.AllyCode, SelectedMemberPhase.Phase, attempt);
+        Saving = true;
+        Error = null;
+        try
+        {
+            var request = new RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionResultRequest(
+                SelectedMember.AllyCode,
+                SelectedMember.PlayerName,
+                SelectedMemberPhase.Phase,
+                attempt.PlanetId,
+                attempt.PlanetName,
+                attempt.MissionId,
+                attempt.MissionName,
+                attempt.TeamName,
+                state,
+                completedWaves,
+                2,
+                points.GetValueOrDefault(key),
+                notes.GetValueOrDefault(key));
+            ActiveSession = await ExecutionClient.UpdateMissionAsync(AllyCode, ActiveSession.Id, request);
+        }
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido guardar el resultado de la misión.";
+        }
+        finally
+        {
+            Saving = false;
+        }
+    }
+
+    private RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionResultViewModel? ResultFor(
+        long allyCode,
+        int phase,
+        RiseOfEmpireApiClient.RiseOfEmpireMemberMissionAttemptPlanViewModel attempt) =>
+        ActiveSession?.Results.FirstOrDefault(result =>
+            result.PlayerAllyCode == allyCode
+            && result.Phase == phase
+            && string.Equals(result.PlanetId, attempt.PlanetId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(result.MissionId, attempt.MissionId, StringComparison.OrdinalIgnoreCase));
+
+    private static string ResultKey(
+        long allyCode,
+        int phase,
+        RiseOfEmpireApiClient.RiseOfEmpireMemberMissionAttemptPlanViewModel attempt) =>
+        $"{allyCode}:{phase}:{attempt.PlanetId}:{attempt.MissionId}";
+
+    private string PointsText(
+        string key,
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionResultViewModel? result)
+    {
+        if (points.TryGetValue(key, out long? value))
+        {
+            return value?.ToString() ?? string.Empty;
+        }
+
+        return result?.TerritoryPoints?.ToString() ?? string.Empty;
+    }
+
+    private string NotesText(
+        string key,
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionResultViewModel? result)
+    {
+        if (notes.TryGetValue(key, out string? value))
+        {
+            return value ?? string.Empty;
+        }
+
+        return result?.Notes ?? string.Empty;
+    }
+
+    private void SetPoints(string key, ChangeEventArgs args)
+    {
+        string? raw = args.Value?.ToString();
+        points[key] = long.TryParse(raw, out long parsed) && parsed >= 0 ? parsed : null;
+    }
+
+    private void SetNotes(string key, ChangeEventArgs args) => notes[key] = args.Value?.ToString();
+
+    private void OnLabelChanged(ChangeEventArgs args) => SessionLabel = args.Value?.ToString();
+
+    private void OnMemberChanged(ChangeEventArgs args)
+    {
+        if (long.TryParse(args.Value?.ToString(), out long allyCode))
+        {
+            SelectedAllyCode = allyCode;
+            SelectedPhase = SelectedMember?.Phases.FirstOrDefault()?.Phase ?? 1;
+        }
+    }
+
+    private void OnPhaseChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out int phase))
+        {
+            SelectedPhase = phase;
+        }
+    }
+
+    private static string ResultLabel(RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionResultViewModel? result) => result?.State switch
+    {
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.InProgress => "En curso",
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.Finished => $"{result.CompletedWaves}/{result.TotalWaves}",
+        _ => "Pendiente"
+    };
+
+    private static string StateClass(RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionResultViewModel? result) => result?.State switch
+    {
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.InProgress => "in-progress",
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.Finished when result.CompletedWaves == result.TotalWaves => "complete",
+        RiseOfEmpireExecutionApiClient.RiseOfEmpireMissionExecutionStateViewModel.Finished => "partial",
+        _ => string.Empty
+    };
+
+    private static string Compact(long value) => value >= 1_000_000
+        ? $"{value / 1_000_000d:0.##}M"
+        : value >= 1_000
+            ? $"{value / 1_000d:0.#}K"
+            : value.ToString();
+}
