@@ -37,7 +37,9 @@ public partial class GrandArena
         ? "Analiza rival, riesgos, reservas y counters antes de fijar la ronda."
         : _scoutingLoading
             ? $"{_player.Name} · rival localizado · preparando roster, histórico y counters…"
-            : $"{_player.Name} · #{FormatAllyCode(_player.AllyCode)} · decide qué conservar y cómo abrir el tablero.";
+            : _result?.Scouting is null && _error is null
+                ? $"{_player.Name} · Gran Arena en espera · todavía no hay rival asignado."
+                : $"{_player.Name} · #{FormatAllyCode(_player.AllyCode)} · decide qué conservar y cómo abrir el tablero.";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -83,6 +85,10 @@ public partial class GrandArena
             {
                 _result = scoutingResult;
                 await LoadVisualRostersAsync(scoutingResult.Scouting.Opponent.OpponentAllyCode);
+            }
+            else
+            {
+                _result = scoutingResult;
             }
         }
         catch (HttpRequestException)
