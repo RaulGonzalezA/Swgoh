@@ -2,6 +2,8 @@ using Swgoh.Application.Abstractions;
 using Swgoh.Application.TerritoryBattles;
 using Swgoh.Infrastructure.TerritoryBattles;
 
+using Xunit;
+
 namespace Swgoh.Infrastructure.IntegrationTests.TerritoryBattles;
 
 public sealed class RiseOfEmpireGuildSyncQueueTests
