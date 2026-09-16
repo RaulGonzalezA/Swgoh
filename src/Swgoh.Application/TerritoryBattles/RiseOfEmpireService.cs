@@ -57,7 +57,7 @@ internal sealed class RiseOfEmpireService(
                     [.. group]))
         ];
 
-        IReadOnlyCollection<RiseOfEmpireUpgradePriority> priorities = BuildUpgradePriorities(planets);
+        IReadOnlyCollection<RiseOfEmpireUpgradePriority> priorities = BuildUpgradePriorities(planets, roster);
         return new RiseOfEmpireAnalysis(
             player.AllyCode,
             player.Name,
@@ -83,11 +83,14 @@ internal sealed class RiseOfEmpireService(
         [
             .. planet.Missions.Select(mission => AnalyzeMission(mission, roster))
         ];
+        RiseOfEmpireMissionReadiness? accessRequirement = planet.AccessRequirement is null
+            ? null
+            : AnalyzeMission(planet.AccessRequirement, roster);
 
         decimal teamReadiness = recommendations.Length == 0
             ? 0m
             : recommendations.Max(recommendation => recommendation.ReadyUnits / (decimal)TeamSize * 100m);
-        if (planet.IsBonusZone && missions.Any(mission => !mission.Ready))
+        if (planet.IsBonusZone && accessRequirement?.Ready == false)
         {
             teamReadiness = Math.Min(teamReadiness, 80m);
         }
@@ -103,6 +106,7 @@ internal sealed class RiseOfEmpireService(
             eligibleCharacters,
             recommendations.Count(recommendation => recommendation.Ready),
             Math.Round(Math.Clamp(teamReadiness, 0m, 100m), 1),
+            accessRequirement,
             recommendations,
             missions);
     }
@@ -180,11 +184,7 @@ internal sealed class RiseOfEmpireService(
 
         foreach (RiseOfEmpireUnitRequirementDefinition requirement in mission.UnitRequirements)
         {
-            RosterCandidate? candidate = roster
-                .Where(item => MatchesAnyAlias(item, requirement.Aliases))
-                .OrderByDescending(item => item.Unit.RelicTier)
-                .ThenByDescending(item => item.Unit.GalacticPower)
-                .FirstOrDefault();
+            RosterCandidate? candidate = FindRequiredUnit(roster, requirement);
             if (candidate is null)
             {
                 missing.Add($"{requirement.Label}: no disponible");
@@ -205,30 +205,33 @@ internal sealed class RiseOfEmpireService(
     }
 
     private static IReadOnlyCollection<RiseOfEmpireUpgradePriority> BuildUpgradePriorities(
-        IReadOnlyCollection<RiseOfEmpirePlanetAnalysis> planets)
+        IReadOnlyCollection<RiseOfEmpirePlanetAnalysis> planets,
+        IReadOnlyCollection<RosterCandidate> roster)
     {
         Dictionary<string, UpgradeAccumulator> candidates = new(StringComparer.OrdinalIgnoreCase);
         foreach (RiseOfEmpirePlanetAnalysis planet in planets)
         {
-            int phase = RiseOfEmpireCatalog.Planets.First(definition => definition.Id == planet.Id).Phase;
+            RiseOfEmpirePlanetDefinition definition = RiseOfEmpireCatalog.Planets.First(item => item.Id == planet.Id);
             foreach (RiseOfEmpireTeamRecommendation team in planet.RecommendedTeams.Where(team => !team.Ready))
             {
                 decimal contextValue = team.ReadyUnits == TeamSize - 1 ? 5m : team.ReadyUnits >= 3 ? 2.5m : 1m;
                 foreach (RiseOfEmpireUnit unit in team.NextUpgrades)
                 {
-                    if (unit.RelicsMissing <= 0)
-                    {
-                        continue;
-                    }
-
-                    candidates.TryGetValue(unit.DefinitionId, out UpgradeAccumulator? current);
-                    current ??= new UpgradeAccumulator(unit);
-                    current.TargetRelicTier = Math.Min(current.TargetRelicTier, planet.MinimumRelicTier);
-                    current.UnlockValue += team.ReadyUnits == TeamSize - 1 ? 3 : 1;
-                    current.Score += (contextValue * (7 - phase + 1) * 20m) / Math.Max(1, unit.RelicsMissing);
-                    current.Planets.Add(planet.Name);
-                    candidates[unit.DefinitionId] = current;
+                    AddUpgrade(
+                        candidates,
+                        unit,
+                        planet.MinimumRelicTier,
+                        definition.Phase,
+                        contextValue,
+                        team.ReadyUnits == TeamSize - 1 ? 3 : 1,
+                        planet.Name,
+                        isSpecialRequirement: false);
                 }
+            }
+
+            foreach (RiseOfEmpireMissionDefinition mission in EnumeratePriorityMissions(definition))
+            {
+                AddMissionUpgradePriorities(candidates, definition, mission, roster);
             }
         }
 
@@ -236,7 +239,7 @@ internal sealed class RiseOfEmpireService(
         [
             .. candidates.Values
                 .OrderByDescending(candidate => candidate.Score)
-                .ThenBy(candidate => candidate.Unit.RelicsMissing)
+                .ThenBy(candidate => Math.Max(0, candidate.TargetRelicTier - candidate.Unit.RelicTier))
                 .ThenByDescending(candidate => candidate.Unit.GalacticPower)
                 .Take(12)
                 .Select((candidate, index) => new RiseOfEmpireUpgradePriority(
@@ -250,11 +253,123 @@ internal sealed class RiseOfEmpireService(
                     candidate.UnlockValue,
                     Math.Round(candidate.Score, 1),
                     [.. candidate.Planets.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)],
-                    candidate.UnlockValue >= 3
-                        ? "Una sola mejora puede completar al menos un equipo recomendado."
-                        : "Mejora reutilizable en varios planetas o arquetipos de RotE."))
+                    candidate.IsSpecialRequirement
+                        ? "Necesaria para una misión especial o para desbloquear una zona bonus."
+                        : candidate.UnlockValue >= 3
+                            ? "Una sola mejora puede completar al menos un equipo recomendado."
+                            : "Mejora reutilizable en varios planetas o arquetipos de RotE."))
         ];
     }
+
+    private static IEnumerable<RiseOfEmpireMissionDefinition> EnumeratePriorityMissions(
+        RiseOfEmpirePlanetDefinition planet)
+    {
+        foreach (RiseOfEmpireMissionDefinition mission in planet.Missions)
+        {
+            yield return mission;
+        }
+
+        if (planet.AccessRequirement is not null)
+        {
+            yield return planet.AccessRequirement;
+        }
+    }
+
+    private static void AddMissionUpgradePriorities(
+        IDictionary<string, UpgradeAccumulator> candidates,
+        RiseOfEmpirePlanetDefinition planet,
+        RiseOfEmpireMissionDefinition mission,
+        IReadOnlyCollection<RosterCandidate> roster)
+    {
+        decimal weight = mission.Type.Contains("Unlock", StringComparison.OrdinalIgnoreCase)
+            ? 8m
+            : mission.Type.Contains("Special", StringComparison.OrdinalIgnoreCase) ? 5m : 2.5m;
+
+        foreach (RiseOfEmpireUnitRequirementDefinition requirement in mission.UnitRequirements)
+        {
+            RosterCandidate? candidate = FindRequiredUnit(roster, requirement);
+            if (candidate is null || IsMissionReady(candidate.Unit, mission.MinimumRelicTier))
+            {
+                continue;
+            }
+
+            AddUpgrade(
+                candidates,
+                ToView(candidate, mission.MinimumRelicTier),
+                mission.MinimumRelicTier,
+                planet.Phase,
+                weight,
+                4,
+                planet.Name,
+                isSpecialRequirement: true);
+        }
+
+        if (string.IsNullOrWhiteSpace(mission.FactionTagKeyword) || mission.MinimumFactionUnits <= 0)
+        {
+            return;
+        }
+
+        int readyCount = roster.Count(candidate =>
+            MatchesTag(candidate.Definition, mission.FactionTagKeyword) &&
+            IsMissionReady(candidate.Unit, mission.MinimumRelicTier));
+        int missingCount = Math.Max(0, mission.MinimumFactionUnits - readyCount);
+        RosterCandidate[] closest =
+        [
+            .. roster
+                .Where(candidate =>
+                    MatchesTag(candidate.Definition, mission.FactionTagKeyword) &&
+                    !IsMissionReady(candidate.Unit, mission.MinimumRelicTier))
+                .OrderBy(candidate => RelicsMissing(candidate.Unit, mission.MinimumRelicTier))
+                .ThenByDescending(candidate => candidate.Unit.GalacticPower)
+                .Take(missingCount)
+        ];
+        foreach (RosterCandidate candidate in closest)
+        {
+            AddUpgrade(
+                candidates,
+                ToView(candidate, mission.MinimumRelicTier),
+                mission.MinimumRelicTier,
+                planet.Phase,
+                weight,
+                2,
+                planet.Name,
+                isSpecialRequirement: true);
+        }
+    }
+
+    private static void AddUpgrade(
+        IDictionary<string, UpgradeAccumulator> candidates,
+        RiseOfEmpireUnit unit,
+        int targetRelicTier,
+        int phase,
+        decimal contextValue,
+        int unlockValue,
+        string planetName,
+        bool isSpecialRequirement)
+    {
+        int relicsMissing = Math.Max(0, targetRelicTier - unit.RelicTier);
+        if (relicsMissing == 0)
+        {
+            return;
+        }
+
+        candidates.TryGetValue(unit.DefinitionId, out UpgradeAccumulator? current);
+        current ??= new UpgradeAccumulator(unit);
+        current.TargetRelicTier = Math.Min(current.TargetRelicTier, targetRelicTier);
+        current.UnlockValue += unlockValue;
+        current.Score += (contextValue * (8 - phase) * 20m) / relicsMissing;
+        current.Planets.Add(planetName);
+        current.IsSpecialRequirement |= isSpecialRequirement;
+        candidates[unit.DefinitionId] = current;
+    }
+
+    private static RosterCandidate? FindRequiredUnit(
+        IReadOnlyCollection<RosterCandidate> roster,
+        RiseOfEmpireUnitRequirementDefinition requirement) => roster
+        .Where(item => MatchesAnyAlias(item, requirement.Aliases))
+        .OrderByDescending(item => item.Unit.RelicTier)
+        .ThenByDescending(item => item.Unit.GalacticPower)
+        .FirstOrDefault();
 
     private static RosterCandidate? ToCandidate(RosterUnit unit, GameDataCatalog catalog) =>
         catalog.Units.TryGetValue(unit.DefinitionId, out GameUnitDefinition? definition) && !definition.IsShip
@@ -288,13 +403,10 @@ internal sealed class RiseOfEmpireService(
         IReadOnlyCollection<string> aliases)
     {
         string definitionId = Normalize(candidate.Unit.DefinitionId);
-        string name = Normalize(candidate.Definition.Name);
-        return aliases.Any(alias =>
-        {
-            string normalized = Normalize(alias);
-            return definitionId.Contains(normalized, StringComparison.Ordinal) ||
-                name.Contains(normalized, StringComparison.Ordinal);
-        });
+        return aliases.Any(alias => string.Equals(
+            definitionId,
+            Normalize(alias),
+            StringComparison.Ordinal));
     }
 
     private static string Normalize(string value)
@@ -323,6 +435,7 @@ internal sealed class RiseOfEmpireService(
         public int TargetRelicTier { get; set; } = int.MaxValue;
         public int UnlockValue { get; set; }
         public decimal Score { get; set; }
+        public bool IsSpecialRequirement { get; set; }
         public HashSet<string> Planets { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
