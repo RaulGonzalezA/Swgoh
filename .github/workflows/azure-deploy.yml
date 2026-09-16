@@ -2,14 +2,10 @@ name: Azure Deploy
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [ 'Smoke Test' ]
     branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'Directory.*.props'
-      - 'NuGet.config'
-      - 'deploy/**'
-      - '.github/workflows/azure-deploy.yml'
+    types: [ completed ]
 
 permissions:
   contents: read
@@ -24,14 +20,18 @@ env:
   API_IMAGE: ghcr.io/raulgonzaleza/swgoh-api
   BLAZOR_IMAGE: ghcr.io/raulgonzaleza/swgoh-blazor
   AZURE_RESOURCE_GROUP: rg-swgoh-prod
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   publish:
     name: Publish container images
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout validated revision
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -50,7 +50,7 @@ jobs:
           file: deploy/Dockerfile.Api
           push: true
           tags: |
-            ${{ env.API_IMAGE }}:${{ github.sha }}
+            ${{ env.API_IMAGE }}:${{ env.DEPLOY_SHA }}
             ${{ env.API_IMAGE }}:main
           build-args: |
             GITHUB_ACTOR=${{ github.actor }}
@@ -66,7 +66,7 @@ jobs:
           file: deploy/Dockerfile.Blazor
           push: true
           tags: |
-            ${{ env.BLAZOR_IMAGE }}:${{ github.sha }}
+            ${{ env.BLAZOR_IMAGE }}:${{ env.DEPLOY_SHA }}
             ${{ env.BLAZOR_IMAGE }}:main
           cache-from: type=gha,scope=blazor
           cache-to: type=gha,mode=max,scope=blazor
@@ -89,7 +89,7 @@ jobs:
           az containerapp update
           --name swgoh-api
           --resource-group "${AZURE_RESOURCE_GROUP}"
-          --image "${API_IMAGE}:${GITHUB_SHA}"
+          --image "${API_IMAGE}:${DEPLOY_SHA}"
           --output none
 
       - name: Deploy Blazor revision
@@ -97,5 +97,5 @@ jobs:
           az containerapp update
           --name swgoh-blazor
           --resource-group "${AZURE_RESOURCE_GROUP}"
-          --image "${BLAZOR_IMAGE}:${GITHUB_SHA}"
+          --image "${BLAZOR_IMAGE}:${DEPLOY_SHA}"
           --output none
