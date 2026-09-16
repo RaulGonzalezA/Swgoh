@@ -1,0 +1,206 @@
+@page "/territory-battles/{AllyCode:long}/rise-of-the-empire"
+@rendermode InteractiveServer
+@inject RiseOfEmpireApiClient Client
+
+<PageTitle>Alzamiento del Imperio · SWGOH Planner</PageTitle>
+
+<div class="page-heading-row rote-heading">
+    <div>
+        <a class="back-link" href="@($"/player/{AllyCode}")">← Roster</a>
+        <span class="eyebrow">Territory Battle · Rise of the Empire</span>
+        <h1>Alzamiento del Imperio</h1>
+        <p class="page-lead">Planetas, equipos viables y mejoras de reliquias calculadas desde tu roster actual.</p>
+    </div>
+    @if (Analysis is not null)
+    {
+        <div class="heading-stat">
+            <span>Equipos listos</span>
+            <strong>@Analysis.ReadyTeams</strong>
+            <small>@Analysis.ReadyPlanets planetas con cobertura</small>
+        </div>
+    }
+</div>
+
+<nav class="player-subnav" aria-label="Secciones del jugador">
+    <a href="@($"/player/{AllyCode}")">Roster</a>
+    <a href="@($"/gac/{AllyCode}")">GAC</a>
+    <a href="@($"/conquest/{AllyCode}")">Conquista</a>
+    <a class="active" href="@($"/territory-battles/{AllyCode}/rise-of-the-empire")">RotE</a>
+</nav>
+
+@if (Loading)
+{
+    <UiLoadingState Title="Analizando Alzamiento del Imperio"
+                    Description="Cruzo reliquias, GP, facciones y requisitos de los planetas con tu roster." />
+}
+else if (Error is not null)
+{
+    <UiAlert Tone="danger" Icon="!" Title="No se ha podido analizar RotE" Description="@Error" />
+}
+else if (Analysis is null)
+{
+    <UiEmptyState Icon="R" Title="No hay roster cargado" Description="Carga o actualiza primero el jugador para poder analizar RotE." />
+}
+else
+{
+    <section class="rote-summary-grid">
+        <div><span>Jugador</span><strong>@Analysis.PlayerName</strong><small>catálogo @Analysis.CatalogVersion</small></div>
+        <div><span>Fases</span><strong>@Analysis.Phases.Count</strong><small>R5 → R9</small></div>
+        <div><span>Equipos listos</span><strong>@Analysis.ReadyTeams</strong><small>arquetipos completos</small></div>
+        <div><span>Prioridades</span><strong>@Analysis.UpgradePriorities.Count</strong><small>mejoras con impacto</small></div>
+    </section>
+
+    <section class="rote-priorities">
+        <div class="planner-section-heading">
+            <div>
+                <span class="section-kicker">Inversión</span>
+                <h2>Qué mejorar primero</h2>
+            </div>
+        </div>
+        @if (Analysis.UpgradePriorities.Count == 0)
+        {
+            <div class="planner-board-empty">No encuentro mejoras inmediatas dentro de los arquetipos analizados.</div>
+        }
+        else
+        {
+            <div class="rote-priority-list">
+                @foreach (RiseOfEmpireApiClient.RiseOfEmpireUpgradePriorityViewModel priority in Analysis.UpgradePriorities.Take(8))
+                {
+                    <article class="rote-priority-card">
+                        <span class="rote-rank">#@priority.Rank</span>
+                        <div class="rote-priority-main">
+                            <strong>@priority.Name</strong>
+                            <span>R@priority.CurrentRelicTier → R@priority.TargetRelicTier · faltan @priority.RelicsMissing</span>
+                            <small>@string.Join(" · ", priority.Planets)</small>
+                        </div>
+                        <div class="rote-priority-value">
+                            <strong>@priority.UnlockValue</strong>
+                            <span>impacto</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    @foreach (RiseOfEmpireApiClient.RiseOfEmpirePhaseViewModel phase in Analysis.Phases)
+    {
+        <section class="rote-phase">
+            <div class="rote-phase-heading">
+                <div><span class="section-kicker">Fase @phase.Phase</span><h2>Requisito base R@phase.MinimumRelicTier</h2></div>
+                <span>@phase.Planets.Count planetas</span>
+            </div>
+
+            <div class="rote-planet-grid">
+                @foreach (RiseOfEmpireApiClient.RiseOfEmpirePlanetViewModel planet in phase.Planets)
+                {
+                    <article class="rote-planet-card @(planet.IsBonusZone ? "rote-bonus" : string.Empty)">
+                        <header>
+                            <div>
+                                <span class="rote-alignment">@planet.Alignment</span>
+                                <h3>@planet.Name @(planet.IsBonusZone ? "· Bonus" : string.Empty)</h3>
+                            </div>
+                            <div class="rote-readiness">
+                                <strong>@planet.ReadinessPercent.ToString("0")%</strong>
+                                <span>preparado</span>
+                            </div>
+                        </header>
+
+                        <div class="rote-planet-meta">
+                            <span>R@planet.MinimumRelicTier+</span>
+                            <span>@planet.ReadyTeamCount equipos listos</span>
+                            <span>@planet.EligibleCharacterCount personajes a nivel</span>
+                        </div>
+
+                        <div class="rote-thresholds">
+                            @for (int index = 0; index < planet.StarThresholds.Count; index++)
+                            {
+                                <span>★@(index + 1) @Compact(planet.StarThresholds.ElementAt(index))</span>
+                            }
+                        </div>
+
+                        @if (planet.Missions.Count > 0)
+                        {
+                            <div class="rote-missions">
+                                @foreach (RiseOfEmpireApiClient.RiseOfEmpireMissionReadinessViewModel mission in planet.Missions)
+                                {
+                                    <div class="rote-mission @(mission.Ready ? "ready" : "missing")">
+                                        <span>@(mission.Ready ? "✓" : "!")</span>
+                                        <div>
+                                            <strong>@mission.Name</strong>
+                                            <small>@mission.Requirement</small>
+                                            @if (!mission.Ready)
+                                            {
+                                                <small>@string.Join(" · ", mission.MissingRequirements)</small>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <div class="rote-teams">
+                            @foreach (RiseOfEmpireApiClient.RiseOfEmpireTeamRecommendationViewModel team in planet.RecommendedTeams.Take(3))
+                            {
+                                <div class="rote-team @(team.Ready ? "ready" : string.Empty)">
+                                    <div class="rote-team-title">
+                                        <strong>@team.Archetype</strong>
+                                        <span>@team.ReadyUnits/@team.RequiredUnits · @(team.Ready ? "LISTO" : "mejorable")</span>
+                                    </div>
+                                    <div class="rote-unit-row">
+                                        @foreach (RiseOfEmpireApiClient.RiseOfEmpireUnitViewModel unit in team.Team)
+                                        {
+                                            <span class="rote-unit @(unit.RelicsMissing == 0 ? "ready" : "missing")" title="@unit.Name · R@unit.RelicTier">
+                                                <strong>@ShortName(unit.Name)</strong><small>R@unit.RelicTier</small>
+                                            </span>
+                                        }
+                                    </div>
+                                    @if (!team.Ready && team.NextUpgrades.Count > 0)
+                                    {
+                                        <small class="rote-next">Subir: @string.Join(", ", team.NextUpgrades.Select(unit => $"{unit.Name} R{unit.RelicTier}→R{planet.MinimumRelicTier}"))</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [Parameter] public long AllyCode { get; set; }
+
+    private RiseOfEmpireApiClient.RiseOfEmpireAnalysisViewModel? Analysis { get; set; }
+    private bool Loading { get; set; } = true;
+    private string? Error { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Loading = true;
+        Error = null;
+        try
+        {
+            Analysis = await Client.GetAsync(AllyCode);
+        }
+        catch (HttpRequestException)
+        {
+            Error = "La API no está disponible o no se ha podido cargar Game Data.";
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    private static string Compact(long value) => value >= 1_000_000
+        ? $"{value / 1_000_000d:0.#}M"
+        : $"{value / 1_000d:0.#}K";
+
+    private static string ShortName(string name)
+    {
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length <= 1 ? name[..Math.Min(name.Length, 8)] : string.Concat(parts.Take(2).Select(part => part[0]));
+    }
+}
