@@ -9,7 +9,7 @@ namespace Swgoh.Application.TerritoryBattles;
 
 internal sealed class RiseOfEmpireGuildService(
     IPlayerProfileService playerProfileService,
-    IPlayerRepository playerRepository,
+    IRiseOfEmpireGuildPlayerRepository playerRepository,
     IRiseOfEmpireGuildSource guildSource,
     IRiseOfEmpireOperationsCatalog operationsCatalog,
     ISwgohGameDataCatalog gameDataCatalog,
