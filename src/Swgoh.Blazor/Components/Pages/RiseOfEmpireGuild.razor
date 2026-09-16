@@ -1,0 +1,24 @@
+@page "/territory-battles/{AllyCode:long}/rise-of-the-empire/guild"
+@rendermode InteractiveServer
+
+<PageTitle>Alzamiento del Imperio · Gremio</PageTitle>
+
+<div class="page-heading-row rote-heading">
+    <div>
+        <a class="back-link" href="@($"/territory-battles/{AllyCode}/rise-of-the-empire")">← RotE individual</a>
+        <span class="eyebrow">Territory Battle · Rise of the Empire</span>
+        <h1>RotE de gremio</h1>
+        <p class="page-lead">Sincroniza hasta 50 rosters y convierte operaciones, desbloqueos y GP en un plan conjunto.</p>
+    </div>
+</div>
+
+<nav class="player-subnav" aria-label="Secciones de Alzamiento del Imperio">
+    <a href="@($"/territory-battles/{AllyCode}/rise-of-the-empire")">Mi roster</a>
+    <a class="active" href="@($"/territory-battles/{AllyCode}/rise-of-the-empire/guild")">Gremio</a>
+</nav>
+
+<RiseOfEmpireGuildPanel AllyCode="@AllyCode" />
+
+@code {
+    [Parameter] public long AllyCode { get; set; }
+}
