@@ -223,5 +223,8 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         int TargetRelicTier,
         int RelicsMissing,
         decimal Score,
-        IReadOnlyCollection<string> Reasons);
+        IReadOnlyCollection<string> Reasons)
+    {
+        public string ReasonSummary => string.Join(" · ", Reasons.Take(2));
+    }
 }
