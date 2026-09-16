@@ -32,7 +32,7 @@ internal sealed class RiseOfEmpireGuildSyncJobMongoRepository(
         SortDefinition<RiseOfEmpireGuildSyncJobDocument> sort = Builders<RiseOfEmpireGuildSyncJobDocument>.Sort
             .Descending(document => document.CreatedAtUtc);
         List<RiseOfEmpireGuildSyncJobDocument> documents = await repository
-            .FindPageAsync(filter, skip: 0, take: 1, sort, cancellationToken)
+            .FindPageAsync(filter, skip: 0, 1, sort, cancellationToken)
             .ConfigureAwait(false);
         return documents.Count == 0 ? null : ToDomain(documents[0]);
     }
