@@ -25,7 +25,7 @@ public sealed class GacDeferredResponseTests
     }
 
     [Fact]
-    public async Task ScoutingClientTreatsAcceptedPendingAsDeferredResponse()
+    public async Task ScoutingClientTreatsAcceptedPendingAsWaitingWhenNoOpponentArrives()
     {
         using var handler = new AcceptedPendingHandler();
         using var http = new HttpClient(handler) { BaseAddress = new Uri("http://api") };
@@ -36,8 +36,24 @@ public sealed class GacDeferredResponseTests
             TestContext.Current.CancellationToken);
 
         Assert.Null(result.Scouting);
-        Assert.Equal("Búsqueda completada sin rival.", result.Message);
+        Assert.Equal("Gran Arena en espera. Todavía no hay un rival asignado.", result.Message);
         Assert.Equal(2, handler.Calls);
+    }
+
+    [Fact]
+    public async Task ScoutingClientTreatsNoActiveEventAsWaiting()
+    {
+        using var handler = new NoActiveEventHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://api") };
+        var client = new GacApiClient(http);
+
+        GacApiClient.CurrentGacOpponentResult result = await client.GetCurrentOpponentLookupAsync(
+            476825771,
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(result.Opponent);
+        Assert.Equal("Gran Arena en espera. Todavía no hay un rival asignado.", result.Message);
+        Assert.Equal(1, handler.Calls);
     }
 
     private sealed class PendingHandler : HttpMessageHandler
@@ -70,6 +86,20 @@ public sealed class GacDeferredResponseTests
                 {
                     Content = JsonContent.Create(new { Status = "OpponentUnavailable", Message = "Búsqueda completada sin rival." })
                 });
+        }
+    }
+
+    private sealed class NoActiveEventHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = JsonContent.Create(new { Status = "NoActiveEvent", Message = "No active event." })
+            });
         }
     }
 

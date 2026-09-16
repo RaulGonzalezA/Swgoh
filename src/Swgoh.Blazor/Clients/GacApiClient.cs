@@ -5,6 +5,7 @@ namespace Swgoh.Blazor.Clients;
 public sealed class GacApiClient(HttpClient httpClient)
 {
     private const int LookupAttempts = 25;
+    private const string WaitingMessage = "Gran Arena en espera. Todavía no hay un rival asignado.";
     private static readonly TimeSpan PollDelay = TimeSpan.FromSeconds(2);
 
     public async Task<CurrentGacOpponentResult> GetCurrentOpponentLookupAsync(
@@ -27,9 +28,7 @@ public sealed class GacApiClient(HttpClient httpClient)
                     continue;
                 }
 
-                return new CurrentGacOpponentResult(
-                    null,
-                    pending?.Message ?? "La búsqueda del rival continúa en segundo plano.");
+                return new CurrentGacOpponentResult(null, FriendlyUnavailableMessage(pending));
             }
 
             if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
@@ -42,9 +41,7 @@ public sealed class GacApiClient(HttpClient httpClient)
                     continue;
                 }
 
-                return new CurrentGacOpponentResult(
-                    null,
-                    unavailable?.Message ?? "No hay un enfrentamiento de Gran Arena disponible.");
+                return new CurrentGacOpponentResult(null, FriendlyUnavailableMessage(unavailable));
             }
 
             if (response.IsSuccessStatusCode)
@@ -52,16 +49,14 @@ public sealed class GacApiClient(HttpClient httpClient)
                 CurrentGacOpponentViewModel? opponent =
                     await response.Content.ReadFromJsonAsync<CurrentGacOpponentViewModel>(cancellationToken);
                 return opponent is null
-                    ? new CurrentGacOpponentResult(null, "El rival todavía no tiene datos completos.")
+                    ? new CurrentGacOpponentResult(null, WaitingMessage)
                     : new CurrentGacOpponentResult(opponent, null);
             }
 
             response.EnsureSuccessStatusCode();
         }
 
-        return new CurrentGacOpponentResult(
-            null,
-            "La búsqueda del rival está tardando más de lo esperado. Puedes volver a consultar en unos segundos.");
+        return new CurrentGacOpponentResult(null, WaitingMessage);
     }
 
     public async Task<CurrentGacResult> GetCurrentOpponentAsync(
@@ -97,16 +92,14 @@ public sealed class GacApiClient(HttpClient httpClient)
                     continue;
                 }
 
-                return new CurrentGacResult(null, pending?.Message);
+                return new CurrentGacResult(null, FriendlyUnavailableMessage(pending));
             }
 
             if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict)
             {
                 CurrentGacUnavailableViewModel? unavailable =
                     await response.Content.ReadFromJsonAsync<CurrentGacUnavailableViewModel>(cancellationToken);
-                return new CurrentGacResult(
-                    null,
-                    unavailable?.Message ?? "No hay un enfrentamiento de Gran Arena disponible.");
+                return new CurrentGacResult(null, FriendlyUnavailableMessage(unavailable));
             }
 
             if (response.IsSuccessStatusCode)
@@ -115,9 +108,7 @@ public sealed class GacApiClient(HttpClient httpClient)
                     await response.Content.ReadFromJsonAsync<CurrentGacScoutingViewModel>(cancellationToken);
                 if (scouting?.Opponent is null)
                 {
-                    return new CurrentGacResult(
-                        null,
-                        "El enfrentamiento todavía no tiene datos completos. Vuelve a consultar en unos segundos.");
+                    return new CurrentGacResult(null, WaitingMessage);
                 }
 
                 return new CurrentGacResult(scouting, null);
@@ -128,8 +119,15 @@ public sealed class GacApiClient(HttpClient httpClient)
 
         return new CurrentGacResult(
             null,
-            "El rival está localizado, pero el scouting sigue preparándose.");
+            "Gran Arena en espera. El rival está localizado, pero el scouting sigue preparándose.");
     }
+
+    private static string FriendlyUnavailableMessage(CurrentGacUnavailableViewModel? unavailable) =>
+        unavailable?.Status switch
+        {
+            "NoActiveEvent" or "PlayerNotJoined" or "OpponentUnavailable" or "Pending" => WaitingMessage,
+            _ => unavailable?.Message ?? WaitingMessage
+        };
 
     public sealed record CurrentGacOpponentResult(CurrentGacOpponentViewModel? Opponent, string? Message);
 
