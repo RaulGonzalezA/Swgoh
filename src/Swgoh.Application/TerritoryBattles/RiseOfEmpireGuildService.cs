@@ -14,15 +14,32 @@ internal sealed class RiseOfEmpireGuildService(
     IRiseOfEmpireOperationsCatalog operationsCatalog,
     ISwgohGameDataCatalog gameDataCatalog,
     IRiseOfEmpireService individualService,
-    IClock clock) : IRiseOfEmpireGuildService
+    IClock clock) : IRiseOfEmpireGuildService, IRiseOfEmpireGuildSyncRunner
 {
-    private const int MaxRefreshParallelism = 4;
+    internal const int MaxGuildMembers = 50;
+    internal const int MaxRefreshParallelism = 6;
     private const int MaxAnalysisParallelism = 8;
 
-    public async Task<RiseOfEmpireGuildAnalysis?> GetAsync(
+    public Task<RiseOfEmpireGuildAnalysis?> GetAsync(
         long allyCode,
         bool refreshGuildRoster,
+        CancellationToken cancellationToken = default) =>
+        GetCoreAsync(allyCode, refreshGuildRoster, progress: null, cancellationToken);
+
+    public Task<RiseOfEmpireGuildAnalysis?> SyncAsync(
+        long allyCode,
+        IRiseOfEmpireGuildSyncProgressSink progress,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        return GetCoreAsync(allyCode, refreshGuildRoster: true, progress, cancellationToken);
+    }
+
+    private async Task<RiseOfEmpireGuildAnalysis?> GetCoreAsync(
+        long allyCode,
+        bool refreshGuildRoster,
+        IRiseOfEmpireGuildSyncProgressSink? progress,
+        CancellationToken cancellationToken)
     {
         PlayerProfile? seed = await playerProfileService.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
         if (seed is null)
@@ -39,9 +56,35 @@ internal sealed class RiseOfEmpireGuildService(
         RiseOfEmpireGuildSnapshot? snapshot = null;
         if (refreshGuildRoster)
         {
+            if (progress is not null)
+            {
+                await progress.ReportAsync(
+                    new RiseOfEmpireGuildSyncProgress(RiseOfEmpireGuildSyncStatus.DiscoveringMembers, 0, 0, 0),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             snapshot = await guildSource.GetAsync(seed.GuildId, cancellationToken).ConfigureAwait(false);
             warnings.AddRange(snapshot.Warnings);
-            warnings.AddRange(await RefreshMembersAsync(snapshot.Members, cancellationToken).ConfigureAwait(false));
+            RiseOfEmpireGuildMemberReference[] members = [.. snapshot.Members.Take(MaxGuildMembers)];
+            if (snapshot.DetectedMembers > MaxGuildMembers)
+            {
+                warnings.Add($"Comlink devolvió {snapshot.DetectedMembers} miembros; RotE limita la sincronización a {MaxGuildMembers}.");
+            }
+
+            if (progress is not null)
+            {
+                await progress.ReportAsync(
+                    new RiseOfEmpireGuildSyncProgress(
+                        RiseOfEmpireGuildSyncStatus.RefreshingMembers,
+                        members.Length,
+                        0,
+                        0,
+                        GuildId: snapshot.GuildId,
+                        GuildName: snapshot.GuildName),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            warnings.AddRange(await RefreshMembersAsync(members, progress, snapshot, cancellationToken).ConfigureAwait(false));
         }
         else
         {
@@ -50,7 +93,7 @@ internal sealed class RiseOfEmpireGuildService(
 
         PlayerProfile[] cached =
         [
-            .. await playerRepository.FindByGuildIdAsync(seed.GuildId, 50, cancellationToken).ConfigureAwait(false)
+            .. await playerRepository.FindByGuildIdAsync(seed.GuildId, MaxGuildMembers, cancellationToken).ConfigureAwait(false)
         ];
         PlayerProfile[] players = FilterCurrentMembers(cached, snapshot);
         if (!players.Any(player => player.AllyCode == seed.AllyCode))
@@ -58,7 +101,7 @@ internal sealed class RiseOfEmpireGuildService(
             players = [.. players, seed];
         }
 
-        int detectedMembers = snapshot?.DetectedMembers ?? players.Length;
+        int detectedMembers = Math.Min(snapshot?.DetectedMembers ?? players.Length, MaxGuildMembers);
         string guildName = snapshot?.GuildName ?? seed.GuildName ?? "Gremio";
         long guildGp = snapshot?.GalacticPower > 0
             ? snapshot.GalacticPower
@@ -66,6 +109,20 @@ internal sealed class RiseOfEmpireGuildService(
         if (detectedMembers > players.Length)
         {
             warnings.Add($"Se detectaron {detectedMembers} miembros, pero hay {players.Length} rosters utilizables; operaciones y mejoras usan solo los importados.");
+        }
+
+        if (progress is not null)
+        {
+            int failedMembers = Math.Max(0, detectedMembers - players.Length);
+            await progress.ReportAsync(
+                new RiseOfEmpireGuildSyncProgress(
+                    RiseOfEmpireGuildSyncStatus.BuildingPlan,
+                    detectedMembers,
+                    detectedMembers,
+                    failedMembers,
+                    GuildId: snapshot?.GuildId ?? seed.GuildId,
+                    GuildName: guildName),
+                cancellationToken).ConfigureAwait(false);
         }
 
         Task<IReadOnlyCollection<RiseOfEmpireOperationDefinition>> operationsTask = operationsCatalog.GetAsync(cancellationToken);
@@ -114,10 +171,20 @@ internal sealed class RiseOfEmpireGuildService(
 
     private async Task<IReadOnlyCollection<string>> RefreshMembersAsync(
         IReadOnlyCollection<RiseOfEmpireGuildMemberReference> members,
+        IRiseOfEmpireGuildSyncProgressSink? progress,
+        RiseOfEmpireGuildSnapshot snapshot,
         CancellationToken cancellationToken)
     {
+        if (members.Count == 0)
+        {
+            return ["El gremio no devolvió miembros utilizables para sincronizar."];
+        }
+
         var warnings = new ConcurrentBag<string>();
-        using var semaphore = new SemaphoreSlim(MaxRefreshParallelism, MaxRefreshParallelism);
+        int completed = 0;
+        int failed = 0;
+        int maxParallelism = Math.Min(MaxRefreshParallelism, members.Count);
+        using var semaphore = new SemaphoreSlim(maxParallelism, maxParallelism);
         Task[] tasks =
         [
             .. members.Select(async member =>
@@ -129,15 +196,31 @@ internal sealed class RiseOfEmpireGuildService(
                 }
                 catch (HttpRequestException)
                 {
+                    Interlocked.Increment(ref failed);
                     warnings.Add($"No se pudo actualizar el roster de {member.PlayerName}.");
                 }
                 catch (InvalidOperationException)
                 {
+                    Interlocked.Increment(ref failed);
                     warnings.Add($"No se pudo persistir o analizar el roster de {member.PlayerName}.");
                 }
                 finally
                 {
+                    int done = Interlocked.Increment(ref completed);
                     semaphore.Release();
+                    if (progress is not null)
+                    {
+                        await progress.ReportAsync(
+                            new RiseOfEmpireGuildSyncProgress(
+                                RiseOfEmpireGuildSyncStatus.RefreshingMembers,
+                                members.Count,
+                                done,
+                                Volatile.Read(ref failed),
+                                member.PlayerName,
+                                snapshot.GuildId,
+                                snapshot.GuildName),
+                            cancellationToken).ConfigureAwait(false);
+                    }
                 }
             })
         ];
@@ -184,7 +267,10 @@ internal sealed class RiseOfEmpireGuildService(
             return [.. cached];
         }
 
-        HashSet<long> current = snapshot.Members.Select(member => member.AllyCode).ToHashSet();
+        HashSet<long> current = snapshot.Members
+            .Take(MaxGuildMembers)
+            .Select(member => member.AllyCode)
+            .ToHashSet();
         return [.. cached.Where(player => current.Contains(player.AllyCode))];
     }
 }

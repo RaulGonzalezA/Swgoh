@@ -18,25 +18,13 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<RiseOfEmpireAnalysisViewModel>(cancellationToken);
     }
 
-    public Task<RiseOfEmpireGuildAnalysisViewModel?> GetGuildAsync(
+    public async Task<RiseOfEmpireGuildAnalysisViewModel?> GetGuildAsync(
         long allyCode,
-        CancellationToken cancellationToken = default) =>
-        GetGuildCoreAsync(allyCode, sync: false, cancellationToken);
-
-    public Task<RiseOfEmpireGuildAnalysisViewModel?> SyncGuildAsync(
-        long allyCode,
-        CancellationToken cancellationToken = default) =>
-        GetGuildCoreAsync(allyCode, sync: true, cancellationToken);
-
-    private async Task<RiseOfEmpireGuildAnalysisViewModel?> GetGuildCoreAsync(
-        long allyCode,
-        bool sync,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
-        string url = $"/api/v1/territory-battles/players/{allyCode}/rise-of-the-empire/guild";
-        using HttpResponseMessage response = sync
-            ? await httpClient.PostAsync($"{url}/sync", content: null, cancellationToken)
-            : await httpClient.GetAsync(url, cancellationToken);
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            $"/api/v1/territory-battles/players/{allyCode}/rise-of-the-empire/guild",
+            cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
@@ -44,6 +32,52 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<RiseOfEmpireGuildAnalysisViewModel>(cancellationToken);
+    }
+
+    public async Task<RiseOfEmpireGuildSyncJobViewModel> StartGuildSyncAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.PostAsync(
+            $"/api/v1/territory-battles/players/{allyCode}/rise-of-the-empire/guild/sync",
+            content: null,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RiseOfEmpireGuildSyncJobViewModel>(cancellationToken)
+            ?? throw new HttpRequestException("The guild synchronization response was empty.");
+    }
+
+    public async Task<RiseOfEmpireGuildSyncJobViewModel?> GetLatestGuildSyncAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            $"/api/v1/territory-battles/players/{allyCode}/rise-of-the-empire/guild/sync",
+            cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RiseOfEmpireGuildSyncJobViewModel>(cancellationToken);
+    }
+
+    public async Task<RiseOfEmpireGuildSyncJobViewModel?> GetGuildSyncAsync(
+        long allyCode,
+        string jobId,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            $"/api/v1/territory-battles/players/{allyCode}/rise-of-the-empire/guild/sync/{Uri.EscapeDataString(jobId)}",
+            cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RiseOfEmpireGuildSyncJobViewModel>(cancellationToken);
     }
 
     public sealed record RiseOfEmpireAnalysisViewModel(
@@ -226,5 +260,51 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         IReadOnlyCollection<string> Reasons)
     {
         public string ReasonSummary => string.Join(" · ", Reasons.Take(2));
+    }
+
+    public enum RiseOfEmpireGuildSyncStatusViewModel
+    {
+        Queued = 0,
+        DiscoveringMembers = 1,
+        RefreshingMembers = 2,
+        BuildingPlan = 3,
+        Completed = 4,
+        Failed = 5
+    }
+
+    public sealed record RiseOfEmpireGuildSyncJobViewModel(
+        string Id,
+        long AllyCode,
+        RiseOfEmpireGuildSyncStatusViewModel Status,
+        int TotalMembers,
+        int CompletedMembers,
+        int FailedMembers,
+        string? CurrentMember,
+        string? GuildId,
+        string? GuildName,
+        DateTimeOffset CreatedAtUtc,
+        DateTimeOffset UpdatedAtUtc,
+        DateTimeOffset? StartedAtUtc,
+        DateTimeOffset? CompletedAtUtc,
+        string? Error)
+    {
+        public bool IsTerminal => Status is RiseOfEmpireGuildSyncStatusViewModel.Completed or RiseOfEmpireGuildSyncStatusViewModel.Failed;
+
+        public int ProgressPercent => Status == RiseOfEmpireGuildSyncStatusViewModel.Completed
+            ? 100
+            : TotalMembers <= 0
+                ? 0
+                : Math.Clamp((int)Math.Round(CompletedMembers * 100m / TotalMembers), 0, 99);
+
+        public string StatusLabel => Status switch
+        {
+            RiseOfEmpireGuildSyncStatusViewModel.Queued => "En cola",
+            RiseOfEmpireGuildSyncStatusViewModel.DiscoveringMembers => "Detectando miembros",
+            RiseOfEmpireGuildSyncStatusViewModel.RefreshingMembers => "Actualizando rosters",
+            RiseOfEmpireGuildSyncStatusViewModel.BuildingPlan => "Calculando plan RotE",
+            RiseOfEmpireGuildSyncStatusViewModel.Completed => "Completado",
+            RiseOfEmpireGuildSyncStatusViewModel.Failed => "Error",
+            _ => "Sincronizando"
+        };
     }
 }

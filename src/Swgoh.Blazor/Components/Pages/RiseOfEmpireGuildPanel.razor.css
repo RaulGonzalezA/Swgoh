@@ -6,6 +6,13 @@
 .rote-guild-status.error { border-color:color-mix(in srgb,var(--danger) 45%,var(--border-color)); }
 .rote-guild-empty { flex-direction:column; align-items:flex-start; }
 .rote-guild-empty.compact { margin-top:.5rem; padding:.75rem; }
+.rote-guild-sync { margin-top:1rem; padding:.85rem; border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border-color)); border-radius:.8rem; background:var(--surface-2); display:grid; gap:.45rem; }
+.rote-guild-sync.error { border-color:color-mix(in srgb,var(--danger) 50%,var(--border-color)); }
+.rote-guild-sync-title { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.rote-guild-sync-title > div { display:flex; flex-direction:column; gap:.12rem; }
+.rote-guild-sync-title span,.rote-guild-sync-meta { color:var(--text-muted); font-size:.8rem; }
+.rote-guild-sync progress { width:100%; height:.55rem; accent-color:var(--accent); }
+.rote-guild-sync-meta { display:flex; flex-wrap:wrap; gap:.35rem .8rem; }
 .rote-guild-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; margin:1rem 0; }
 .rote-guild-summary > div { display:flex; flex-direction:column; gap:.18rem; padding:.8rem; border-radius:.75rem; background:var(--surface-2); }
 .rote-guild-summary span,.rote-guild-summary small { color:var(--text-muted); }
@@ -43,4 +50,4 @@
 .rote-guild-warnings summary { cursor:pointer; font-weight:700; }
 .rote-guild-warnings p { margin:.45rem 0 0; color:var(--text-muted); font-size:.8rem; }
 @media (max-width:1100px) { .rote-guild-summary,.rote-guild-phase-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media (max-width:760px) { .rote-guild-heading { flex-direction:column; } .rote-guild-summary,.rote-guild-bonus-grid,.rote-guild-phase-grid,.rote-guild-columns { grid-template-columns:1fr; } .rote-guild-heading button { width:100%; } }
+@media (max-width:760px) { .rote-guild-heading { flex-direction:column; } .rote-guild-summary,.rote-guild-bonus-grid,.rote-guild-phase-grid,.rote-guild-columns { grid-template-columns:1fr; } .rote-guild-heading button { width:100%; } .rote-guild-sync-title { align-items:flex-start; } }

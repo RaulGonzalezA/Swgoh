@@ -1,4 +1,5 @@
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 @inject RiseOfEmpireApiClient Client
 
 <section class="rote-guild-panel">
@@ -9,23 +10,64 @@
             <p>Coordina los rosters del gremio, protege equipos de combate y detecta qué mejoras desbloquean más progreso.</p>
         </div>
         <button class="primary-button" @onclick="SyncGuildAsync" disabled="@Syncing">
-            @(Syncing ? "Sincronizando rosters…" : "Sincronizar gremio")
+            @(Syncing ? "Sincronización en segundo plano…" : "Sincronizar gremio")
         </button>
     </div>
+
+    @if (SyncJob is not null)
+    {
+        <div class="rote-guild-sync @(SyncJob.Status == RiseOfEmpireApiClient.RiseOfEmpireGuildSyncStatusViewModel.Failed ? "error" : string.Empty)">
+            <div class="rote-guild-sync-title">
+                <div>
+                    <strong>@SyncJob.StatusLabel</strong>
+                    @if (SyncJob.TotalMembers > 0)
+                    {
+                        <span>@SyncJob.CompletedMembers/@SyncJob.TotalMembers miembros procesados</span>
+                    }
+                    else
+                    {
+                        <span>Preparando la sincronización…</span>
+                    }
+                </div>
+                <strong>@SyncJob.ProgressPercent%</strong>
+            </div>
+            <progress max="100" value="@SyncJob.ProgressPercent"></progress>
+            <div class="rote-guild-sync-meta">
+                @if (!string.IsNullOrWhiteSpace(SyncJob.CurrentMember) && Syncing)
+                {
+                    <span>Último: @SyncJob.CurrentMember</span>
+                }
+                @if (SyncJob.FailedMembers > 0)
+                {
+                    <span>@SyncJob.FailedMembers con error</span>
+                }
+                @if (SyncJob.Status == RiseOfEmpireApiClient.RiseOfEmpireGuildSyncStatusViewModel.Completed)
+                {
+                    <span>Plan actualizado en el backend</span>
+                }
+                @if (SyncJob.Status == RiseOfEmpireApiClient.RiseOfEmpireGuildSyncStatusViewModel.Failed)
+                {
+                    <span>@(SyncJob.Error ?? "La sincronización no se pudo completar.")</span>
+                }
+            </div>
+        </div>
+    }
 
     @if (Loading)
     {
         <div class="rote-guild-status"><span class="spinner"></span><span>Cargando el último plan de gremio…</span></div>
     }
-    else if (Error is not null && Guild is null)
+    else if (Error is not null && Guild is null && !Syncing)
     {
         <div class="rote-guild-status error"><strong>No hay plan de gremio disponible.</strong><span>@Error</span></div>
     }
     else if (Guild is null)
     {
         <div class="rote-guild-empty">
-            <strong>Aún no hay rosters de gremio importados</strong>
-            <p>Sincroniza para detectar los miembros actuales, importar sus rosters y construir operaciones, desbloqueos y ruta de estrellas.</p>
+            <strong>@(Syncing ? "Sincronizando rosters en segundo plano" : "Aún no hay rosters de gremio importados")</strong>
+            <p>@(Syncing
+                ? "Puedes salir de esta pantalla. El backend continuará el trabajo y al volver recuperará el estado del job."
+                : "Sincroniza para detectar los miembros actuales, importar sus rosters y construir operaciones, desbloqueos y ruta de estrellas.")</p>
         </div>
     }
     else
@@ -160,9 +202,11 @@
     [Parameter] public long AllyCode { get; set; }
 
     private RiseOfEmpireApiClient.RiseOfEmpireGuildAnalysisViewModel? Guild { get; set; }
+    private RiseOfEmpireApiClient.RiseOfEmpireGuildSyncJobViewModel? SyncJob { get; set; }
+    private CancellationTokenSource? PollCancellation { get; set; }
     private bool Loading { get; set; } = true;
-    private bool Syncing { get; set; }
     private string? Error { get; set; }
+    private bool Syncing => SyncJob is not null && !SyncJob.IsTerminal;
 
     private decimal OperationPercent => Guild is null || Guild.OperationSlots == 0
         ? 0m
@@ -181,11 +225,20 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        CancelPolling();
         Loading = true;
         Error = null;
         try
         {
-            Guild = await Client.GetGuildAsync(AllyCode);
+            Task<RiseOfEmpireApiClient.RiseOfEmpireGuildAnalysisViewModel?> guildTask = Client.GetGuildAsync(AllyCode);
+            Task<RiseOfEmpireApiClient.RiseOfEmpireGuildSyncJobViewModel?> syncTask = Client.GetLatestGuildSyncAsync(AllyCode);
+            await Task.WhenAll(guildTask, syncTask);
+            Guild = await guildTask;
+            SyncJob = await syncTask;
+            if (Syncing)
+            {
+                StartPolling(SyncJob!.Id);
+            }
         }
         catch (HttpRequestException exception)
         {
@@ -201,22 +254,98 @@
 
     private async Task SyncGuildAsync()
     {
-        Syncing = true;
         Error = null;
         try
         {
-            Guild = await Client.SyncGuildAsync(AllyCode);
+            SyncJob = await Client.StartGuildSyncAsync(AllyCode);
+            StartPolling(SyncJob.Id);
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
-            Error = exception.StatusCode == System.Net.HttpStatusCode.Conflict
-                ? "El perfil actual no tiene un gremio importado. Actualiza primero el jugador."
-                : "La sincronización del gremio no se ha podido completar.";
+            Error = "No se ha podido encolar la sincronización del gremio.";
         }
-        finally
+    }
+
+    private void StartPolling(string jobId)
+    {
+        CancelPolling();
+        PollCancellation = new CancellationTokenSource();
+        _ = PollSyncAsync(jobId, PollCancellation.Token);
+    }
+
+    private async Task PollSyncAsync(string jobId, CancellationToken cancellationToken)
+    {
+        try
         {
-            Syncing = false;
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                RiseOfEmpireApiClient.RiseOfEmpireGuildSyncJobViewModel? current =
+                    await Client.GetGuildSyncAsync(AllyCode, jobId, cancellationToken);
+                if (current is null)
+                {
+                    return;
+                }
+
+                await InvokeAsync(() =>
+                {
+                    SyncJob = current;
+                    StateHasChanged();
+                });
+
+                if (!current.IsTerminal)
+                {
+                    continue;
+                }
+
+                if (current.Status == RiseOfEmpireApiClient.RiseOfEmpireGuildSyncStatusViewModel.Completed)
+                {
+                    RiseOfEmpireApiClient.RiseOfEmpireGuildAnalysisViewModel? refreshed =
+                        await Client.GetGuildAsync(AllyCode, cancellationToken);
+                    await InvokeAsync(() =>
+                    {
+                        Guild = refreshed;
+                        Error = null;
+                        StateHasChanged();
+                    });
+                }
+                else
+                {
+                    await InvokeAsync(() =>
+                    {
+                        Error = current.Error ?? "La sincronización del gremio no se pudo completar.";
+                        StateHasChanged();
+                    });
+                }
+
+                return;
+            }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The page stopped polling; the backend job continues independently.
+        }
+        catch (HttpRequestException)
+        {
+            await InvokeAsync(() =>
+            {
+                Error = "Se perdió temporalmente el seguimiento del job. Al recargar se recuperará su estado desde el backend.";
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void CancelPolling()
+    {
+        PollCancellation?.Cancel();
+        PollCancellation?.Dispose();
+        PollCancellation = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        CancelPolling();
+        return ValueTask.CompletedTask;
     }
 
     private static string Compact(long value) => value >= 1_000_000_000
