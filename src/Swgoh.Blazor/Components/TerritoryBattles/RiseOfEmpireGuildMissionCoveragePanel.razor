@@ -1,0 +1,92 @@
+<section class="rote22-missions">
+    <div class="rote22-heading">
+        <div>
+            <span class="section-kicker">RotE 2.2 · Misiones</span>
+            <h3>Quién puede hacer cada misión</h3>
+            <p>Equipos concretos cruzados con los rosters del gremio. “Listo” significa que cumple la entrada y una composición de referencia completa.</p>
+        </div>
+        <div class="rote22-summary">
+            <strong>@Guild.CoveredMissions/@Guild.MissionCoverage.Count</strong>
+            <span>misiones cubiertas</span>
+        </div>
+    </div>
+
+    @foreach (IGrouping<int, RiseOfEmpireApiClient.RiseOfEmpireGuildMissionCoverageViewModel> phase in Guild.MissionCoverage
+        .GroupBy(mission => mission.Phase)
+        .OrderBy(group => group.Key))
+    {
+        <details class="rote22-phase" open="@(phase.Key <= 3)">
+            <summary>
+                <strong>Fase @phase.Key</strong>
+                <span>@phase.Count(mission => mission.ReadyMembers.Count > 0)/@phase.Count() con al menos un miembro listo</span>
+            </summary>
+
+            <div class="rote22-grid">
+                @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionCoverageViewModel mission in phase
+                    .OrderBy(item => item.PlanetName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.MissionName, StringComparer.OrdinalIgnoreCase))
+                {
+                    <article class="rote22-mission @(mission.ReadyMembers.Count > 0 ? "ready" : "missing")">
+                        <header>
+                            <div>
+                                <span>@mission.PlanetName · @(mission.IsFleet ? "Flota" : mission.Type)</span>
+                                <strong>@mission.MissionName</strong>
+                            </div>
+                            <div class="rote22-count">
+                                <strong>@mission.ReadyMembers.Count</strong>
+                                <span>listos</span>
+                            </div>
+                        </header>
+
+                        <div class="rote22-meta">
+                            <span>@mission.EligibleMembers cumplen entrada</span>
+                            @if (mission.ReadyMembers.Count == 0 && mission.ClosestMembers.Count > 0)
+                            {
+                                <span>@mission.ClosestMembers.First().ReadyUnits/@mission.ClosestMembers.First().RequiredUnits mejor equipo</span>
+                            }
+                        </div>
+
+                        @if (mission.ReadyMembers.Count > 0)
+                        {
+                            <div class="rote22-members">
+                                @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionMemberViewModel member in mission.ReadyMembers.Take(8))
+                                {
+                                    <span title="@member.TeamName">@member.PlayerName</span>
+                                }
+                                @if (mission.ReadyMembers.Count > 8)
+                                {
+                                    <span>+@(mission.ReadyMembers.Count - 8)</span>
+                                }
+                            </div>
+                        }
+                        else if (mission.ClosestMembers.Count > 0)
+                        {
+                            <div class="rote22-near">
+                                @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionMemberViewModel member in mission.ClosestMembers.Take(3))
+                                {
+                                    <div>
+                                        <strong>@member.PlayerName</strong>
+                                        <span>@member.TeamName · @member.ReadyUnits/@member.RequiredUnits</span>
+                                        @if (member.MissingRequirements.Count > 0)
+                                        {
+                                            <small>@string.Join(" · ", member.MissingRequirements.Take(2))</small>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <small class="rote22-none">No hay una composición cercana con los rosters importados.</small>
+                        }
+                    </article>
+                }
+            </div>
+        </details>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public RiseOfEmpireApiClient.RiseOfEmpireGuildAnalysisViewModel Guild { get; set; } = default!;
+}

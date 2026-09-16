@@ -11,11 +11,14 @@ public sealed record RiseOfEmpireGuildAnalysis(
     IReadOnlyCollection<RiseOfEmpireGuildPhasePlan> Phases,
     IReadOnlyCollection<RiseOfEmpireOperationPlan> Operations,
     IReadOnlyCollection<RiseOfEmpireBonusUnlockReadiness> BonusUnlocks,
+    IReadOnlyCollection<RiseOfEmpireGuildMissionCoverage> MissionCoverage,
     IReadOnlyCollection<RiseOfEmpireGuildUpgradePriority> UpgradePriorities)
 {
     public int ProjectedStars => Phases.Sum(phase => phase.ProjectedStars);
     public int OperationSlots => Operations.Sum(operation => operation.TotalSlots);
     public int FilledOperationSlots => Operations.Sum(operation => operation.FilledSlots);
+    public int CoveredMissions => MissionCoverage.Count(mission => mission.ReadyMembers.Count > 0);
+    public int MissionReadyMembers => MissionCoverage.Sum(mission => mission.ReadyMembers.Count);
 }
 
 public sealed record RiseOfEmpireGuildPhasePlan(
@@ -35,6 +38,9 @@ public sealed record RiseOfEmpireGuildPlanetPlan(
     long CompletedOperationPoints,
     long ForcedOperationDeploymentGalacticPower,
     long AdditionalDeploymentGalacticPower,
+    int? NextStar,
+    long? NextStarThreshold,
+    long? NextStarGap,
     string Reason);
 
 public sealed record RiseOfEmpireOperationPlan(
@@ -99,6 +105,27 @@ public sealed record RiseOfEmpireGuildMemberReadiness(
     bool Ready,
     IReadOnlyCollection<string> MissingRequirements);
 
+public sealed record RiseOfEmpireGuildMissionCoverage(
+    int Phase,
+    string PlanetId,
+    string PlanetName,
+    string MissionId,
+    string MissionName,
+    string Type,
+    bool IsFleet,
+    int EligibleMembers,
+    IReadOnlyCollection<RiseOfEmpireGuildMissionMember> ReadyMembers,
+    IReadOnlyCollection<RiseOfEmpireGuildMissionMember> ClosestMembers);
+
+public sealed record RiseOfEmpireGuildMissionMember(
+    long AllyCode,
+    string PlayerName,
+    string? TeamName,
+    bool Ready,
+    int ReadyUnits,
+    int RequiredUnits,
+    IReadOnlyCollection<string> MissingRequirements);
+
 public sealed record RiseOfEmpireGuildUpgradePriority(
     int Rank,
     long PlayerAllyCode,
@@ -109,6 +136,10 @@ public sealed record RiseOfEmpireGuildUpgradePriority(
     int TargetRelicTier,
     int RelicsMissing,
     decimal Score,
+    int MissionTeamsUnlocked,
+    long? ClosestNextStarGap,
+    IReadOnlyCollection<string> AffectedPlanets,
+    IReadOnlyCollection<string> MissionNames,
     IReadOnlyCollection<string> Reasons);
 
 public sealed record RiseOfEmpireGuildSnapshot(
