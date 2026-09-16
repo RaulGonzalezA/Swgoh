@@ -167,7 +167,10 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         int OperationSlots,
         int FilledOperationSlots,
         int CoveredMissions,
-        int MissionReadyMembers);
+        int MissionReadyMembers,
+        int MissionAttemptTarget,
+        int PlannedMissionAttempts,
+        int OverlapBlockedMissionAttempts);
 
     public sealed record RiseOfEmpireGuildPhasePlanViewModel(
         int Phase,
@@ -261,9 +264,13 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         string MissionName,
         string Type,
         bool IsFleet,
+        int TargetAttempts,
         int EligibleMembers,
         IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> ReadyMembers,
-        IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> ClosestMembers);
+        IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> PlannedMembers,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> OverlapBlockedMembers,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> ClosestMembers,
+        int MissingPlannedAttempts);
 
     public sealed record RiseOfEmpireGuildMissionMemberViewModel(
         long AllyCode,

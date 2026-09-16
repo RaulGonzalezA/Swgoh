@@ -1,24 +1,34 @@
 <section class="rote22-missions">
     <div class="rote22-heading">
         <div>
-            <span class="section-kicker">RotE 2.2 · Misiones</span>
-            <h3>Quién puede hacer cada misión</h3>
-            <p>Equipos concretos cruzados con los rosters del gremio. “Listo” significa que cumple la entrada y una composición de referencia completa.</p>
+            <span class="section-kicker">RotE 2.3 · Intentos</span>
+            <h3>Todos los miembros, todas las misiones posibles</h3>
+            <p>El objetivo es que cada miembro intente cada misión. El plan evita reutilizar la misma unidad en dos misiones de la fase y reserva esas piezas frente a operaciones.</p>
         </div>
         <div class="rote22-summary">
-            <strong>@Guild.CoveredMissions/@Guild.MissionCoverage.Count</strong>
-            <span>misiones cubiertas</span>
+            <strong>@Guild.PlannedMissionAttempts/@Guild.MissionAttemptTarget</strong>
+            <span>intentos planificados</span>
         </div>
     </div>
+
+    @if (Guild.OverlapBlockedMissionAttempts > 0)
+    {
+        <div class="rote22-attempt-warning">
+            <strong>@Guild.OverlapBlockedMissionAttempts intentos</strong>
+            <span>tienen roster suficiente de forma aislada, pero comparten unidades con otra misión de la misma fase.</span>
+        </div>
+    }
 
     @foreach (IGrouping<int, RiseOfEmpireApiClient.RiseOfEmpireGuildMissionCoverageViewModel> phase in Guild.MissionCoverage
         .GroupBy(mission => mission.Phase)
         .OrderBy(group => group.Key))
     {
+        int phaseTarget = phase.Sum(mission => mission.TargetAttempts);
+        int phasePlanned = phase.Sum(mission => mission.PlannedMembers.Count);
         <details class="rote22-phase" open="@(phase.Key <= 3)">
             <summary>
                 <strong>Fase @phase.Key</strong>
-                <span>@phase.Count(mission => mission.ReadyMembers.Count > 0)/@phase.Count() con al menos un miembro listo</span>
+                <span>@phasePlanned/@phaseTarget intentos planificados</span>
             </summary>
 
             <div class="rote22-grid">
@@ -26,40 +36,58 @@
                     .OrderBy(item => item.PlanetName, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(item => item.MissionName, StringComparer.OrdinalIgnoreCase))
                 {
-                    <article class="rote22-mission @(mission.ReadyMembers.Count > 0 ? "ready" : "missing")">
+                    <article class="rote22-mission @(mission.PlannedMembers.Count > 0 ? "ready" : "missing")">
                         <header>
                             <div>
                                 <span>@mission.PlanetName · @(mission.IsFleet ? "Flota" : mission.Type)</span>
                                 <strong>@mission.MissionName</strong>
                             </div>
                             <div class="rote22-count">
-                                <strong>@mission.ReadyMembers.Count</strong>
-                                <span>listos</span>
+                                <strong>@mission.PlannedMembers.Count/@mission.TargetAttempts</strong>
+                                <span>intentos</span>
                             </div>
                         </header>
 
                         <div class="rote22-meta">
                             <span>@mission.EligibleMembers cumplen entrada</span>
-                            @if (mission.ReadyMembers.Count == 0 && mission.ClosestMembers.Count > 0)
+                            <span>@mission.ReadyMembers.Count tienen equipo aislado</span>
+                            @if (mission.OverlapBlockedMembers.Count > 0)
                             {
-                                <span>@mission.ClosestMembers.First().ReadyUnits/@mission.ClosestMembers.First().RequiredUnits mejor equipo</span>
+                                <span>@mission.OverlapBlockedMembers.Count bloqueados por solape</span>
+                            }
+                            @if (mission.MissingPlannedAttempts > 0)
+                            {
+                                <span>faltan @mission.MissingPlannedAttempts intentos para el máximo</span>
                             }
                         </div>
 
-                        @if (mission.ReadyMembers.Count > 0)
+                        @if (mission.PlannedMembers.Count > 0)
                         {
                             <div class="rote22-members">
-                                @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionMemberViewModel member in mission.ReadyMembers.Take(8))
+                                @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionMemberViewModel member in mission.PlannedMembers.Take(8))
                                 {
                                     <span title="@member.TeamName">@member.PlayerName</span>
                                 }
-                                @if (mission.ReadyMembers.Count > 8)
+                                @if (mission.PlannedMembers.Count > 8)
                                 {
-                                    <span>+@(mission.ReadyMembers.Count - 8)</span>
+                                    <span>+@(mission.PlannedMembers.Count - 8)</span>
                                 }
                             </div>
                         }
-                        else if (mission.ClosestMembers.Count > 0)
+
+                        @if (mission.OverlapBlockedMembers.Count > 0)
+                        {
+                            <div class="rote22-near">
+                                @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionMemberViewModel member in mission.OverlapBlockedMembers.Take(3))
+                                {
+                                    <div>
+                                        <strong>@member.PlayerName</strong>
+                                        <span>@member.TeamName · listo, pero comparte piezas con otro intento</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else if (mission.PlannedMembers.Count == 0 && mission.ClosestMembers.Count > 0)
                         {
                             <div class="rote22-near">
                                 @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMissionMemberViewModel member in mission.ClosestMembers.Take(3))
@@ -75,7 +103,7 @@
                                 }
                             </div>
                         }
-                        else
+                        else if (mission.PlannedMembers.Count == 0)
                         {
                             <small class="rote22-none">No hay una composición cercana con los rosters importados.</small>
                         }

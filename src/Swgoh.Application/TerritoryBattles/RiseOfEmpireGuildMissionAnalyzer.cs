@@ -15,6 +15,8 @@ internal static class RiseOfEmpireGuildMissionAnalyzer
         var coverage = new List<RiseOfEmpireGuildMissionCoverage>();
         var reservations = new RiseOfEmpireCombatReservationIndex();
         var upgrades = new List<RiseOfEmpireGuildMissionUpgradeCandidate>();
+        RiseOfEmpireGuildMissionAttemptPlanning attemptPlanning =
+            RiseOfEmpireGuildMissionAttemptPlanner.Plan(players, gameData, reservations);
 
         foreach (RiseOfEmpirePlanetDefinition planet in RiseOfEmpireCatalog.Planets
                      .OrderBy(item => item.Phase)
@@ -53,6 +55,14 @@ internal static class RiseOfEmpireGuildMissionAnalyzer
                     AddUpgradeCandidates(upgrades, player, planet, mission, evaluation, gameData);
                 }
 
+                string missionKey = RiseOfEmpireGuildMissionAttemptPlanner.MissionKey(planet.Phase, planet.Id, mission.Id);
+                IReadOnlySet<long> plannedCodes = attemptPlanning.PlannedFor(missionKey);
+                IReadOnlySet<long> blockedCodes = attemptPlanning.BlockedFor(missionKey);
+                RiseOfEmpireGuildMissionMember[] orderedReady =
+                [
+                    .. readyMembers.OrderBy(member => member.PlayerName, StringComparer.OrdinalIgnoreCase)
+                ];
+
                 coverage.Add(new RiseOfEmpireGuildMissionCoverage(
                     planet.Phase,
                     planet.Id,
@@ -61,8 +71,11 @@ internal static class RiseOfEmpireGuildMissionAnalyzer
                     mission.Name,
                     mission.Type,
                     mission.IsFleet,
+                    players.Count,
                     eligibleMembers,
-                    [.. readyMembers.OrderBy(member => member.PlayerName, StringComparer.OrdinalIgnoreCase)],
+                    orderedReady,
+                    [.. orderedReady.Where(member => plannedCodes.Contains(member.AllyCode))],
+                    [.. orderedReady.Where(member => blockedCodes.Contains(member.AllyCode))],
                     [.. closestMembers
                         .OrderBy(member => member.MissingRequirements.Count)
                         .ThenByDescending(member => member.ReadyUnits)
@@ -407,7 +420,7 @@ internal sealed class RiseOfEmpireCombatReservationIndex
             return;
         }
 
-        int combined = Math.Min(260, Math.Max(current.Criticality, criticality) + 15);
+        int combined = Math.Min(300, Math.Max(current.Criticality, criticality) + 15);
         string combinedReason = string.Equals(current.Reason, reason, StringComparison.OrdinalIgnoreCase)
             ? current.Reason
             : $"{current.Reason} También: {reason}";

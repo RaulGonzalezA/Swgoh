@@ -96,7 +96,60 @@ public sealed class RiseOfEmpireGuildPlannerTests
             item => item.MissionId == "geonosis-geos");
         RiseOfEmpireGuildMissionMember readyMember = Assert.Single(mission.ReadyMembers);
         Assert.Equal(ready.AllyCode, readyMember.AllyCode);
+        Assert.Equal(2, mission.TargetAttempts);
+        Assert.Contains(mission.PlannedMembers, member => member.AllyCode == ready.AllyCode);
         Assert.Contains(mission.ClosestMembers, member => member.AllyCode == close.AllyCode && member.ReadyUnits == 4);
+    }
+
+    [Fact]
+    public void MissionAnalyzer_UsesAlternativeTeamsToMaximizeAttemptsPerMember()
+    {
+        PlayerProfile player = Player(
+            100_000_001,
+            "Completo",
+            Unit("LORDVADER", 5),
+            Unit("DARTHVADER", 5),
+            Unit("ROYALGUARD", 5),
+            Unit("MAULS7", 5),
+            Unit("GRANDMOFFTARKIN", 5),
+            Unit("SUPREMELEADERKYLOREN", 5),
+            Unit("KYLORENUNMASKED", 5),
+            Unit("GENERALHUX", 5),
+            Unit("FOSITHTROOPER", 5),
+            Unit("FIRSTORDERSTORMTROOPER", 5));
+
+        RiseOfEmpireGuildMissionPlanning planning = RiseOfEmpireGuildMissionAnalyzer.Analyze([player], EmptyCatalog());
+        RiseOfEmpireGuildMissionCoverage generic = Assert.Single(planning.Coverage, item => item.MissionId == "mustafar-dark");
+        RiseOfEmpireGuildMissionCoverage lordVader = Assert.Single(planning.Coverage, item => item.MissionId == "mustafar-lv");
+
+        Assert.Single(generic.PlannedMembers);
+        Assert.Single(lordVader.PlannedMembers);
+        Assert.Empty(generic.OverlapBlockedMembers);
+        Assert.Empty(lordVader.OverlapBlockedMembers);
+    }
+
+    [Fact]
+    public void MissionAnalyzer_DoesNotCountSameUnitsAsTwoMissionAttempts()
+    {
+        PlayerProfile player = Player(
+            100_000_001,
+            "Solo LV",
+            Unit("LORDVADER", 5),
+            Unit("DARTHVADER", 5),
+            Unit("ROYALGUARD", 5),
+            Unit("MAULS7", 5),
+            Unit("GRANDMOFFTARKIN", 5));
+
+        RiseOfEmpireGuildMissionPlanning planning = RiseOfEmpireGuildMissionAnalyzer.Analyze([player], EmptyCatalog());
+        RiseOfEmpireGuildMissionCoverage[] missions =
+        [
+            .. planning.Coverage.Where(item => item.MissionId is "mustafar-dark" or "mustafar-lv")
+        ];
+
+        Assert.Equal(2, missions.Sum(mission => mission.ReadyMembers.Count));
+        Assert.Equal(1, missions.Sum(mission => mission.PlannedMembers.Count));
+        Assert.Equal(1, missions.Sum(mission => mission.OverlapBlockedMembers.Count));
+        Assert.All(missions, mission => Assert.Equal(1, mission.TargetAttempts));
     }
 
     [Fact]
