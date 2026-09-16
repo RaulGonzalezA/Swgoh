@@ -224,10 +224,7 @@ internal sealed class RiseOfEmpireExecutionService(
 
     private async Task<PlayerProfile> RequireGuildPlayerAsync(long allyCode, CancellationToken cancellationToken)
     {
-        if (allyCode <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(allyCode));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(allyCode);
 
         PlayerProfile? player = await playerProfileService.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
         if (player is null)
