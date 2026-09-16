@@ -1,0 +1,47 @@
+.rote-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; margin:1.25rem 0; }
+.rote-summary-grid > div { padding:1rem; border:1px solid var(--border-color); border-radius:1rem; background:var(--surface-1); display:flex; flex-direction:column; gap:.25rem; }
+.rote-summary-grid span,.rote-summary-grid small { color:var(--text-muted); }
+.rote-summary-grid strong { font-size:1.25rem; }
+.rote-priorities,.rote-phase { margin-top:1.75rem; }
+.rote-priority-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+.rote-priority-card { display:flex; gap:.8rem; align-items:center; padding:.85rem 1rem; border:1px solid var(--border-color); border-radius:.9rem; background:var(--surface-1); }
+.rote-rank { font-weight:800; color:var(--accent); min-width:2.4rem; }
+.rote-priority-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:.15rem; }
+.rote-priority-main span,.rote-priority-main small { color:var(--text-muted); }
+.rote-priority-value { text-align:right; display:flex; flex-direction:column; }
+.rote-priority-value strong { font-size:1.2rem; }
+.rote-priority-value span { color:var(--text-muted); font-size:.75rem; }
+.rote-phase-heading { display:flex; justify-content:space-between; align-items:end; gap:1rem; margin-bottom:.8rem; }
+.rote-phase-heading h2 { margin:.15rem 0 0; }
+.rote-phase-heading > span { color:var(--text-muted); }
+.rote-planet-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+.rote-planet-card { border:1px solid var(--border-color); border-radius:1rem; padding:1rem; background:var(--surface-1); min-width:0; }
+.rote-planet-card.rote-bonus { outline:1px dashed var(--accent); }
+.rote-planet-card header { display:flex; justify-content:space-between; align-items:start; gap:1rem; }
+.rote-planet-card h3 { margin:.15rem 0 .4rem; font-size:1.1rem; }
+.rote-alignment { color:var(--text-muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
+.rote-readiness { display:flex; flex-direction:column; text-align:right; }
+.rote-readiness strong { font-size:1.35rem; }
+.rote-readiness span { color:var(--text-muted); font-size:.72rem; }
+.rote-planet-meta,.rote-thresholds { display:flex; flex-wrap:wrap; gap:.4rem; margin:.6rem 0; }
+.rote-planet-meta span,.rote-thresholds span { font-size:.75rem; padding:.25rem .45rem; border-radius:999px; background:var(--surface-2); }
+.rote-missions { display:grid; gap:.45rem; margin:.75rem 0; }
+.rote-mission { display:flex; gap:.55rem; padding:.55rem; border-radius:.7rem; background:var(--surface-2); }
+.rote-mission > span { font-weight:800; }
+.rote-mission.ready > span { color:var(--success); }
+.rote-mission.missing > span { color:var(--warning); }
+.rote-mission div { display:flex; flex-direction:column; }
+.rote-mission small { color:var(--text-muted); }
+.rote-teams { display:grid; gap:.55rem; margin-top:.8rem; }
+.rote-team { padding:.65rem; border:1px solid var(--border-color); border-radius:.75rem; }
+.rote-team.ready { border-color:color-mix(in srgb,var(--success) 55%,var(--border-color)); }
+.rote-team-title { display:flex; justify-content:space-between; gap:.5rem; align-items:center; }
+.rote-team-title span { font-size:.72rem; color:var(--text-muted); }
+.rote-unit-row { display:flex; gap:.3rem; flex-wrap:wrap; margin:.5rem 0; }
+.rote-unit { min-width:2.8rem; display:flex; flex-direction:column; align-items:center; padding:.3rem .4rem; border-radius:.55rem; background:var(--surface-2); font-size:.7rem; }
+.rote-unit.ready { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--success) 55%,transparent); }
+.rote-unit.missing { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warning) 55%,transparent); }
+.rote-unit small,.rote-next { color:var(--text-muted); }
+.rote-next { display:block; line-height:1.35; }
+@media (max-width:1100px) { .rote-planet-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .rote-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:720px) { .rote-planet-grid,.rote-priority-list,.rote-summary-grid { grid-template-columns:1fr; } }
