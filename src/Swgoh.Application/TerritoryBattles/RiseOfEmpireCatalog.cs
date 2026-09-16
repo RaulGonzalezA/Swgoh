@@ -4,6 +4,22 @@ internal static class RiseOfEmpireCatalog
 {
     public const string Version = "2026-09-16";
 
+    private static readonly RiseOfEmpireMissionDefinition ZeffoUnlock = UnitMission(
+        "Desbloqueo de Zeffo desde Bracca",
+        "Special Unlock",
+        "Cere Junda + Cal Kestis o Jedi Knight Cal Kestis a R7+",
+        7,
+        [Unit("Cere Junda", "CEREJUNDA"), Unit("Cal Kestis o Jedi Knight Cal Kestis", "CALKESTIS", "JEDIKNIGHTCAL")]);
+
+    private static readonly RiseOfEmpireMissionDefinition MandaloreUnlock = CombinedMission(
+        "Desbloqueo de Mandalore desde Tatooine",
+        "Special Unlock",
+        "5 Mandalorianos R7+, incluyendo Bo-Katan (Mand'alor) y The Mandalorian (Beskar Armor)",
+        7,
+        "mandalor",
+        5,
+        [Unit("Bo-Katan (Mand'alor)", "BOKATANMANDALORE"), Unit("The Mandalorian (Beskar Armor)", "THEMANDALORIANBESKARARMOR")]);
+
     public static IReadOnlyCollection<RiseOfEmpirePlanetDefinition> Planets { get; } =
     [
         Planet(1, "mustafar", "Mustafar", "Dark Side", 5, false, [116_406_250, 186_250_000, 248_333_333],
@@ -19,42 +35,40 @@ internal static class RiseOfEmpireCatalog
         Planet(2, "felucia", "Felucia", "Mixed", 6, false, [148_125_000, 237_000_000, 316_000_000],
             [Mixed("Hutt Cartel", "hutt"), Mixed("Mandalorianos", "mandalor"), Mixed("Jedi", "jedi")]),
         Planet(2, "bracca", "Bracca", "Light Side", 6, false, [142_265_625, 227_625_000, 303_500_000],
-            [Light("Jedi", "jedi"), Light("República Galáctica", "galactic_republic"), Light("Rebeldes", "rebel")]),
+            [Light("Jedi", "jedi"), Light("República Galáctica", "galactic_republic"), Light("Rebeldes", "rebel")],
+            [FactionMission("Combate Jedi", "Combat", "Jedi R6+", 6, "jedi", 5), ZeffoUnlock]),
 
         Planet(3, "dathomir", "Dathomir", "Dark Side", 7, false, [158_960_938, 254_337_500, 339_116_667],
             [Dark("Imperio", "empire"), Dark("Hermanas de la Noche", "nightsister"), Dark("Sith", "sith")],
             [FactionMission("Combate Imperio", "Combat", "5 unidades del Imperio", 7, "empire", 5),
-             UnitMission("Doctor Aphra", "Combat", "Doctor Aphra", 7,
-                [Unit("Doctor Aphra", "DOCTORAPHRA", "APHRA")]),
-             UnitMission("Merrin", "Special", "Hermanas de la Noche + Merrin", 7,
+             UnitMission("Doctor Aphra", "Combat", "Doctor Aphra", 7, [Unit("Doctor Aphra", "DOCTORAPHRA")]),
+             CombinedMission("Merrin", "Special", "Hermanas de la Noche + Merrin", 7, "nightsister", 5,
                 [Unit("Merrin", "MERRIN")])]),
         Planet(3, "tatooine", "Tatooine", "Mixed", 7, false, [190_953_125, 305_525_000, 407_366_667],
             [Mixed("Inquisitorius", "inquisitor"), Mixed("Hutt Cartel", "hutt"), Mixed("Mandalorianos", "mandalor")],
-            [FactionMission("Third Sister / Reva", "Special Unlock", "5 Inquisitorius R7", 7, "inquisitor", 5),
-             UnitMission("Desbloqueo de Mandalore", "Special Unlock", "Bo-Katan (Mand'alor) + The Mandalorian (Beskar Armor)", 7,
-                [Unit("Bo-Katan (Mand'alor)", "BOKATANMANDALORE", "BOKATAN"),
-                 Unit("The Mandalorian (Beskar Armor)", "THEMANDALORIANBESKARARMOR", "BESKARARMOR")])]),
+            [FactionMission("Third Sister / Reva", "Special Unlock", "5 Inquisitorius R7+", 7, "inquisitor", 5), MandaloreUnlock]),
         Planet(3, "kashyyyk", "Kashyyyk", "Light Side", 7, false, [190_953_125, 305_525_000, 407_366_667],
             [Light("Wookiees", "wookie"), Light("Jedi", "jedi"), Light("República Galáctica", "galactic_republic")],
             [FactionMission("Combate Wookiee", "Combat", "5 Wookiees", 7, "wookie", 5)]),
         Planet(3, "zeffo", "Zeffo", "Light Side", 7, true, [143_589_583, 229_743_333, 287_179_167],
             [Light("Usuarios de la Fuerza no alineados", "unaligned_force_user"), Light("Jedi", "jedi")],
-            [UnitMission("Acceso a Zeffo", "Bonus", "Cere Junda + Cal Kestis/Jedi Cal", 7,
-                [Unit("Cere Junda", "CEREJUNDA", "CERE"),
-                 Unit("Cal Kestis o Jedi Cal", "CALKESTIS", "JEDIKNIGHTCAL")])]),
+            [UnitMission("Jedi Knight Cal Kestis", "Combat", "Jedi Knight Cal Kestis", 7,
+                [Unit("Jedi Knight Cal Kestis", "JEDIKNIGHTCAL")]),
+             FactionMission("Clone Trooper", "Special", "Clone Troopers R7+", 7, "clone_trooper", 5)],
+            ZeffoUnlock),
 
         Planet(4, "medical-station", "Medical Station", "Dark Side", 8, false, [235_143_105, 400_243_583, 500_304_479],
             [Dark("Inquisitorius", "inquisitor"), Dark("Imperio", "empire"), Dark("Sith", "sith")],
-            [FactionMission("Third Sister", "Special", "Inquisitorius + Third Sister", 8, "inquisitor", 5)]),
+            [CombinedMission("Third Sister", "Special", "Inquisitorius + Third Sister", 8, "inquisitor", 5,
+                [Unit("Third Sister", "THIRDSISTER")])]),
         Planet(4, "kessel", "Kessel", "Mixed", 8, false, [235_143_105, 400_243_583, 500_304_479],
             [Mixed("Hutt Cartel", "hutt"), Mixed("Contrabandistas", "smuggler"), Mixed("Cazarrecompensas", "bounty")]),
         Planet(4, "lothal", "Lothal", "Light Side", 8, false, [246_742_558, 419_987_333, 524_984_167],
             [Light("Phoenix", "phoenix"), Light("Rebeldes", "rebel"), Light("Jedi", "jedi")]),
         Planet(4, "mandalore", "Mandalore", "Mixed", 8, true, [197_748_650, 316_397_840, 396_497_300],
             [Mixed("Mandalorianos", "mandalor")],
-            [UnitMission("Núcleo de Mandalore", "Bonus", "Bo-Katan (Mand'alor) + The Mandalorian (Beskar Armor)", 8,
-                [Unit("Bo-Katan (Mand'alor)", "BOKATANMANDALORE", "BOKATAN"),
-                 Unit("The Mandalorian (Beskar Armor)", "THEMANDALORIANBESKARARMOR", "BESKARARMOR")])]),
+            [],
+            MandaloreUnlock),
 
         Planet(5, "malachor", "Malachor", "Dark Side", 9, false, [341_250_768, 620_455_942, 729_948_167],
             [Dark("Inquisitorius", "inquisitor"), Dark("Sith", "sith"), Dark("Imperio", "empire")],
@@ -62,8 +76,7 @@ internal static class RiseOfEmpireCatalog
                 [Unit("Eighth Brother", "EIGHTHBROTHER"), Unit("Fifth Brother", "FIFTHBROTHER"), Unit("Seventh Sister", "SEVENTHSISTER")])]),
         Planet(5, "vandor", "Vandor", "Mixed", 9, false, [341_250_768, 620_455_942, 729_948_167],
             [Mixed("Hutt Cartel", "hutt"), Mixed("Contrabandistas", "smuggler"), Mixed("Canallas", "scoundrel")],
-            [UnitMission("Jabba", "Combat", "Jabba the Hutt", 9,
-                [Unit("Jabba the Hutt", "JABBATHEHUTT", "JABBA")]),
+            [UnitMission("Jabba", "Combat", "Jabba the Hutt", 9, [Unit("Jabba the Hutt", "JABBATHEHUTT")]),
              UnitMission("Young Han + Vandor Chewbacca", "Special", "Young Han Solo + Vandor Chewbacca", 9,
                 [Unit("Young Han Solo", "YOUNGHAN"), Unit("Vandor Chewbacca", "VANDORCHEWBACCA")])]),
         Planet(5, "ring-of-kafrene", "Ring of Kafrene", "Light Side", 9, false, [341_250_768, 620_455_942, 729_948_167],
@@ -73,7 +86,7 @@ internal static class RiseOfEmpireCatalog
 
         Planet(6, "death-star", "Death Star", "Dark Side", 9, false, [582_632_425, 1_059_331_682, 1_246_272_567],
             [Dark("Imperio", "empire"), Dark("Soldados Imperiales", "imperial_trooper"), Dark("Sith", "sith")],
-            [UnitMission("Iden Versio", "Combat", "Iden Versio", 9, [Unit("Iden Versio", "IDENVERSIO", "IDEN")]),
+            [UnitMission("Iden Versio", "Combat", "Iden Versio", 9, [Unit("Iden Versio", "IDENVERSIO")]),
              UnitMission("Darth Vader", "Combat", "Darth Vader", 9, [Unit("Darth Vader", "DARTHVADER")])]),
         Planet(6, "hoth", "Hoth", "Mixed", 9, false, [582_632_425, 1_059_331_682, 1_246_272_567],
             [Mixed("Rebeldes", "rebel"), Mixed("Imperio", "empire"), Mixed("Jedi", "jedi")]),
@@ -90,8 +103,9 @@ internal static class RiseOfEmpireCatalog
         bool isBonusZone,
         IReadOnlyCollection<long> starThresholds,
         IReadOnlyCollection<RiseOfEmpireArchetypeDefinition> archetypes,
-        IReadOnlyCollection<RiseOfEmpireMissionDefinition>? missions = null) =>
-        new(phase, id, name, alignment, minimumRelicTier, isBonusZone, starThresholds, archetypes, missions ?? []);
+        IReadOnlyCollection<RiseOfEmpireMissionDefinition>? missions = null,
+        RiseOfEmpireMissionDefinition? accessRequirement = null) =>
+        new(phase, id, name, alignment, minimumRelicTier, isBonusZone, starThresholds, archetypes, missions ?? [], accessRequirement);
 
     private static RiseOfEmpireArchetypeDefinition Dark(string name, string tag) => new(name, tag);
     private static RiseOfEmpireArchetypeDefinition Light(string name, string tag) => new(name, tag);
@@ -109,6 +123,16 @@ internal static class RiseOfEmpireCatalog
         IReadOnlyCollection<RiseOfEmpireUnitRequirementDefinition> units) =>
         new(name, type, requirement, relic, null, 0, units);
 
+    private static RiseOfEmpireMissionDefinition CombinedMission(
+        string name,
+        string type,
+        string requirement,
+        int relic,
+        string tag,
+        int minimumFactionUnits,
+        IReadOnlyCollection<RiseOfEmpireUnitRequirementDefinition> units) =>
+        new(name, type, requirement, relic, tag, minimumFactionUnits, units);
+
     private static RiseOfEmpireUnitRequirementDefinition Unit(string label, params string[] aliases) =>
         new(label, aliases);
 }
@@ -122,7 +146,8 @@ internal sealed record RiseOfEmpirePlanetDefinition(
     bool IsBonusZone,
     IReadOnlyCollection<long> StarThresholds,
     IReadOnlyCollection<RiseOfEmpireArchetypeDefinition> Archetypes,
-    IReadOnlyCollection<RiseOfEmpireMissionDefinition> Missions);
+    IReadOnlyCollection<RiseOfEmpireMissionDefinition> Missions,
+    RiseOfEmpireMissionDefinition? AccessRequirement = null);
 
 internal sealed record RiseOfEmpireArchetypeDefinition(string Name, string TagKeyword);
 
