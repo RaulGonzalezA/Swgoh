@@ -61,7 +61,28 @@ public sealed class RiseOfEmpireServiceTests
             analysis!.Phases.SelectMany(phase => phase.Planets),
             planet => planet.Id == "zeffo");
         Assert.Equal(80m, zeffo.ReadinessPercent);
-        Assert.Contains(zeffo.Missions, mission => !mission.Ready);
+        Assert.NotNull(zeffo.AccessRequirement);
+        Assert.False(zeffo.AccessRequirement.Ready);
+    }
+
+    [Fact]
+    public async Task GetAsync_PrioritizesMissingRelicForZeffoUnlock()
+    {
+        PlayerProfile player = CreatePlayer(Unit("CEREJUNDA", 6), Unit("CALKESTIS", 7));
+        GameDataCatalog catalog = Catalog(
+            Definition("CEREJUNDA", "Cere Junda", "unaligned_force_user"),
+            Definition("CALKESTIS", "Cal Kestis", "unaligned_force_user"));
+        var service = new RiseOfEmpireService(new FakePlayerProfileService(player), new FakeCatalog(catalog));
+
+        RiseOfEmpireAnalysis? analysis = await service.GetAsync(AllyCode, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(analysis);
+        RiseOfEmpireUpgradePriority cere = Assert.Single(
+            analysis.UpgradePriorities,
+            item => item.DefinitionId == "CEREJUNDA");
+        Assert.Equal(7, cere.TargetRelicTier);
+        Assert.Equal(1, cere.RelicsMissing);
+        Assert.Contains("especial", cere.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     private static PlayerProfile CreatePlayer(params RosterUnit[] roster) => PlayerProfile.Import(
