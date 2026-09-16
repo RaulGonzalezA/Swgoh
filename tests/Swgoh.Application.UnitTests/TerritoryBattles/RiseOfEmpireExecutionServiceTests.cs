@@ -14,12 +14,13 @@ public sealed class RiseOfEmpireExecutionServiceTests
     [Fact]
     public async Task StartAsync_CreatesOneActiveSessionPerGuild()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         PlayerProfile player = Player();
         var repository = new FakeRepository();
         var service = new RiseOfEmpireExecutionService(new FakePlayerService(player), repository, new FixedClock(Now));
 
-        RiseOfEmpireExecutionSession first = await service.StartAsync(player.AllyCode, "TB septiembre");
-        RiseOfEmpireExecutionSession second = await service.StartAsync(player.AllyCode, "Otra");
+        RiseOfEmpireExecutionSession first = await service.StartAsync(player.AllyCode, "TB septiembre", cancellationToken);
+        RiseOfEmpireExecutionSession second = await service.StartAsync(player.AllyCode, "Otra", cancellationToken);
 
         Assert.Equal(first.Id, second.Id);
         Assert.Equal("TB septiembre", first.Label);
@@ -30,17 +31,19 @@ public sealed class RiseOfEmpireExecutionServiceTests
     [Fact]
     public async Task UpdateMissionAsync_StoresWavesTerritoryPointsAndReplacesSameMission()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         PlayerProfile player = Player();
         var repository = new FakeRepository();
         var service = new RiseOfEmpireExecutionService(new FakePlayerService(player), repository, new FixedClock(Now));
-        RiseOfEmpireExecutionSession session = await service.StartAsync(player.AllyCode, null);
+        RiseOfEmpireExecutionSession session = await service.StartAsync(player.AllyCode, null, cancellationToken);
 
         RiseOfEmpireMissionResultCommand command = Command(player, completedWaves: 1, territoryPoints: 2_500_000);
-        await service.UpdateMissionAsync(player.AllyCode, session.Id, command);
+        await service.UpdateMissionAsync(player.AllyCode, session.Id, command, cancellationToken);
         RiseOfEmpireExecutionSession updated = await service.UpdateMissionAsync(
             player.AllyCode,
             session.Id,
-            command with { CompletedWaves = 2, TerritoryPoints = 5_000_000 });
+            command with { CompletedWaves = 2, TerritoryPoints = 5_000_000 },
+            cancellationToken);
 
         RiseOfEmpireMissionExecutionResult result = Assert.Single(updated.Results);
         Assert.Equal(2, result.CompletedWaves);
@@ -53,14 +56,15 @@ public sealed class RiseOfEmpireExecutionServiceTests
     [Fact]
     public async Task CloseAsync_RemovesSessionFromActiveButKeepsHistory()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         PlayerProfile player = Player();
         var repository = new FakeRepository();
         var service = new RiseOfEmpireExecutionService(new FakePlayerService(player), repository, new FixedClock(Now));
-        RiseOfEmpireExecutionSession session = await service.StartAsync(player.AllyCode, "Actual");
+        RiseOfEmpireExecutionSession session = await service.StartAsync(player.AllyCode, "Actual", cancellationToken);
 
-        RiseOfEmpireExecutionSession closed = await service.CloseAsync(player.AllyCode, session.Id);
-        RiseOfEmpireExecutionSession? active = await service.GetActiveAsync(player.AllyCode);
-        IReadOnlyCollection<RiseOfEmpireExecutionSession> history = await service.GetHistoryAsync(player.AllyCode);
+        RiseOfEmpireExecutionSession closed = await service.CloseAsync(player.AllyCode, session.Id, cancellationToken);
+        RiseOfEmpireExecutionSession? active = await service.GetActiveAsync(player.AllyCode, cancellationToken);
+        IReadOnlyCollection<RiseOfEmpireExecutionSession> history = await service.GetHistoryAsync(player.AllyCode, cancellationToken);
 
         Assert.Equal(RiseOfEmpireExecutionStatus.Closed, closed.Status);
         Assert.NotNull(closed.ClosedAtUtc);
