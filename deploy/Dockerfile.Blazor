@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1.7
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet restore src/Swgoh.Blazor/Swgoh.Blazor.csproj
+RUN dotnet publish src/Swgoh.Blazor/Swgoh.Blazor.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_EnableDiagnostics=0
+EXPOSE 8080
+LABEL org.opencontainers.image.source="https://github.com/RaulGonzalezA/Swgoh"
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Swgoh.Blazor.dll"]

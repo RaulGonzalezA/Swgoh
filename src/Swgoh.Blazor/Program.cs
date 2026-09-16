@@ -10,35 +10,39 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddMemoryCache();
+
+string apiBaseUrl = builder.Configuration["Swgoh:Api:BaseUrl"] ?? "https+http://api";
+var apiBaseAddress = new Uri(apiBaseUrl, UriKind.Absolute);
+
 builder.Services.AddHttpClient(unitAssetClientName, client =>
 {
     client.BaseAddress = new Uri("https://game-assets.swgoh.gg/textures/", UriKind.Absolute);
     client.Timeout = TimeSpan.FromSeconds(15);
 });
-builder.Services.AddHttpClient<PlayerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacScoutingCacheApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacPlannerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacPlannerPerformanceApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacDefenseStrategyApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacJointRoundOptimizerApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacAttackExecutionApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<GacHistoryApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
+builder.Services.AddHttpClient<PlayerApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacScoutingCacheApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacPlannerApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacPlannerPerformanceApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacDefenseStrategyApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacJointRoundOptimizerApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacAttackExecutionApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<GacHistoryApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = apiBaseAddress);
 builder.Services.AddHttpClient<RiseOfEmpireApiClient>(client =>
 {
-    client.BaseAddress = new Uri("https+http://api");
+    client.BaseAddress = apiBaseAddress;
     client.Timeout = TimeSpan.FromMinutes(10);
 });
 builder.Services.AddHttpClient<RiseOfEmpireMissionGuideApiClient>(client =>
 {
-    client.BaseAddress = new Uri("https+http://api");
+    client.BaseAddress = apiBaseAddress;
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.AddHttpClient<RiseOfEmpireExecutionApiClient>(client =>
 {
-    client.BaseAddress = new Uri("https+http://api");
+    client.BaseAddress = apiBaseAddress;
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.AddScoped<PlayerSessionState>();
