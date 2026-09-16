@@ -16,6 +16,8 @@ internal static class RiseOfEmpireEndpoints
 
         group.MapGet("/analysis", GetAnalysisAsync)
             .WithSummary("Analyze Rise of the Empire planets, recommended teams and roster upgrade priorities");
+        group.MapGet("/mission-guides", GetMissionGuidesAsync)
+            .WithSummary("Get concrete Rise of the Empire mission teams and fleets matched against the roster");
         group.MapGet("/guild", GetGuildAsync)
             .WithSummary("Analyze Rise of the Empire for the cached guild rosters");
         group.MapGet("/guild/sync", GetLatestGuildSyncAsync)
@@ -36,6 +38,22 @@ internal static class RiseOfEmpireEndpoints
         try
         {
             RiseOfEmpireAnalysis? analysis = await service.GetAsync(allyCode, cancellationToken);
+            return analysis is null ? Results.NotFound() : Results.Ok(analysis);
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> GetMissionGuidesAsync(
+        long allyCode,
+        IRiseOfEmpireMissionGuideService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireMissionGuideAnalysis? analysis = await service.GetAsync(allyCode, cancellationToken);
             return analysis is null ? Results.NotFound() : Results.Ok(analysis);
         }
         catch (ArgumentOutOfRangeException exception)
