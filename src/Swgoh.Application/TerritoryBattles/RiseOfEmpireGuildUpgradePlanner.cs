@@ -12,11 +12,14 @@ internal static class RiseOfEmpireGuildUpgradePlanner
         IReadOnlyCollection<PlayerProfile> players,
         IReadOnlyCollection<RiseOfEmpireOperationPlan> operations,
         IReadOnlyCollection<RiseOfEmpireAnalysis> individualAnalyses,
-        GameDataCatalog gameData)
+        GameDataCatalog gameData,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionUpgradeCandidate>? missionUpgrades = null,
+        IReadOnlyCollection<RiseOfEmpireGuildPhasePlan>? phases = null)
     {
         var priorities = new Dictionary<string, UpgradeAccumulator>(StringComparer.OrdinalIgnoreCase);
         AddOperationGaps(priorities, operations);
         AddBonusUnlockGaps(priorities, players, gameData);
+        AddMissionGaps(priorities, missionUpgrades ?? [], phases ?? []);
         AddIndividualPriorities(priorities, individualAnalyses);
 
         return
@@ -24,6 +27,8 @@ internal static class RiseOfEmpireGuildUpgradePlanner
             .. priorities.Values
                 .Where(value => value.CurrentRelicTier < value.TargetRelicTier)
                 .OrderByDescending(value => value.Score)
+                .ThenByDescending(value => value.MissionTeamsUnlocked)
+                .ThenBy(value => value.ClosestNextStarGap ?? long.MaxValue)
                 .ThenBy(value => value.TargetRelicTier - value.CurrentRelicTier)
                 .ThenBy(value => value.PlayerName, StringComparer.OrdinalIgnoreCase)
                 .Take(30)
@@ -37,6 +42,10 @@ internal static class RiseOfEmpireGuildUpgradePlanner
                     value.TargetRelicTier,
                     Math.Max(0, value.TargetRelicTier - value.CurrentRelicTier),
                     Math.Round(value.Score, 1),
+                    value.MissionTeamsUnlocked,
+                    value.ClosestNextStarGap,
+                    [.. value.AffectedPlanets.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)],
+                    [.. value.MissionNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)],
                     [.. value.Reasons.OrderBy(reason => reason, StringComparer.OrdinalIgnoreCase)]))
         ];
     }
@@ -65,7 +74,8 @@ internal static class RiseOfEmpireGuildUpgradePlanner
                         candidate.CurrentRelicTier,
                         slot.RequiredRelicTier,
                         score,
-                        $"Completa un hueco bloqueante de operación en {operation.PlanetName} (fase {operation.Phase}).");
+                        $"Completa un hueco bloqueante de operación en {operation.PlanetName} (fase {operation.Phase}).",
+                        affectedPlanet: operation.PlanetName);
                 }
             }
         }
@@ -78,17 +88,60 @@ internal static class RiseOfEmpireGuildUpgradePlanner
     {
         foreach (PlayerProfile player in players)
         {
-            AddSpecificUnitIfNeeded(priorities, player, "CEREJUNDA", "Cere Junda", 7, 1_200m, "Acerca al gremio a las 30 victorias necesarias para abrir Zeffo.");
+            AddSpecificUnitIfNeeded(priorities, player, "CEREJUNDA", "Cere Junda", 7, 1_200m, "Acerca al gremio a las 30 victorias necesarias para abrir Zeffo.", "Zeffo");
             AddBestSpecificUnitIfNeeded(
                 priorities,
                 player,
                 ["CALKESTIS", "JEDIKNIGHTCAL"],
                 7,
                 1_200m,
-                "Acerca al gremio a las 30 victorias necesarias para abrir Zeffo.");
-            AddSpecificUnitIfNeeded(priorities, player, "BOKATANMANDALORE", "Bo-Katan (Mand'alor)", 7, 1_300m, "Acerca al gremio a las 25 victorias necesarias para abrir Mandalore.");
-            AddSpecificUnitIfNeeded(priorities, player, "THEMANDALORIANBESKARARMOR", "The Mandalorian (Beskar Armor)", 7, 1_300m, "Acerca al gremio a las 25 victorias necesarias para abrir Mandalore.");
+                "Acerca al gremio a las 30 victorias necesarias para abrir Zeffo.",
+                "Zeffo",
+                gameData);
+            AddSpecificUnitIfNeeded(priorities, player, "BOKATANMANDALORE", "Bo-Katan (Mand'alor)", 7, 1_300m, "Acerca al gremio a las 25 victorias necesarias para abrir Mandalore.", "Mandalore");
+            AddSpecificUnitIfNeeded(priorities, player, "THEMANDALORIANBESKARARMOR", "The Mandalorian (Beskar Armor)", 7, 1_300m, "Acerca al gremio a las 25 victorias necesarias para abrir Mandalore.", "Mandalore");
             AddThirdMandalorianIfNeeded(priorities, player, gameData);
+        }
+    }
+
+    private static void AddMissionGaps(
+        Dictionary<string, UpgradeAccumulator> priorities,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionUpgradeCandidate> candidates,
+        IReadOnlyCollection<RiseOfEmpireGuildPhasePlan> phases)
+    {
+        Dictionary<string, RiseOfEmpireGuildPlanetPlan> route = phases
+            .SelectMany(phase => phase.Planets)
+            .ToDictionary(planet => planet.PlanetId, StringComparer.OrdinalIgnoreCase);
+
+        foreach (RiseOfEmpireGuildMissionUpgradeCandidate candidate in candidates)
+        {
+            route.TryGetValue(candidate.PlanetId, out RiseOfEmpireGuildPlanetPlan? planet);
+            long? nextStarGap = planet?.NextStarGap;
+            decimal starFactor = StarGapFactor(nextStarGap);
+            int relicsMissing = Math.Max(1, candidate.TargetRelicTier - candidate.CurrentRelicTier);
+            decimal baseScore = candidate.CompletesTeam ? 2_200m : 850m;
+            decimal score = baseScore * starFactor / relicsMissing;
+            string impact = candidate.CompletesTeam
+                ? $"Completa un equipo concreto para {candidate.MissionName} en {candidate.PlanetName}."
+                : $"Deja más cerca el equipo {candidate.TeamName} para {candidate.MissionName} en {candidate.PlanetName}.";
+            string starReason = nextStarGap is null
+                ? "El planeta no tiene una estrella adicional pendiente en la ruta actual."
+                : $"La siguiente estrella de {candidate.PlanetName} tiene un hueco conservador de {FormatCompact(nextStarGap.Value)} puntos.";
+
+            Add(
+                priorities,
+                candidate.PlayerAllyCode,
+                candidate.PlayerName,
+                candidate.DefinitionId,
+                candidate.UnitName,
+                candidate.CurrentRelicTier,
+                candidate.TargetRelicTier,
+                score,
+                $"{impact} {starReason}",
+                candidate.PlanetName,
+                candidate.MissionName,
+                candidate.CompletesTeam ? 1 : 0,
+                nextStarGap);
         }
     }
 
@@ -99,7 +152,8 @@ internal static class RiseOfEmpireGuildUpgradePlanner
         string unitName,
         int targetRelic,
         decimal baseScore,
-        string reason)
+        string reason,
+        string affectedPlanet)
     {
         RosterUnit? unit = player.Roster.FirstOrDefault(unit =>
             string.Equals(unit.DefinitionId, definitionId, StringComparison.OrdinalIgnoreCase));
@@ -109,7 +163,7 @@ internal static class RiseOfEmpireGuildUpgradePlanner
         }
 
         Add(priorities, player.AllyCode, player.Name, definitionId, unitName, unit.RelicTier, targetRelic,
-            baseScore / Math.Max(1, targetRelic - unit.RelicTier), reason);
+            baseScore / Math.Max(1, targetRelic - unit.RelicTier), reason, affectedPlanet);
     }
 
     private static void AddBestSpecificUnitIfNeeded(
@@ -118,7 +172,9 @@ internal static class RiseOfEmpireGuildUpgradePlanner
         IReadOnlyCollection<string> definitionIds,
         int targetRelic,
         decimal baseScore,
-        string reason)
+        string reason,
+        string affectedPlanet,
+        GameDataCatalog gameData)
     {
         RosterUnit? unit = player.Roster
             .Where(unit => definitionIds.Any(id => string.Equals(unit.DefinitionId, id, StringComparison.OrdinalIgnoreCase)))
@@ -131,8 +187,8 @@ internal static class RiseOfEmpireGuildUpgradePlanner
             return;
         }
 
-        Add(priorities, player.AllyCode, player.Name, unit.DefinitionId, UnitName(gameData: null, unit.DefinitionId),
-            unit.RelicTier, targetRelic, baseScore / Math.Max(1, targetRelic - unit.RelicTier), reason);
+        Add(priorities, player.AllyCode, player.Name, unit.DefinitionId, UnitName(gameData, unit.DefinitionId),
+            unit.RelicTier, targetRelic, baseScore / Math.Max(1, targetRelic - unit.RelicTier), reason, affectedPlanet);
     }
 
     private static void AddThirdMandalorianIfNeeded(
@@ -163,12 +219,11 @@ internal static class RiseOfEmpireGuildUpgradePlanner
             return;
         }
 
-        string name = gameData.Units.TryGetValue(candidate.DefinitionId, out GameUnitDefinition? definition)
-            ? definition.Name
-            : candidate.DefinitionId;
+        string name = UnitName(gameData, candidate.DefinitionId);
         Add(priorities, player.AllyCode, player.Name, candidate.DefinitionId, name, candidate.RelicTier, 7,
             1_000m / Math.Max(1, 7 - candidate.RelicTier),
-            "Tercer Mandaloriano para la misión que abre Mandalore.");
+            "Tercer Mandaloriano para la misión que abre Mandalore.",
+            "Mandalore");
     }
 
     private static void AddIndividualPriorities(
@@ -202,7 +257,11 @@ internal static class RiseOfEmpireGuildUpgradePlanner
         int currentRelic,
         int targetRelic,
         decimal score,
-        string reason)
+        string reason,
+        string? affectedPlanet = null,
+        string? missionName = null,
+        int missionTeamsUnlocked = 0,
+        long? nextStarGap = null)
     {
         string key = $"{allyCode}:{definitionId}";
         if (!priorities.TryGetValue(key, out UpgradeAccumulator? value))
@@ -211,17 +270,51 @@ internal static class RiseOfEmpireGuildUpgradePlanner
             priorities[key] = value;
         }
 
-        value.TargetRelicTier = Math.Min(value.TargetRelicTier, targetRelic);
+        value.TargetRelicTier = Math.Max(value.TargetRelicTier, targetRelic);
         value.Score += score;
+        value.MissionTeamsUnlocked += missionTeamsUnlocked;
+        if (nextStarGap is not null)
+        {
+            value.ClosestNextStarGap = value.ClosestNextStarGap is null
+                ? nextStarGap
+                : Math.Min(value.ClosestNextStarGap.Value, nextStarGap.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(affectedPlanet))
+        {
+            value.AffectedPlanets.Add(affectedPlanet);
+        }
+
+        if (!string.IsNullOrWhiteSpace(missionName))
+        {
+            value.MissionNames.Add(missionName);
+        }
+
         value.Reasons.Add(reason);
     }
+
+    private static decimal StarGapFactor(long? gap) => gap switch
+    {
+        null => 0.8m,
+        <= 25_000_000 => 2.5m,
+        <= 75_000_000 => 2m,
+        <= 150_000_000 => 1.5m,
+        <= 300_000_000 => 1.2m,
+        _ => 1m
+    };
+
+    private static string FormatCompact(long value) => value >= 1_000_000_000
+        ? $"{value / 1_000_000_000d:0.##}B"
+        : value >= 1_000_000
+            ? $"{value / 1_000_000d:0.#}M"
+            : $"{value / 1_000d:0.#}K";
 
     private static bool IsCoreMandalorian(string definitionId) =>
         string.Equals(definitionId, "BOKATANMANDALORE", StringComparison.OrdinalIgnoreCase)
         || string.Equals(definitionId, "THEMANDALORIANBESKARARMOR", StringComparison.OrdinalIgnoreCase);
 
-    private static string UnitName(GameDataCatalog? gameData, string definitionId) =>
-        gameData is not null && gameData.Units.TryGetValue(definitionId, out GameUnitDefinition? definition)
+    private static string UnitName(GameDataCatalog gameData, string definitionId) =>
+        gameData.Units.TryGetValue(definitionId, out GameUnitDefinition? definition)
             ? definition.Name
             : definitionId;
 
@@ -262,6 +355,10 @@ internal static class RiseOfEmpireGuildUpgradePlanner
         public int CurrentRelicTier { get; } = currentRelicTier;
         public int TargetRelicTier { get; set; } = targetRelicTier;
         public decimal Score { get; set; }
+        public int MissionTeamsUnlocked { get; set; }
+        public long? ClosestNextStarGap { get; set; }
+        public HashSet<string> AffectedPlanets { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> MissionNames { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Reasons { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
