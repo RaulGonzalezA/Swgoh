@@ -36,7 +36,8 @@ public sealed class RiseOfEmpireServiceTests
         Assert.False(empire.Ready);
         Assert.Equal(4, empire.ReadyUnits);
         RiseOfEmpireUpgradePriority priority = Assert.Single(
-            analysis.UpgradePriorities.Where(item => item.DefinitionId == "EMP5"));
+            analysis.UpgradePriorities,
+            item => item.DefinitionId == "EMP5");
         Assert.Equal(7, priority.TargetRelicTier);
         Assert.Equal(1, priority.RelicsMissing);
     }
@@ -56,9 +57,9 @@ public sealed class RiseOfEmpireServiceTests
 
         RiseOfEmpireAnalysis? analysis = await service.GetAsync(AllyCode, TestContext.Current.CancellationToken);
 
-        RiseOfEmpirePlanetAnalysis zeffo = Assert.Single(analysis!.Phases
-            .SelectMany(phase => phase.Planets)
-            .Where(planet => planet.Id == "zeffo"));
+        RiseOfEmpirePlanetAnalysis zeffo = Assert.Single(
+            analysis!.Phases.SelectMany(phase => phase.Planets),
+            planet => planet.Id == "zeffo");
         Assert.Equal(80m, zeffo.ReadinessPercent);
         Assert.Contains(zeffo.Missions, mission => !mission.Ready);
     }
