@@ -10,10 +10,6 @@ public sealed record RiseOfEmpireAnalysis(
 {
     public int ReadyTeams => Phases.SelectMany(phase => phase.Planets).Sum(planet => planet.ReadyTeamCount);
     public int ReadyPlanets => Phases.SelectMany(phase => phase.Planets).Count(planet => planet.ReadinessPercent >= 100m);
-    public int ReadyMissionTeams => Phases
-        .SelectMany(phase => phase.Planets)
-        .SelectMany(planet => planet.MissionGuides)
-        .Sum(mission => mission.ReadyTeamCount);
 }
 
 public sealed record RiseOfEmpirePhaseAnalysis(
@@ -33,8 +29,7 @@ public sealed record RiseOfEmpirePlanetAnalysis(
     decimal ReadinessPercent,
     RiseOfEmpireMissionReadiness? AccessRequirement,
     IReadOnlyCollection<RiseOfEmpireTeamRecommendation> RecommendedTeams,
-    IReadOnlyCollection<RiseOfEmpireMissionReadiness> Missions,
-    IReadOnlyCollection<RiseOfEmpireMissionGuide> MissionGuides);
+    IReadOnlyCollection<RiseOfEmpireMissionReadiness> Missions);
 
 public sealed record RiseOfEmpireTeamRecommendation(
     string Archetype,
@@ -63,6 +58,25 @@ public sealed record RiseOfEmpireMissionReadiness(
     int MinimumRelicTier,
     bool Ready,
     IReadOnlyCollection<string> MissingRequirements);
+
+public sealed record RiseOfEmpireMissionGuideAnalysis(
+    long AllyCode,
+    string PlayerName,
+    DateTimeOffset RosterUpdatedAtUtc,
+    string CatalogVersion,
+    IReadOnlyCollection<RiseOfEmpirePlanetMissionGuides> Planets)
+{
+    public int ReadyTeams => Planets.SelectMany(planet => planet.Missions).Sum(mission => mission.ReadyTeamCount);
+    public int ReadyFleetTeams => Planets.SelectMany(planet => planet.Missions)
+        .Where(mission => mission.IsFleet)
+        .Sum(mission => mission.ReadyTeamCount);
+}
+
+public sealed record RiseOfEmpirePlanetMissionGuides(
+    string PlanetId,
+    string PlanetName,
+    int Phase,
+    IReadOnlyCollection<RiseOfEmpireMissionGuide> Missions);
 
 public sealed record RiseOfEmpireMissionGuide(
     string Id,
