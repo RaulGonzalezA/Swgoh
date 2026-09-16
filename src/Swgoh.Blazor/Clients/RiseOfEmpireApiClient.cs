@@ -163,6 +163,7 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         IReadOnlyCollection<RiseOfEmpireBonusUnlockViewModel> BonusUnlocks,
         IReadOnlyCollection<RiseOfEmpireGuildMissionCoverageViewModel> MissionCoverage,
         IReadOnlyCollection<RiseOfEmpireGuildUpgradePriorityViewModel> UpgradePriorities,
+        IReadOnlyCollection<RiseOfEmpireGuildMemberOperationalPlanViewModel> MemberPlans,
         int ProjectedStars,
         int OperationSlots,
         int FilledOperationSlots,
@@ -170,7 +171,50 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         int MissionReadyMembers,
         int MissionAttemptTarget,
         int PlannedMissionAttempts,
-        int OverlapBlockedMissionAttempts);
+        int OverlapBlockedMissionAttempts,
+        int OperationConflicts);
+
+    public sealed record RiseOfEmpireGuildMemberOperationalPlanViewModel(
+        long AllyCode,
+        string PlayerName,
+        IReadOnlyCollection<RiseOfEmpireGuildMemberPhaseOperationalPlanViewModel> Phases);
+
+    public sealed record RiseOfEmpireGuildMemberPhaseOperationalPlanViewModel(
+        int Phase,
+        IReadOnlyCollection<RiseOfEmpireMemberMissionAttemptPlanViewModel> MissionAttempts,
+        IReadOnlyCollection<RiseOfEmpireMemberOperationDonationPlanViewModel> SafeOperationDonations,
+        IReadOnlyCollection<RiseOfEmpireMemberOperationDonationPlanViewModel> OperationConflicts,
+        IReadOnlyCollection<RiseOfEmpireReservedUnitPlanViewModel> ReservedUnits);
+
+    public sealed record RiseOfEmpireMemberMissionAttemptPlanViewModel(
+        int Order,
+        string PlanetId,
+        string PlanetName,
+        string MissionId,
+        string MissionName,
+        string TeamName,
+        IReadOnlyCollection<RiseOfEmpireOperationalUnitViewModel> Units);
+
+    public sealed record RiseOfEmpireOperationalUnitViewModel(
+        string DefinitionId,
+        string UnitName,
+        bool Required);
+
+    public sealed record RiseOfEmpireMemberOperationDonationPlanViewModel(
+        string OperationId,
+        string PlanetName,
+        string SquadId,
+        string DefinitionId,
+        string UnitName,
+        int RequiredRelicTier,
+        int CurrentRelicTier,
+        bool BreaksPlannedAttempt,
+        string Reason);
+
+    public sealed record RiseOfEmpireReservedUnitPlanViewModel(
+        string DefinitionId,
+        string UnitName,
+        IReadOnlyCollection<string> MissionNames);
 
     public sealed record RiseOfEmpireGuildPhasePlanViewModel(
         int Phase,
