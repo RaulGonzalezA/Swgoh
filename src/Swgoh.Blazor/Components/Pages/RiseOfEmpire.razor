@@ -72,6 +72,7 @@ else
                             <strong>@priority.Name</strong>
                             <span>R@priority.CurrentRelicTier → R@priority.TargetRelicTier · faltan @priority.RelicsMissing</span>
                             <small>@string.Join(" · ", priority.Planets)</small>
+                            <small>@priority.Reason</small>
                         </div>
                         <div class="rote-priority-value">
                             <strong>@priority.UnlockValue</strong>
@@ -118,6 +119,21 @@ else
                                 <span>★@(index + 1) @Compact(planet.StarThresholds.ElementAt(index))</span>
                             }
                         </div>
+
+                        @if (planet.AccessRequirement is not null)
+                        {
+                            <div class="rote-access @(planet.AccessRequirement.Ready ? "ready" : "missing")">
+                                <span>@(planet.AccessRequirement.Ready ? "✓" : "🔒")</span>
+                                <div>
+                                    <strong>@planet.AccessRequirement.Name</strong>
+                                    <small>@planet.AccessRequirement.Requirement</small>
+                                    @if (!planet.AccessRequirement.Ready)
+                                    {
+                                        <small>@string.Join(" · ", planet.AccessRequirement.MissingRequirements)</small>
+                                    }
+                                </div>
+                            </div>
+                        }
 
                         @if (planet.Missions.Count > 0)
                         {
