@@ -16,7 +16,10 @@ using Swgoh.Infrastructure;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.Services.AddApplication().AddInfrastructure(builder.Configuration);
+builder.Services
+    .AddApplication()
+    .AddInfrastructure(builder.Configuration)
+    .AddRiseOfEmpireGuildInfrastructure(builder.Configuration);
 builder.Services.AddProblemDetails();
 
 builder.Services
