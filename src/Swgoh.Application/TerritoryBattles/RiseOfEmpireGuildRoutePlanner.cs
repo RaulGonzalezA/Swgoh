@@ -20,12 +20,13 @@ internal static class RiseOfEmpireGuildRoutePlanner
             long forcedGp = phaseOperations.Sum(operation => operation.ForcedDeploymentGalacticPower);
             long remainingGp = Math.Max(0, guildGalacticPower - forcedGp);
             PlanetOption[] selected = SelectBestOptions(planets, phaseOperations, bonusUnlocks, remainingGp);
+            long unusedDeployment = Math.Max(0, remainingGp - selected.Sum(option => option.AdditionalDeployment));
             phases.Add(new RiseOfEmpireGuildPhasePlan(
                 phase,
                 guildGalacticPower,
                 forcedGp,
                 selected.Sum(option => option.Stars),
-                [.. selected.Select(option => ToPlan(option, phaseOperations))]));
+                [.. selected.Select(option => ToPlan(option, unusedDeployment))]));
         }
 
         return phases;
@@ -108,13 +109,23 @@ internal static class RiseOfEmpireGuildRoutePlanner
         return [.. result];
     }
 
-    private static RiseOfEmpireGuildPlanetPlan ToPlan(
-        PlanetOption option,
-        IReadOnlyCollection<RiseOfEmpireOperationPlan> operations)
+    private static RiseOfEmpireGuildPlanetPlan ToPlan(PlanetOption option, long unusedDeployment)
     {
         long threshold = option.Stars == 0
             ? 0
             : option.Planet.StarThresholds.ElementAt(option.Stars - 1);
+        int? nextStar = option.Available && option.Stars < Math.Min(3, option.Planet.StarThresholds.Count)
+            ? option.Stars + 1
+            : null;
+        long? nextThreshold = nextStar is null
+            ? null
+            : option.Planet.StarThresholds.ElementAt(nextStar.Value - 1);
+        long currentScoreFloor = option.Stars > 0
+            ? threshold
+            : option.OperationPoints + option.ForcedGp;
+        long? nextGap = nextThreshold is null
+            ? null
+            : Math.Max(0, nextThreshold.Value - currentScoreFloor - unusedDeployment);
         string reason = !option.Available
             ? "Zona bonus todavía no desbloqueada por suficientes miembros preparados."
             : option.Stars == 0
@@ -132,6 +143,9 @@ internal static class RiseOfEmpireGuildRoutePlanner
             option.OperationPoints,
             option.ForcedGp,
             option.AdditionalDeployment,
+            nextStar,
+            nextThreshold,
+            nextGap,
             reason);
     }
 
