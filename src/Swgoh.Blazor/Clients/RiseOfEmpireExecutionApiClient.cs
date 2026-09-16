@@ -19,6 +19,20 @@ public sealed class RiseOfEmpireExecutionApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<RiseOfEmpireExecutionSessionViewModel>(cancellationToken);
     }
 
+    public async Task<RiseOfEmpireExecutionProgressViewModel?> GetProgressAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.GetAsync($"{Base(allyCode)}/progress", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RiseOfEmpireExecutionProgressViewModel>(cancellationToken);
+    }
+
     public async Task<IReadOnlyCollection<RiseOfEmpireExecutionSessionViewModel>> GetHistoryAsync(
         long allyCode,
         CancellationToken cancellationToken = default)
@@ -122,6 +136,58 @@ public sealed class RiseOfEmpireExecutionApiClient(HttpClient httpClient)
         string? Notes,
         DateTimeOffset UpdatedAtUtc,
         string Key);
+
+    public sealed record RiseOfEmpireExecutionProgressViewModel(
+        string SessionId,
+        string Label,
+        int TargetAttempts,
+        int PlannedAttempts,
+        int FinishedAttempts,
+        int InProgressAttempts,
+        int PendingAttempts,
+        int RosterGapAttempts,
+        long RecordedTerritoryPoints,
+        IReadOnlyCollection<RiseOfEmpireExecutionPhaseProgressViewModel> Phases,
+        IReadOnlyCollection<RiseOfEmpireExecutionMemberProgressViewModel> Members,
+        decimal CompletionPercent);
+
+    public sealed record RiseOfEmpireExecutionPhaseProgressViewModel(
+        int Phase,
+        int TargetAttempts,
+        int PlannedAttempts,
+        int FinishedAttempts,
+        int InProgressAttempts,
+        int PendingAttempts,
+        int RosterGapAttempts,
+        long RecordedTerritoryPoints,
+        IReadOnlyCollection<RiseOfEmpireExecutionMissionProgressViewModel> Missions);
+
+    public sealed record RiseOfEmpireExecutionMissionProgressViewModel(
+        int Phase,
+        string PlanetId,
+        string PlanetName,
+        string MissionId,
+        string MissionName,
+        bool IsFleet,
+        int TargetAttempts,
+        int PlannedAttempts,
+        int FinishedAttempts,
+        int InProgressAttempts,
+        int PendingAttempts,
+        int RosterGapAttempts,
+        long RecordedTerritoryPoints,
+        IReadOnlyCollection<string> PendingMembers,
+        IReadOnlyCollection<string> InProgressMembers);
+
+    public sealed record RiseOfEmpireExecutionMemberProgressViewModel(
+        long AllyCode,
+        string PlayerName,
+        int Phase,
+        int PlannedAttempts,
+        int FinishedAttempts,
+        int InProgressAttempts,
+        int PendingAttempts,
+        IReadOnlyCollection<string> PendingMissions);
 
     public sealed record RiseOfEmpireMissionResultRequest(
         long PlayerAllyCode,

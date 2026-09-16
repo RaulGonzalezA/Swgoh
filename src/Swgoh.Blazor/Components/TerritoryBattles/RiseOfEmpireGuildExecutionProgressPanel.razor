@@ -1,0 +1,266 @@
+@implements IAsyncDisposable
+@inject RiseOfEmpireExecutionApiClient ExecutionClient
+
+<section class="rote24-progress-panel">
+    <div class="rote24-progress-heading">
+        <div>
+            <span class="section-kicker">RotE 2.4 · Oficiales</span>
+            <h3>Control de ejecución del gremio</h3>
+            <p>Distingue lo que falta por jugar de los huecos de roster que impiden llegar al máximo teórico de intentos.</p>
+        </div>
+        <button class="secondary-button" @onclick="RefreshAsync" disabled="@Refreshing">
+            @(Refreshing ? "Actualizando…" : "Actualizar progreso")
+        </button>
+    </div>
+
+    @if (Error is not null)
+    {
+        <div class="rote24-progress-error">@Error</div>
+    }
+
+    @if (Loading)
+    {
+        <div class="rote24-progress-loading"><span class="spinner"></span><span>Cargando progreso de ejecución…</span></div>
+    }
+    else if (Progress is null)
+    {
+        <div class="rote24-progress-empty">
+            <strong>No hay una ejecución RotE activa.</strong>
+            <span>Inicia la TB desde el panel operativo para empezar a registrar y seguir los intentos.</span>
+        </div>
+    }
+    else
+    {
+        <div class="rote24-progress-summary">
+            <div><span>Completado</span><strong>@Progress.CompletionPercent.ToString("0.#")%</strong><small>@Progress.FinishedAttempts/@Progress.PlannedAttempts planificados</small></div>
+            <div><span>Pendientes</span><strong>@Progress.PendingAttempts</strong><small>todavía sin finalizar</small></div>
+            <div><span>En curso</span><strong>@Progress.InProgressAttempts</strong><small>registrados como activos</small></div>
+            <div><span>Hueco roster</span><strong>@Progress.RosterGapAttempts</strong><small>@Progress.TargetAttempts objetivo total</small></div>
+            <div><span>TP reales</span><strong>@Compact(Progress.RecordedTerritoryPoints)</strong><small>@Progress.Label</small></div>
+        </div>
+
+        <div class="rote24-progress-bar" aria-label="Progreso de intentos planificados">
+            <span style="width:@($"{Math.Clamp(Progress.CompletionPercent, 0m, 100m):0.#}%")"></span>
+        </div>
+
+        <div class="rote24-progress-controls">
+            <label>
+                <span>Fase</span>
+                <select value="@SelectedPhase" @onchange="OnPhaseChanged">
+                    @foreach (RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionPhaseProgressViewModel phase in Progress.Phases)
+                    {
+                        <option value="@phase.Phase">Fase @phase.Phase</option>
+                    }
+                </select>
+            </label>
+            @if (SelectedPhaseProgress is not null)
+            {
+                <div class="rote24-phase-totals">
+                    <strong>@SelectedPhaseProgress.FinishedAttempts/@SelectedPhaseProgress.PlannedAttempts terminados</strong>
+                    <span>@SelectedPhaseProgress.PendingAttempts pendientes · @SelectedPhaseProgress.RosterGapAttempts sin equipo viable</span>
+                </div>
+            }
+        </div>
+
+        @if (SelectedPhaseProgress is not null)
+        {
+            <div class="rote24-progress-layout">
+                <section class="rote24-progress-missions">
+                    <div class="rote24-progress-section-title">
+                        <span>Misiones</span>
+                        <strong>Estado por misión</strong>
+                    </div>
+                    @foreach (RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionMissionProgressViewModel mission in SelectedPhaseProgress.Missions)
+                    {
+                        <article class="rote24-progress-mission @(mission.PendingAttempts == 0 && mission.RosterGapAttempts == 0 ? "complete" : string.Empty)">
+                            <header>
+                                <div>
+                                    <span>@mission.PlanetName · @(mission.IsFleet ? "Flota" : "Combate")</span>
+                                    <strong>@mission.MissionName</strong>
+                                </div>
+                                <strong>@mission.FinishedAttempts/@mission.PlannedAttempts</strong>
+                            </header>
+                            <div class="rote24-progress-metrics">
+                                <span>✓ @mission.FinishedAttempts</span>
+                                <span>▶ @mission.InProgressAttempts</span>
+                                <span>… @mission.PendingAttempts</span>
+                                <span class="gap">Roster @mission.RosterGapAttempts</span>
+                                <span>@Compact(mission.RecordedTerritoryPoints) TP</span>
+                            </div>
+                            @if (mission.PendingMembers.Count > 0)
+                            {
+                                <details>
+                                    <summary>Pendientes (@mission.PendingMembers.Count)</summary>
+                                    <div class="rote24-progress-names">
+                                        @foreach (string member in mission.PendingMembers)
+                                        {
+                                            <span>@member</span>
+                                        }
+                                    </div>
+                                </details>
+                            }
+                            @if (mission.InProgressMembers.Count > 0)
+                            {
+                                <small>En curso: @string.Join(", ", mission.InProgressMembers)</small>
+                            }
+                        </article>
+                    }
+                </section>
+
+                <section class="rote24-progress-members">
+                    <div class="rote24-progress-section-title">
+                        <span>Seguimiento</span>
+                        <strong>Miembros con trabajo pendiente</strong>
+                    </div>
+                    @if (PendingMembers.Count == 0)
+                    {
+                        <div class="rote24-progress-empty compact">Todos los intentos planificados de la fase están finalizados.</div>
+                    }
+                    else
+                    {
+                        @foreach (RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionMemberProgressViewModel member in PendingMembers)
+                        {
+                            <article>
+                                <header>
+                                    <div><strong>@member.PlayerName</strong><small>@member.FinishedAttempts/@member.PlannedAttempts terminados</small></div>
+                                    <span>@member.PendingAttempts pendiente(s)</span>
+                                </header>
+                                @if (member.InProgressAttempts > 0)
+                                {
+                                    <small>@member.InProgressAttempts en curso</small>
+                                }
+                                @foreach (string mission in member.PendingMissions)
+                                {
+                                    <span class="mission">@mission</span>
+                                }
+                            </article>
+                        }
+                    }
+                </section>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public long AllyCode { get; set; }
+
+    private RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionProgressViewModel? Progress { get; set; }
+    private CancellationTokenSource? PollCancellation { get; set; }
+    private int SelectedPhase { get; set; } = 1;
+    private bool Loading { get; set; } = true;
+    private bool Refreshing { get; set; }
+    private string? Error { get; set; }
+
+    private RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionPhaseProgressViewModel? SelectedPhaseProgress =>
+        Progress?.Phases.FirstOrDefault(phase => phase.Phase == SelectedPhase);
+
+    private IReadOnlyCollection<RiseOfEmpireExecutionApiClient.RiseOfEmpireExecutionMemberProgressViewModel> PendingMembers =>
+        Progress is null
+            ? []
+            : [
+                .. Progress.Members
+                    .Where(member => member.Phase == SelectedPhase && member.PendingAttempts > 0)
+                    .OrderByDescending(member => member.PendingAttempts)
+                    .ThenBy(member => member.PlayerName, StringComparer.OrdinalIgnoreCase)
+            ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        CancelPolling();
+        Loading = true;
+        Error = null;
+        try
+        {
+            await LoadProgressAsync();
+            StartPolling();
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        Refreshing = true;
+        Error = null;
+        try
+        {
+            await LoadProgressAsync();
+        }
+        finally
+        {
+            Refreshing = false;
+        }
+    }
+
+    private async Task LoadProgressAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            Progress = await ExecutionClient.GetProgressAsync(AllyCode, cancellationToken);
+            if (Progress is not null && !Progress.Phases.Any(phase => phase.Phase == SelectedPhase))
+            {
+                SelectedPhase = Progress.Phases.FirstOrDefault()?.Phase ?? 1;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            Error = "No se ha podido actualizar el progreso agregado de RotE.";
+        }
+    }
+
+    private void StartPolling()
+    {
+        PollCancellation = new CancellationTokenSource();
+        _ = PollAsync(PollCancellation.Token);
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await LoadProgressAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The page stopped polling.
+        }
+    }
+
+    private void OnPhaseChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out int phase))
+        {
+            SelectedPhase = phase;
+        }
+    }
+
+    private void CancelPolling()
+    {
+        PollCancellation?.Cancel();
+        PollCancellation?.Dispose();
+        PollCancellation = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        CancelPolling();
+        return ValueTask.CompletedTask;
+    }
+
+    private static string Compact(long value) => value >= 1_000_000_000
+        ? $"{value / 1_000_000_000d:0.##}B"
+        : value >= 1_000_000
+            ? $"{value / 1_000_000d:0.#}M"
+            : value >= 1_000
+                ? $"{value / 1_000d:0.#}K"
+                : value.ToString();
+}
