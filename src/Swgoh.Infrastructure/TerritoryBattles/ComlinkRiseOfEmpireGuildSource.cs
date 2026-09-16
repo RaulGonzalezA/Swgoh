@@ -98,6 +98,7 @@ internal sealed class ComlinkRiseOfEmpireGuildSource(HttpClient httpClient) : IR
             resolvedGuildId,
             guildName,
             guildGalacticPower,
+            drafts.Length,
             ordered,
             [.. warnings.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)]);
     }
