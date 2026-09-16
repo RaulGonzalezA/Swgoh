@@ -1,3 +1,5 @@
+using MongoDB.Driver;
+
 using RepositoryMongoDb.Repository;
 
 using Swgoh.Application.Players;
@@ -14,6 +16,24 @@ internal sealed class PlayerMongoRepository(IMongoDbRepository<PlayerDocument, l
     {
         PlayerDocument? document = await repository.FindByIdAsync(allyCode, cancellationToken).ConfigureAwait(false);
         return document is null ? null : ToDomain(document);
+    }
+
+    public async Task<IReadOnlyCollection<PlayerProfile>> FindByGuildIdAsync(
+        string guildId,
+        int maxMembers = 50,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(guildId);
+        int limit = Math.Clamp(maxMembers, 1, 50);
+        FilterDefinition<PlayerDocument> filter = Builders<PlayerDocument>.Filter
+            .Eq(document => document.GuildId, guildId.Trim());
+        SortDefinition<PlayerDocument> sort = Builders<PlayerDocument>.Sort
+            .Descending(document => document.GalacticPower)
+            .Ascending(document => document.Name);
+        List<PlayerDocument> documents = await repository
+            .FindPageAsync(filter, skip: 0, limit, sort, cancellationToken)
+            .ConfigureAwait(false);
+        return [.. documents.Select(ToDomain)];
     }
 
     public Task UpsertAsync(PlayerProfile player, CancellationToken cancellationToken = default)
