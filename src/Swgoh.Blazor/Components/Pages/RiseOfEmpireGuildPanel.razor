@@ -5,8 +5,8 @@
 <section class="rote-guild-panel">
     <div class="rote-guild-heading">
         <div>
-            <span class="section-kicker">RotE 2.0 · Gremio</span>
-            <h2>Plan conjunto de estrellas y operaciones</h2>
+            <span class="section-kicker">RotE 2.2 · Gremio</span>
+            <h2>Plan conjunto de estrellas, misiones y operaciones</h2>
             <p>Coordina los rosters del gremio, protege equipos de combate y detecta qué mejoras desbloquean más progreso.</p>
         </div>
         <button class="primary-button" @onclick="SyncGuildAsync" disabled="@Syncing">
@@ -67,7 +67,7 @@
             <strong>@(Syncing ? "Sincronizando rosters en segundo plano" : "Aún no hay rosters de gremio importados")</strong>
             <p>@(Syncing
                 ? "Puedes salir de esta pantalla. El backend continuará el trabajo y al volver recuperará el estado del job."
-                : "Sincroniza para detectar los miembros actuales, importar sus rosters y construir operaciones, desbloqueos y ruta de estrellas.")</p>
+                : "Sincroniza para detectar los miembros actuales, importar sus rosters y construir operaciones, misiones, desbloqueos y ruta de estrellas.")</p>
         </div>
     }
     else
@@ -81,7 +81,7 @@
             <div><span>Gremio</span><strong>@Guild.GuildName</strong><small>@Guild.ImportedMembers/@Guild.DetectedMembers rosters</small></div>
             <div><span>GP</span><strong>@Compact(Guild.GuildGalacticPower)</strong><small>disponible por fase</small></div>
             <div><span>Ruta</span><strong>@Guild.ProjectedStars ★</strong><small>sin asumir victorias de combate</small></div>
-            <div><span>Operaciones</span><strong>@Guild.FilledOperationSlots/@Guild.OperationSlots</strong><small>@OperationPercent.ToString("0")% de huecos planificados</small></div>
+            <div><span>Misiones</span><strong>@Guild.CoveredMissions/@Guild.MissionCoverage.Count</strong><small>@Guild.MissionReadyMembers asignaciones listas</small></div>
         </div>
 
         <div class="rote-guild-bonus-grid">
@@ -107,6 +107,8 @@
             }
         </div>
 
+        <RiseOfEmpireGuildMissionCoveragePanel Guild="@Guild" />
+
         <div class="rote-guild-section-heading">
             <div><span class="section-kicker">Ruta</span><h3>Objetivo de estrellas por fase</h3></div>
         </div>
@@ -124,6 +126,10 @@
                             @if (planet.Available && planet.TargetStars > 0)
                             {
                                 <small>Ops @Compact(planet.CompletedOperationPoints) · desplegar +@Compact(planet.AdditionalDeploymentGalacticPower)</small>
+                            }
+                            @if (planet.NextStar is not null && planet.NextStarGap is not null)
+                            {
+                                <small>Siguiente: @planet.NextStar ★ · hueco conservador @Compact(planet.NextStarGap.Value)</small>
                             }
                         </div>
                     }
@@ -163,7 +169,7 @@
 
             <section>
                 <div class="rote-guild-section-heading">
-                    <div><span class="section-kicker">Inversión</span><h3>Qué debe mejorar cada jugador</h3></div>
+                    <div><span class="section-kicker">Inversión</span><h3>Qué reliquia acerca más a la siguiente ★</h3></div>
                 </div>
                 @if (Guild.UpgradePriorities.Count == 0)
                 {
@@ -176,7 +182,18 @@
                         {
                             <article>
                                 <span class="rank">#@priority.Rank</span>
-                                <div><strong>@priority.PlayerName · @priority.UnitName</strong><small>R@priority.CurrentRelicTier → R@priority.TargetRelicTier · @priority.ReasonSummary</small></div>
+                                <div>
+                                    <strong>@priority.PlayerName · @priority.UnitName</strong>
+                                    <small>R@priority.CurrentRelicTier → R@priority.TargetRelicTier · @priority.ReasonSummary</small>
+                                    @if (priority.MissionTeamsUnlocked > 0)
+                                    {
+                                        <small>+@priority.MissionTeamsUnlocked equipo(s) de misión · @string.Join(", ", priority.MissionNames)</small>
+                                    }
+                                    @if (priority.ClosestNextStarGap is not null)
+                                    {
+                                        <small>Hueco más cercano a la siguiente ★: @Compact(priority.ClosestNextStarGap.Value)</small>
+                                    }
+                                </div>
                                 <span>@priority.Score.ToString("0")</span>
                             </article>
                         }
