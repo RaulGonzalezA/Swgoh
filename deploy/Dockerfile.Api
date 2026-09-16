@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.7
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG GITHUB_ACTOR=github-actions
+WORKDIR /src
+COPY . .
+RUN --mount=type=secret,id=nuget_pat \
+    dotnet nuget update source github-rga \
+    --username "$GITHUB_ACTOR" \
+    --password "$(cat /run/secrets/nuget_pat)" \
+    --store-password-in-clear-text \
+    --configfile NuGet.config
+RUN dotnet restore src/Swgoh.Api/Swgoh.Api.csproj
+RUN dotnet publish src/Swgoh.Api/Swgoh.Api.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_EnableDiagnostics=0
+EXPOSE 8080
+LABEL org.opencontainers.image.source="https://github.com/RaulGonzalezA/Swgoh"
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Swgoh.Api.dll"]
