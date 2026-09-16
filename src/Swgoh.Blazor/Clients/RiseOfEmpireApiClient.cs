@@ -161,10 +161,13 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         IReadOnlyCollection<RiseOfEmpireGuildPhasePlanViewModel> Phases,
         IReadOnlyCollection<RiseOfEmpireOperationPlanViewModel> Operations,
         IReadOnlyCollection<RiseOfEmpireBonusUnlockViewModel> BonusUnlocks,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionCoverageViewModel> MissionCoverage,
         IReadOnlyCollection<RiseOfEmpireGuildUpgradePriorityViewModel> UpgradePriorities,
         int ProjectedStars,
         int OperationSlots,
-        int FilledOperationSlots);
+        int FilledOperationSlots,
+        int CoveredMissions,
+        int MissionReadyMembers);
 
     public sealed record RiseOfEmpireGuildPhasePlanViewModel(
         int Phase,
@@ -183,6 +186,9 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         long CompletedOperationPoints,
         long ForcedOperationDeploymentGalacticPower,
         long AdditionalDeploymentGalacticPower,
+        int? NextStar,
+        long? NextStarThreshold,
+        long? NextStarGap,
         string Reason);
 
     public sealed record RiseOfEmpireOperationPlanViewModel(
@@ -247,6 +253,27 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         bool Ready,
         IReadOnlyCollection<string> MissingRequirements);
 
+    public sealed record RiseOfEmpireGuildMissionCoverageViewModel(
+        int Phase,
+        string PlanetId,
+        string PlanetName,
+        string MissionId,
+        string MissionName,
+        string Type,
+        bool IsFleet,
+        int EligibleMembers,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> ReadyMembers,
+        IReadOnlyCollection<RiseOfEmpireGuildMissionMemberViewModel> ClosestMembers);
+
+    public sealed record RiseOfEmpireGuildMissionMemberViewModel(
+        long AllyCode,
+        string PlayerName,
+        string? TeamName,
+        bool Ready,
+        int ReadyUnits,
+        int RequiredUnits,
+        IReadOnlyCollection<string> MissingRequirements);
+
     public sealed record RiseOfEmpireGuildUpgradePriorityViewModel(
         int Rank,
         long PlayerAllyCode,
@@ -257,6 +284,10 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         int TargetRelicTier,
         int RelicsMissing,
         decimal Score,
+        int MissionTeamsUnlocked,
+        long? ClosestNextStarGap,
+        IReadOnlyCollection<string> AffectedPlanets,
+        IReadOnlyCollection<string> MissionNames,
         IReadOnlyCollection<string> Reasons)
     {
         public string ReasonSummary => string.Join(" · ", Reasons.Take(2));
