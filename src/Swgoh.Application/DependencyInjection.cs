@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IConquestService, ConquestService>();
         services.AddScoped<IConquestDailyPlanService, ConquestDailyPlanService>();
         services.AddScoped<IRiseOfEmpireService, RiseOfEmpireService>();
+        services.AddScoped<IRiseOfEmpireGuildService, RiseOfEmpireGuildService>();
         services.AddSingleton<IGacRulesService, GacRulesService>();
         services.AddSingleton<IGacTelemetry, GacTelemetry>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();
