@@ -25,6 +25,12 @@
 .rote-readiness span { color:var(--text-muted); font-size:.72rem; }
 .rote-planet-meta,.rote-thresholds { display:flex; flex-wrap:wrap; gap:.4rem; margin:.6rem 0; }
 .rote-planet-meta span,.rote-thresholds span { font-size:.75rem; padding:.25rem .45rem; border-radius:999px; background:var(--surface-2); }
+.rote-access { display:flex; gap:.55rem; padding:.65rem; margin:.7rem 0; border:1px solid var(--border-color); border-radius:.75rem; background:var(--surface-2); }
+.rote-access > span { font-weight:800; }
+.rote-access.ready { border-color:color-mix(in srgb,var(--success) 55%,var(--border-color)); }
+.rote-access.missing { border-color:color-mix(in srgb,var(--warning) 65%,var(--border-color)); }
+.rote-access div { display:flex; flex-direction:column; gap:.1rem; }
+.rote-access small { color:var(--text-muted); }
 .rote-missions { display:grid; gap:.45rem; margin:.75rem 0; }
 .rote-mission { display:flex; gap:.55rem; padding:.55rem; border-radius:.7rem; background:var(--surface-2); }
 .rote-mission > span { font-weight:800; }
