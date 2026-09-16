@@ -5,9 +5,9 @@
 <section class="rote-guild-panel">
     <div class="rote-guild-heading">
         <div>
-            <span class="section-kicker">RotE 2.2 · Gremio</span>
-            <h2>Plan conjunto de estrellas, misiones y operaciones</h2>
-            <p>Coordina los rosters del gremio, protege equipos de combate y detecta qué mejoras desbloquean más progreso.</p>
+            <span class="section-kicker">RotE 2.4 · Gremio</span>
+            <h2>Plan conjunto, ejecución y resultados reales</h2>
+            <p>Coordina los rosters del gremio, protege equipos de combate, guía cada intento y registra el resultado real de la TB.</p>
         </div>
         <button class="primary-button" @onclick="SyncGuildAsync" disabled="@Syncing">
             @(Syncing ? "Sincronización en segundo plano…" : "Sincronizar gremio")
@@ -81,7 +81,7 @@
             <div><span>Gremio</span><strong>@Guild.GuildName</strong><small>@Guild.ImportedMembers/@Guild.DetectedMembers rosters</small></div>
             <div><span>GP</span><strong>@Compact(Guild.GuildGalacticPower)</strong><small>disponible por fase</small></div>
             <div><span>Ruta</span><strong>@Guild.ProjectedStars ★</strong><small>sin asumir victorias de combate</small></div>
-            <div><span>Misiones</span><strong>@Guild.CoveredMissions/@Guild.MissionCoverage.Count</strong><small>@Guild.MissionReadyMembers asignaciones listas</small></div>
+            <div><span>Intentos</span><strong>@Guild.PlannedMissionAttempts/@Guild.MissionAttemptTarget</strong><small>@Guild.OperationConflicts conflictos con operaciones</small></div>
         </div>
 
         <div class="rote-guild-bonus-grid">
@@ -108,6 +108,7 @@
         </div>
 
         <RiseOfEmpireGuildMissionCoveragePanel Guild="@Guild" />
+        <RiseOfEmpireGuildExecutionPanel AllyCode="@AllyCode" Guild="@Guild" />
 
         <div class="rote-guild-section-heading">
             <div><span class="section-kicker">Ruta</span><h3>Objetivo de estrellas por fase</h3></div>
@@ -224,10 +225,6 @@
     private bool Loading { get; set; } = true;
     private string? Error { get; set; }
     private bool Syncing => SyncJob is not null && !SyncJob.IsTerminal;
-
-    private decimal OperationPercent => Guild is null || Guild.OperationSlots == 0
-        ? 0m
-        : Guild.FilledOperationSlots * 100m / Guild.OperationSlots;
 
     private IReadOnlyCollection<(RiseOfEmpireApiClient.RiseOfEmpireOperationPlanViewModel Operation, RiseOfEmpireApiClient.RiseOfEmpireOperationMissingSlotViewModel Slot)> MissingOperationSlots => Guild is null
         ? []

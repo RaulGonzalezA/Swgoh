@@ -26,6 +26,8 @@ public static class DependencyInjection
         services.AddScoped<IRiseOfEmpireService, RiseOfEmpireService>();
         services.AddScoped<IRiseOfEmpireMissionGuideService, RiseOfEmpireMissionGuideService>();
         services.AddScoped<IRiseOfEmpireGuildService, RiseOfEmpireGuildService>();
+        services.AddScoped<IRiseOfEmpireExecutionService, RiseOfEmpireExecutionService>();
+        services.AddScoped<IRiseOfEmpireExecutionProgressService, RiseOfEmpireExecutionProgressService>();
         services.AddSingleton<IGacRulesService, GacRulesService>();
         services.AddSingleton<IGacTelemetry, GacTelemetry>();
         services.AddScoped<IGacHistoryService, GacHistoryService>();

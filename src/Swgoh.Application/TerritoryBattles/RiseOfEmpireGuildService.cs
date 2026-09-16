@@ -149,6 +149,12 @@ internal sealed class RiseOfEmpireGuildService(
             availableOperations,
             gameData,
             missionPlanning.Reservations);
+        RiseOfEmpireGuildMissionAttemptPlanning operationalAttempts = RiseOfEmpireGuildMissionAttemptPlanner.Plan(
+            players,
+            gameData,
+            new RiseOfEmpireCombatReservationIndex());
+        IReadOnlyCollection<RiseOfEmpireGuildMemberOperationalPlan> memberPlans =
+            RiseOfEmpireGuildOperationalPlanner.Build(players, operationalAttempts, operationPlans, gameData);
         IReadOnlyCollection<RiseOfEmpireGuildPhasePlan> phases =
             RiseOfEmpireGuildRoutePlanner.Build(guildGp, operationPlans, bonusUnlocks);
         IReadOnlyCollection<RiseOfEmpireAnalysis> individualAnalyses =
@@ -162,7 +168,7 @@ internal sealed class RiseOfEmpireGuildService(
             phases);
 
         warnings.Add("La ruta de estrellas es conservadora: cuenta despliegue y operaciones completas, pero no presupone victorias ni puntos de misiones de combate.");
-        warnings.Add("RotE 2.2 protege en operaciones las piezas de equipos concretos listos o casi listos siempre que exista una alternativa menos crítica.");
+        warnings.Add("RotE 2.4 reserva equipos por miembro y ordena intentos concretos; una donación marcada como conflicto rompe al menos un intento planificado.");
         warnings.Add("El impacto de reliquias sobre la siguiente estrella es un ranking de oportunidad: usa cobertura de misión y el hueco conservador de puntos, no presupone puntos exactos de victoria.");
         warnings.Add("La preparación de Zeffo y Mandalore cuenta miembros con requisitos de roster; la victoria de la misión de desbloqueo no se da por garantizada.");
 
@@ -178,7 +184,8 @@ internal sealed class RiseOfEmpireGuildService(
             operationPlans,
             bonusUnlocks,
             missionPlanning.Coverage,
-            upgrades);
+            upgrades,
+            memberPlans);
     }
 
     private async Task<IReadOnlyCollection<string>> RefreshMembersAsync(

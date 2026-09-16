@@ -27,6 +27,19 @@ internal static class RiseOfEmpireEndpoints
         group.MapPost("/guild/sync", StartGuildSyncAsync)
             .RequireRateLimiting("player-refresh")
             .WithSummary("Queue a background import of the current guild rosters");
+
+        group.MapGet("/guild/execution", GetActiveExecutionAsync)
+            .WithSummary("Get the active Rise of the Empire execution session");
+        group.MapGet("/guild/execution/progress", GetExecutionProgressAsync)
+            .WithSummary("Get aggregated live Rise of the Empire mission progress");
+        group.MapGet("/guild/execution/history", GetExecutionHistoryAsync)
+            .WithSummary("Get recent Rise of the Empire execution sessions");
+        group.MapPost("/guild/execution", StartExecutionAsync)
+            .WithSummary("Start or recover the active Rise of the Empire execution session");
+        group.MapPut("/guild/execution/{sessionId}/missions", UpdateExecutionMissionAsync)
+            .WithSummary("Record a live Rise of the Empire mission result");
+        group.MapPost("/guild/execution/{sessionId}/close", CloseExecutionAsync)
+            .WithSummary("Close the active Rise of the Empire execution session");
         return endpoints;
     }
 
@@ -123,9 +136,139 @@ internal static class RiseOfEmpireEndpoints
         return job is null || job.AllyCode != allyCode ? Results.NotFound() : Results.Ok(job);
     }
 
+    private static async Task<IResult> GetActiveExecutionAsync(
+        long allyCode,
+        IRiseOfEmpireExecutionService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireExecutionSession? session = await service.GetActiveAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            return session is null ? Results.NotFound() : Results.Ok(session);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static async Task<IResult> GetExecutionProgressAsync(
+        long allyCode,
+        IRiseOfEmpireExecutionProgressService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireExecutionProgress? progress = await service.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            return progress is null ? Results.NotFound() : Results.Ok(progress);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static async Task<IResult> GetExecutionHistoryAsync(
+        long allyCode,
+        IRiseOfEmpireExecutionService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            IReadOnlyCollection<RiseOfEmpireExecutionSession> sessions =
+                await service.GetHistoryAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(sessions);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static async Task<IResult> StartExecutionAsync(
+        long allyCode,
+        RiseOfEmpireStartExecutionRequest request,
+        IRiseOfEmpireExecutionService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireExecutionSession session = await service
+                .StartAsync(allyCode, request.Label, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(session);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static async Task<IResult> UpdateExecutionMissionAsync(
+        long allyCode,
+        string sessionId,
+        RiseOfEmpireMissionResultCommand command,
+        IRiseOfEmpireExecutionService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireExecutionSession session = await service
+                .UpdateMissionAsync(allyCode, sessionId, command, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(session);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static async Task<IResult> CloseExecutionAsync(
+        long allyCode,
+        string sessionId,
+        IRiseOfEmpireExecutionService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireExecutionSession session = await service
+                .CloseAsync(allyCode, sessionId, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(session);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static bool IsExecutionException(Exception exception) => exception is
+        ArgumentException or
+        InvalidOperationException or
+        KeyNotFoundException;
+
+    private static IResult ExecutionProblem(Exception exception) => exception switch
+    {
+        KeyNotFoundException => Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "RotE execution not found",
+            detail: exception.Message),
+        InvalidOperationException => Results.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "RotE execution conflict",
+            detail: exception.Message),
+        _ => Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["execution"] = [exception.Message]
+        })
+    };
+
     private static IResult Validation(ArgumentOutOfRangeException exception) =>
         Results.ValidationProblem(new Dictionary<string, string[]>
         {
             ["allyCode"] = [exception.Message]
         });
+
+    private sealed record RiseOfEmpireStartExecutionRequest(string? Label);
 }

@@ -1,0 +1,207 @@
+.rote24-progress-panel {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border-color, #30343b);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.rote24-progress-heading,
+.rote24-progress-controls,
+.rote24-progress-mission header,
+.rote24-progress-members article header,
+.rote24-progress-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.rote24-progress-heading h3 {
+    margin: .15rem 0 .35rem;
+}
+
+.rote24-progress-heading p,
+.rote24-progress-mission small,
+.rote24-progress-members small,
+.rote24-phase-totals span {
+    color: var(--text-muted, #9ea6b0);
+}
+
+.rote24-progress-summary {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .75rem;
+    margin: 1rem 0;
+}
+
+.rote24-progress-summary > div {
+    display: grid;
+    gap: .15rem;
+    padding: .8rem;
+    border-radius: .8rem;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.rote24-progress-summary span,
+.rote24-progress-summary small,
+.rote24-progress-section-title span,
+.rote24-progress-controls label > span {
+    font-size: .78rem;
+    color: var(--text-muted, #9ea6b0);
+}
+
+.rote24-progress-summary strong {
+    font-size: 1.25rem;
+}
+
+.rote24-progress-bar {
+    height: .55rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .08);
+    margin-bottom: 1rem;
+}
+
+.rote24-progress-bar > span {
+    display: block;
+    height: 100%;
+    background: currentColor;
+    opacity: .75;
+}
+
+.rote24-progress-controls {
+    margin: 1rem 0;
+}
+
+.rote24-progress-controls label {
+    display: grid;
+    gap: .3rem;
+}
+
+.rote24-progress-controls select {
+    min-width: 9rem;
+}
+
+.rote24-phase-totals {
+    display: grid;
+    text-align: right;
+}
+
+.rote24-progress-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(18rem, .9fr);
+    gap: 1rem;
+}
+
+.rote24-progress-missions,
+.rote24-progress-members {
+    display: grid;
+    align-content: start;
+    gap: .65rem;
+}
+
+.rote24-progress-mission,
+.rote24-progress-members article {
+    padding: .8rem;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: .8rem;
+    background: rgba(255, 255, 255, .025);
+}
+
+.rote24-progress-mission.complete {
+    opacity: .72;
+}
+
+.rote24-progress-mission header > div,
+.rote24-progress-members article header > div {
+    display: grid;
+}
+
+.rote24-progress-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: .55rem;
+}
+
+.rote24-progress-metrics span,
+.rote24-progress-names span,
+.rote24-progress-members .mission {
+    padding: .2rem .45rem;
+    border-radius: .45rem;
+    background: rgba(255, 255, 255, .055);
+    font-size: .8rem;
+}
+
+.rote24-progress-metrics .gap {
+    font-weight: 700;
+}
+
+.rote24-progress-mission details {
+    margin-top: .55rem;
+}
+
+.rote24-progress-names {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-top: .4rem;
+}
+
+.rote24-progress-members article {
+    display: grid;
+    gap: .45rem;
+}
+
+.rote24-progress-members .mission {
+    display: block;
+}
+
+.rote24-progress-error,
+.rote24-progress-loading,
+.rote24-progress-empty {
+    margin-top: 1rem;
+    padding: .9rem;
+    border-radius: .75rem;
+    background: rgba(255, 255, 255, .04);
+}
+
+.rote24-progress-error {
+    border: 1px solid rgba(220, 80, 80, .45);
+}
+
+.rote24-progress-empty {
+    display: grid;
+    gap: .25rem;
+}
+
+.rote24-progress-empty.compact {
+    margin-top: 0;
+}
+
+@media (max-width: 1000px) {
+    .rote24-progress-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .rote24-progress-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .rote24-progress-heading,
+    .rote24-progress-controls {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .rote24-progress-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .rote24-phase-totals {
+        text-align: left;
+    }
+}
