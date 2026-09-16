@@ -115,7 +115,8 @@ public sealed record RiseOfEmpireGuildSnapshot(
     string GuildId,
     string GuildName,
     long GalacticPower,
-    IReadOnlyCollection<RiseOfEmpireGuildMemberReference> Members);
+    IReadOnlyCollection<RiseOfEmpireGuildMemberReference> Members,
+    IReadOnlyCollection<string> Warnings);
 
 public sealed record RiseOfEmpireGuildMemberReference(
     string PlayerId,
