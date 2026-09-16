@@ -1,3 +1,5 @@
+using Swgoh.Domain.Players;
+
 namespace Swgoh.Application.TerritoryBattles;
 
 public interface IRiseOfEmpireGuildService
@@ -12,6 +14,14 @@ public interface IRiseOfEmpireGuildSource
 {
     Task<RiseOfEmpireGuildSnapshot> GetAsync(
         string guildId,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IRiseOfEmpireGuildPlayerRepository
+{
+    Task<IReadOnlyCollection<PlayerProfile>> FindByGuildIdAsync(
+        string guildId,
+        int maxMembers = 50,
         CancellationToken cancellationToken = default);
 }
 
