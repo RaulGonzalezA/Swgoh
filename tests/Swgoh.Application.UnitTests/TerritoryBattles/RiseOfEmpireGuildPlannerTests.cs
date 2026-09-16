@@ -79,9 +79,9 @@ public sealed class RiseOfEmpireGuildPlannerTests
             [LockedBonus("Zeffo", "Bracca", 30), LockedBonus("Mandalore", "Tatooine", 25)]);
 
         RiseOfEmpireGuildPhasePlan phaseOne = Assert.Single(phases, phase => phase.Phase == 1);
-        Assert.Equal(2, phaseOne.ProjectedStars);
+        Assert.Equal(3, phaseOne.ProjectedStars);
         Assert.True(phaseOne.Planets.Sum(planet => planet.AdditionalDeploymentGalacticPower) <= 240_000_000);
-        Assert.Contains(phaseOne.Planets, planet => planet.TargetStars == 2);
+        Assert.Contains(phaseOne.Planets, planet => planet.TargetStars == 3);
     }
 
     [Fact]
