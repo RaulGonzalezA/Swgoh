@@ -18,6 +18,34 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<RiseOfEmpireAnalysisViewModel>(cancellationToken);
     }
 
+    public Task<RiseOfEmpireGuildAnalysisViewModel?> GetGuildAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default) =>
+        GetGuildCoreAsync(allyCode, sync: false, cancellationToken);
+
+    public Task<RiseOfEmpireGuildAnalysisViewModel?> SyncGuildAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default) =>
+        GetGuildCoreAsync(allyCode, sync: true, cancellationToken);
+
+    private async Task<RiseOfEmpireGuildAnalysisViewModel?> GetGuildCoreAsync(
+        long allyCode,
+        bool sync,
+        CancellationToken cancellationToken)
+    {
+        string url = $"/api/v1/territory-battles/players/{allyCode}/rise-of-the-empire/guild";
+        using HttpResponseMessage response = sync
+            ? await httpClient.PostAsync($"{url}/sync", content: null, cancellationToken)
+            : await httpClient.GetAsync(url, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RiseOfEmpireGuildAnalysisViewModel>(cancellationToken);
+    }
+
     public sealed record RiseOfEmpireAnalysisViewModel(
         long AllyCode,
         string PlayerName,
@@ -87,4 +115,113 @@ public sealed class RiseOfEmpireApiClient(HttpClient httpClient)
         decimal Score,
         IReadOnlyCollection<string> Planets,
         string Reason);
+
+    public sealed record RiseOfEmpireGuildAnalysisViewModel(
+        string GuildId,
+        string GuildName,
+        long GuildGalacticPower,
+        int DetectedMembers,
+        int ImportedMembers,
+        DateTimeOffset GeneratedAtUtc,
+        IReadOnlyCollection<string> Warnings,
+        IReadOnlyCollection<RiseOfEmpireGuildPhasePlanViewModel> Phases,
+        IReadOnlyCollection<RiseOfEmpireOperationPlanViewModel> Operations,
+        IReadOnlyCollection<RiseOfEmpireBonusUnlockViewModel> BonusUnlocks,
+        IReadOnlyCollection<RiseOfEmpireGuildUpgradePriorityViewModel> UpgradePriorities,
+        int ProjectedStars,
+        int OperationSlots,
+        int FilledOperationSlots);
+
+    public sealed record RiseOfEmpireGuildPhasePlanViewModel(
+        int Phase,
+        long AvailableGalacticPower,
+        long ForcedOperationDeploymentGalacticPower,
+        int ProjectedStars,
+        IReadOnlyCollection<RiseOfEmpireGuildPlanetPlanViewModel> Planets);
+
+    public sealed record RiseOfEmpireGuildPlanetPlanViewModel(
+        string PlanetId,
+        string PlanetName,
+        bool IsBonusZone,
+        bool Available,
+        int TargetStars,
+        long StarThreshold,
+        long CompletedOperationPoints,
+        long ForcedOperationDeploymentGalacticPower,
+        long AdditionalDeploymentGalacticPower,
+        string Reason);
+
+    public sealed record RiseOfEmpireOperationPlanViewModel(
+        string Id,
+        int Phase,
+        string PlanetName,
+        string Type,
+        bool IsBonus,
+        long TotalPoints,
+        int TotalSlots,
+        int FilledSlots,
+        long CompletedPoints,
+        long ForcedDeploymentGalacticPower,
+        IReadOnlyCollection<RiseOfEmpireOperationSquadPlanViewModel> Squads);
+
+    public sealed record RiseOfEmpireOperationSquadPlanViewModel(
+        string Id,
+        long Points,
+        bool Complete,
+        IReadOnlyCollection<RiseOfEmpireOperationAssignmentViewModel> Assignments,
+        IReadOnlyCollection<RiseOfEmpireOperationMissingSlotViewModel> MissingSlots);
+
+    public sealed record RiseOfEmpireOperationAssignmentViewModel(
+        string BaseId,
+        string UnitName,
+        bool IsShip,
+        int RequiredRelicTier,
+        long PlayerAllyCode,
+        string PlayerName,
+        int CurrentRelicTier,
+        long UnitGalacticPower,
+        int CombatCriticality,
+        string AssignmentReason);
+
+    public sealed record RiseOfEmpireOperationMissingSlotViewModel(
+        string BaseId,
+        string UnitName,
+        bool IsShip,
+        int RequiredRarity,
+        int RequiredRelicTier,
+        IReadOnlyCollection<RiseOfEmpireNearCandidateViewModel> NearCandidates);
+
+    public sealed record RiseOfEmpireNearCandidateViewModel(
+        long PlayerAllyCode,
+        string PlayerName,
+        int CurrentRarity,
+        int CurrentRelicTier,
+        int RelicsMissing);
+
+    public sealed record RiseOfEmpireBonusUnlockViewModel(
+        string PlanetName,
+        string SourcePlanet,
+        int RequiredClears,
+        int EligibleMembers,
+        bool ProjectedUnlocked,
+        IReadOnlyCollection<RiseOfEmpireGuildMemberReadinessViewModel> Eligible,
+        IReadOnlyCollection<RiseOfEmpireGuildMemberReadinessViewModel> Closest);
+
+    public sealed record RiseOfEmpireGuildMemberReadinessViewModel(
+        long AllyCode,
+        string PlayerName,
+        bool Ready,
+        IReadOnlyCollection<string> MissingRequirements);
+
+    public sealed record RiseOfEmpireGuildUpgradePriorityViewModel(
+        int Rank,
+        long PlayerAllyCode,
+        string PlayerName,
+        string DefinitionId,
+        string UnitName,
+        int CurrentRelicTier,
+        int TargetRelicTier,
+        int RelicsMissing,
+        decimal Score,
+        IReadOnlyCollection<string> Reasons);
 }
