@@ -17,8 +17,11 @@ public sealed record RiseOfEmpireGuildAnalysis(
     public int ProjectedStars => Phases.Sum(phase => phase.ProjectedStars);
     public int OperationSlots => Operations.Sum(operation => operation.TotalSlots);
     public int FilledOperationSlots => Operations.Sum(operation => operation.FilledSlots);
-    public int CoveredMissions => MissionCoverage.Count(mission => mission.ReadyMembers.Count > 0);
+    public int CoveredMissions => MissionCoverage.Count(mission => mission.PlannedMembers.Count > 0);
     public int MissionReadyMembers => MissionCoverage.Sum(mission => mission.ReadyMembers.Count);
+    public int MissionAttemptTarget => MissionCoverage.Sum(mission => mission.TargetAttempts);
+    public int PlannedMissionAttempts => MissionCoverage.Sum(mission => mission.PlannedMembers.Count);
+    public int OverlapBlockedMissionAttempts => MissionCoverage.Sum(mission => mission.OverlapBlockedMembers.Count);
 }
 
 public sealed record RiseOfEmpireGuildPhasePlan(
@@ -113,9 +116,15 @@ public sealed record RiseOfEmpireGuildMissionCoverage(
     string MissionName,
     string Type,
     bool IsFleet,
+    int TargetAttempts,
     int EligibleMembers,
     IReadOnlyCollection<RiseOfEmpireGuildMissionMember> ReadyMembers,
-    IReadOnlyCollection<RiseOfEmpireGuildMissionMember> ClosestMembers);
+    IReadOnlyCollection<RiseOfEmpireGuildMissionMember> PlannedMembers,
+    IReadOnlyCollection<RiseOfEmpireGuildMissionMember> OverlapBlockedMembers,
+    IReadOnlyCollection<RiseOfEmpireGuildMissionMember> ClosestMembers)
+{
+    public int MissingPlannedAttempts => Math.Max(0, TargetAttempts - PlannedMembers.Count);
+}
 
 public sealed record RiseOfEmpireGuildMissionMember(
     long AllyCode,
