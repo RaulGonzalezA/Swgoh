@@ -30,6 +30,8 @@ internal static class RiseOfEmpireEndpoints
 
         group.MapGet("/guild/execution", GetActiveExecutionAsync)
             .WithSummary("Get the active Rise of the Empire execution session");
+        group.MapGet("/guild/execution/progress", GetExecutionProgressAsync)
+            .WithSummary("Get aggregated live Rise of the Empire mission progress");
         group.MapGet("/guild/execution/history", GetExecutionHistoryAsync)
             .WithSummary("Get recent Rise of the Empire execution sessions");
         group.MapPost("/guild/execution", StartExecutionAsync)
@@ -143,6 +145,22 @@ internal static class RiseOfEmpireEndpoints
         {
             RiseOfEmpireExecutionSession? session = await service.GetActiveAsync(allyCode, cancellationToken).ConfigureAwait(false);
             return session is null ? Results.NotFound() : Results.Ok(session);
+        }
+        catch (Exception exception) when (IsExecutionException(exception))
+        {
+            return ExecutionProblem(exception);
+        }
+    }
+
+    private static async Task<IResult> GetExecutionProgressAsync(
+        long allyCode,
+        IRiseOfEmpireExecutionProgressService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            RiseOfEmpireExecutionProgress? progress = await service.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            return progress is null ? Results.NotFound() : Results.Ok(progress);
         }
         catch (Exception exception) when (IsExecutionException(exception))
         {
