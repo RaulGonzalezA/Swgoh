@@ -11,12 +11,13 @@ public sealed class RiseOfEmpireGuildSyncQueueTests
     [Fact]
     public async Task StartAsync_ConcurrentRequestsForSamePlayer_ReusesActiveJob()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var repository = new FakeJobRepository();
         using var queue = new RiseOfEmpireGuildSyncQueue(repository, new FakeClock());
 
         Task<RiseOfEmpireGuildSyncJob>[] starts =
         [
-            .. Enumerable.Range(0, 8).Select(_ => queue.StartAsync(476_825_771))
+            .. Enumerable.Range(0, 8).Select(_ => queue.StartAsync(476_825_771, cancellationToken))
         ];
 
         RiseOfEmpireGuildSyncJob[] jobs = await Task.WhenAll(starts);
@@ -29,12 +30,15 @@ public sealed class RiseOfEmpireGuildSyncQueueTests
     [Fact]
     public async Task StartAsync_AfterTerminalJob_CreatesNewJob()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         var repository = new FakeJobRepository();
         using var queue = new RiseOfEmpireGuildSyncQueue(repository, new FakeClock());
-        RiseOfEmpireGuildSyncJob first = await queue.StartAsync(476_825_771);
-        await repository.UpsertAsync(first with { Status = RiseOfEmpireGuildSyncStatus.Completed });
+        RiseOfEmpireGuildSyncJob first = await queue.StartAsync(476_825_771, cancellationToken);
+        await repository.UpsertAsync(
+            first with { Status = RiseOfEmpireGuildSyncStatus.Completed },
+            cancellationToken);
 
-        RiseOfEmpireGuildSyncJob second = await queue.StartAsync(476_825_771);
+        RiseOfEmpireGuildSyncJob second = await queue.StartAsync(476_825_771, cancellationToken);
 
         Assert.NotEqual(first.Id, second.Id);
         Assert.Equal(2, repository.Jobs.Count);
