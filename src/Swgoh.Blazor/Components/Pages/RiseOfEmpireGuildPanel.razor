@@ -1,0 +1,227 @@
+@rendermode InteractiveServer
+@inject RiseOfEmpireApiClient Client
+
+<section class="rote-guild-panel">
+    <div class="rote-guild-heading">
+        <div>
+            <span class="section-kicker">RotE 2.0 · Gremio</span>
+            <h2>Plan conjunto de estrellas y operaciones</h2>
+            <p>Coordina los rosters del gremio, protege equipos de combate y detecta qué mejoras desbloquean más progreso.</p>
+        </div>
+        <button class="primary-button" @onclick="SyncGuildAsync" disabled="@Syncing">
+            @(Syncing ? "Sincronizando rosters…" : "Sincronizar gremio")
+        </button>
+    </div>
+
+    @if (Loading)
+    {
+        <div class="rote-guild-status"><span class="spinner"></span><span>Cargando el último plan de gremio…</span></div>
+    }
+    else if (Error is not null && Guild is null)
+    {
+        <div class="rote-guild-status error"><strong>No hay plan de gremio disponible.</strong><span>@Error</span></div>
+    }
+    else if (Guild is null)
+    {
+        <div class="rote-guild-empty">
+            <strong>Aún no hay rosters de gremio importados</strong>
+            <p>Sincroniza para detectar los miembros actuales, importar sus rosters y construir operaciones, desbloqueos y ruta de estrellas.</p>
+        </div>
+    }
+    else
+    {
+        @if (Error is not null)
+        {
+            <div class="rote-guild-status error"><span>@Error</span></div>
+        }
+
+        <div class="rote-guild-summary">
+            <div><span>Gremio</span><strong>@Guild.GuildName</strong><small>@Guild.ImportedMembers/@Guild.DetectedMembers rosters</small></div>
+            <div><span>GP</span><strong>@Compact(Guild.GuildGalacticPower)</strong><small>disponible por fase</small></div>
+            <div><span>Ruta</span><strong>@Guild.ProjectedStars ★</strong><small>sin asumir victorias de combate</small></div>
+            <div><span>Operaciones</span><strong>@Guild.FilledOperationSlots/@Guild.OperationSlots</strong><small>@OperationPercent.ToString("0")% de huecos planificados</small></div>
+        </div>
+
+        <div class="rote-guild-bonus-grid">
+            @foreach (RiseOfEmpireApiClient.RiseOfEmpireBonusUnlockViewModel bonus in Guild.BonusUnlocks)
+            {
+                <article class="rote-guild-bonus @(bonus.ProjectedUnlocked ? "ready" : "missing")">
+                    <div>
+                        <span>@(bonus.ProjectedUnlocked ? "✓" : "🔒")</span>
+                        <div><strong>@bonus.PlanetName</strong><small>desde @bonus.SourcePlanet</small></div>
+                    </div>
+                    <strong>@bonus.EligibleMembers / @bonus.RequiredClears</strong>
+                    <small>@(bonus.ProjectedUnlocked ? "rosters suficientes para intentar el desbloqueo" : $"faltan {Math.Max(0, bonus.RequiredClears - bonus.EligibleMembers)} miembros preparados")</small>
+                    @if (!bonus.ProjectedUnlocked && bonus.Closest.Count > 0)
+                    {
+                        <div class="rote-guild-near">
+                            @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildMemberReadinessViewModel member in bonus.Closest.Take(4))
+                            {
+                                <span><strong>@member.PlayerName</strong> · @string.Join(", ", member.MissingRequirements)</span>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+
+        <div class="rote-guild-section-heading">
+            <div><span class="section-kicker">Ruta</span><h3>Objetivo de estrellas por fase</h3></div>
+        </div>
+        <div class="rote-guild-phase-grid">
+            @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildPhasePlanViewModel phase in Guild.Phases)
+            {
+                <article class="rote-guild-phase">
+                    <header><strong>Fase @phase.Phase</strong><span>@phase.ProjectedStars ★</span></header>
+                    <small>@Compact(phase.ForcedOperationDeploymentGalacticPower) GP ya comprometido en operaciones</small>
+                    @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildPlanetPlanViewModel planet in phase.Planets)
+                    {
+                        <div class="rote-guild-route @(planet.Available ? string.Empty : "locked")">
+                            <div><strong>@planet.PlanetName</strong><small>@(planet.IsBonusZone ? "Bonus · " : string.Empty)@planet.Reason</small></div>
+                            <span>@(planet.Available ? $"{planet.TargetStars} ★" : "🔒")</span>
+                            @if (planet.Available && planet.TargetStars > 0)
+                            {
+                                <small>Ops @Compact(planet.CompletedOperationPoints) · desplegar +@Compact(planet.AdditionalDeploymentGalacticPower)</small>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+
+        <div class="rote-guild-columns">
+            <section>
+                <div class="rote-guild-section-heading">
+                    <div><span class="section-kicker">Operaciones</span><h3>Cuellos de botella</h3></div>
+                </div>
+                @if (MissingOperationSlots.Count == 0)
+                {
+                    <div class="rote-guild-empty compact"><strong>Operaciones cubiertas</strong><span>No hay huecos bloqueantes con los rosters importados.</span></div>
+                }
+                else
+                {
+                    <div class="rote-guild-list">
+                        @foreach ((RiseOfEmpireApiClient.RiseOfEmpireOperationPlanViewModel Operation, RiseOfEmpireApiClient.RiseOfEmpireOperationMissingSlotViewModel Slot) item in MissingOperationSlots.Take(10))
+                        {
+                            <article>
+                                <div><strong>@item.Slot.UnitName</strong><small>@item.Operation.PlanetName · F@item.Operation.Phase · @(item.Slot.IsShip ? "7★" : $"R{item.Slot.RequiredRelicTier}")</small></div>
+                                @if (item.Slot.NearCandidates.Count > 0)
+                                {
+                                    <span>@item.Slot.NearCandidates.First().PlayerName · R@item.Slot.NearCandidates.First().CurrentRelicTier</span>
+                                }
+                                else
+                                {
+                                    <span>sin candidato cercano</span>
+                                }
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section>
+                <div class="rote-guild-section-heading">
+                    <div><span class="section-kicker">Inversión</span><h3>Qué debe mejorar cada jugador</h3></div>
+                </div>
+                @if (Guild.UpgradePriorities.Count == 0)
+                {
+                    <div class="rote-guild-empty compact">No hay mejoras inmediatas detectadas.</div>
+                }
+                else
+                {
+                    <div class="rote-guild-list">
+                        @foreach (RiseOfEmpireApiClient.RiseOfEmpireGuildUpgradePriorityViewModel priority in Guild.UpgradePriorities.Take(12))
+                        {
+                            <article>
+                                <span class="rank">#@priority.Rank</span>
+                                <div><strong>@priority.PlayerName · @priority.UnitName</strong><small>R@priority.CurrentRelicTier → R@priority.TargetRelicTier · @priority.ReasonSummary</small></div>
+                                <span>@priority.Score.ToString("0")</span>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+
+        @if (Guild.Warnings.Count > 0)
+        {
+            <details class="rote-guild-warnings">
+                <summary>Supuestos y avisos (@Guild.Warnings.Count)</summary>
+                @foreach (string warning in Guild.Warnings)
+                {
+                    <p>@warning</p>
+                }
+            </details>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public long AllyCode { get; set; }
+
+    private RiseOfEmpireApiClient.RiseOfEmpireGuildAnalysisViewModel? Guild { get; set; }
+    private bool Loading { get; set; } = true;
+    private bool Syncing { get; set; }
+    private string? Error { get; set; }
+
+    private decimal OperationPercent => Guild is null || Guild.OperationSlots == 0
+        ? 0m
+        : Guild.FilledOperationSlots * 100m / Guild.OperationSlots;
+
+    private IReadOnlyCollection<(RiseOfEmpireApiClient.RiseOfEmpireOperationPlanViewModel Operation, RiseOfEmpireApiClient.RiseOfEmpireOperationMissingSlotViewModel Slot)> MissingOperationSlots => Guild is null
+        ? []
+        : [
+            .. Guild.Operations
+                .SelectMany(operation => operation.Squads
+                    .Where(squad => !squad.Complete)
+                    .SelectMany(squad => squad.MissingSlots.Select(slot => (operation, slot))))
+                .OrderBy(item => item.operation.Phase)
+                .ThenBy(item => item.slot.NearCandidates.Count == 0 ? 0 : item.slot.NearCandidates.Min(candidate => candidate.RelicsMissing))
+        ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Loading = true;
+        Error = null;
+        try
+        {
+            Guild = await Client.GetGuildAsync(AllyCode);
+        }
+        catch (HttpRequestException exception)
+        {
+            Error = exception.StatusCode == System.Net.HttpStatusCode.Conflict
+                ? "Actualiza primero el jugador para disponer de su gremio."
+                : "No se ha podido cargar el plan de gremio almacenado.";
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    private async Task SyncGuildAsync()
+    {
+        Syncing = true;
+        Error = null;
+        try
+        {
+            Guild = await Client.SyncGuildAsync(AllyCode);
+        }
+        catch (HttpRequestException exception)
+        {
+            Error = exception.StatusCode == System.Net.HttpStatusCode.Conflict
+                ? "El perfil actual no tiene un gremio importado. Actualiza primero el jugador."
+                : "La sincronización del gremio no se ha podido completar.";
+        }
+        finally
+        {
+            Syncing = false;
+        }
+    }
+
+    private static string Compact(long value) => value >= 1_000_000_000
+        ? $"{value / 1_000_000_000d:0.##}B"
+        : value >= 1_000_000
+            ? $"{value / 1_000_000d:0.#}M"
+            : $"{value / 1_000d:0.#}K";
+}
