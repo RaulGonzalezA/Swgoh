@@ -27,6 +27,7 @@ public sealed record RiseOfEmpirePlanetAnalysis(
     int EligibleCharacterCount,
     int ReadyTeamCount,
     decimal ReadinessPercent,
+    RiseOfEmpireMissionReadiness? AccessRequirement,
     IReadOnlyCollection<RiseOfEmpireTeamRecommendation> RecommendedTeams,
     IReadOnlyCollection<RiseOfEmpireMissionReadiness> Missions);
 
