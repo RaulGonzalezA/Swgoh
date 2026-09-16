@@ -12,7 +12,8 @@ public sealed record RiseOfEmpireGuildAnalysis(
     IReadOnlyCollection<RiseOfEmpireOperationPlan> Operations,
     IReadOnlyCollection<RiseOfEmpireBonusUnlockReadiness> BonusUnlocks,
     IReadOnlyCollection<RiseOfEmpireGuildMissionCoverage> MissionCoverage,
-    IReadOnlyCollection<RiseOfEmpireGuildUpgradePriority> UpgradePriorities)
+    IReadOnlyCollection<RiseOfEmpireGuildUpgradePriority> UpgradePriorities,
+    IReadOnlyCollection<RiseOfEmpireGuildMemberOperationalPlan> MemberPlans)
 {
     public int ProjectedStars => Phases.Sum(phase => phase.ProjectedStars);
     public int OperationSlots => Operations.Sum(operation => operation.TotalSlots);
@@ -22,7 +23,50 @@ public sealed record RiseOfEmpireGuildAnalysis(
     public int MissionAttemptTarget => MissionCoverage.Sum(mission => mission.TargetAttempts);
     public int PlannedMissionAttempts => MissionCoverage.Sum(mission => mission.PlannedMembers.Count);
     public int OverlapBlockedMissionAttempts => MissionCoverage.Sum(mission => mission.OverlapBlockedMembers.Count);
+    public int OperationConflicts => MemberPlans.Sum(member => member.Phases.Sum(phase => phase.OperationConflicts.Count));
 }
+
+public sealed record RiseOfEmpireGuildMemberOperationalPlan(
+    long AllyCode,
+    string PlayerName,
+    IReadOnlyCollection<RiseOfEmpireGuildMemberPhaseOperationalPlan> Phases);
+
+public sealed record RiseOfEmpireGuildMemberPhaseOperationalPlan(
+    int Phase,
+    IReadOnlyCollection<RiseOfEmpireMemberMissionAttemptPlan> MissionAttempts,
+    IReadOnlyCollection<RiseOfEmpireMemberOperationDonationPlan> SafeOperationDonations,
+    IReadOnlyCollection<RiseOfEmpireMemberOperationDonationPlan> OperationConflicts,
+    IReadOnlyCollection<RiseOfEmpireReservedUnitPlan> ReservedUnits);
+
+public sealed record RiseOfEmpireMemberMissionAttemptPlan(
+    int Order,
+    string PlanetId,
+    string PlanetName,
+    string MissionId,
+    string MissionName,
+    string TeamName,
+    IReadOnlyCollection<RiseOfEmpireOperationalUnit> Units);
+
+public sealed record RiseOfEmpireOperationalUnit(
+    string DefinitionId,
+    string UnitName,
+    bool Required);
+
+public sealed record RiseOfEmpireMemberOperationDonationPlan(
+    string OperationId,
+    string PlanetName,
+    string SquadId,
+    string DefinitionId,
+    string UnitName,
+    int RequiredRelicTier,
+    int CurrentRelicTier,
+    bool BreaksPlannedAttempt,
+    string Reason);
+
+public sealed record RiseOfEmpireReservedUnitPlan(
+    string DefinitionId,
+    string UnitName,
+    IReadOnlyCollection<string> MissionNames);
 
 public sealed record RiseOfEmpireGuildPhasePlan(
     int Phase,
