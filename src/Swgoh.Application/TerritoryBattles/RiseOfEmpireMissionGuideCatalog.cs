@@ -18,7 +18,7 @@ internal static class RiseOfEmpireMissionGuideCatalog
                     Team("Lord Vader · misión", "Alta", "Equipo centrado en la unidad requerida.",
                         C("Lord Vader", 5, "LORDVADER"), C("Darth Vader", 5, "DARTHVADER"), C("Royal Guard", 5, "ROYALGUARD"), C("Maul", 5, "MAULS7", "Maul"), C("Grand Moff Tarkin", 5, "GRANDMOFFTARKIN")),
                     C("Lord Vader", 5, "LORDVADER")),
-                Fleet("mustafar-fleet", "Flota Dark Side", "Naves a 7★", 
+                Fleet("mustafar-fleet", "Flota Dark Side", "Naves a 7★",
                     FleetTeam("Imperio con Scythe", "Alta", "Flota imperial de referencia para Mustafar.",
                         S("Executrix", "CAPITALTARKIN", "Executrix"), S("Scythe", "SCYTHE"), S("TIE Advanced x1", "TIEADVANCED"), S("Imperial TIE Fighter", "TIEFIGHTERIMPERIAL"), S("TIE Bomber", "TIEBOMBER")))
             ],
@@ -36,7 +36,7 @@ internal static class RiseOfEmpireMissionGuideCatalog
                     Team("Qi'ra · Rey · Vandor", "Alta", "Composición de referencia centrada en aguante y recuperación.",
                         C("Qi'ra", 5, "QIRA"), C("Rey", 5, "GLREY", "Rey"), C("Vandor Chewbacca", 5, "VANDORCHEWBACCA"), C("L3-37", 5, "L3_37", "L3-37"), C("Young Han Solo", 5, "YOUNGHAN")),
                     C("Qi'ra", 5, "QIRA"), C("Young Han Solo", 5, "YOUNGHAN")),
-                Fleet("corellia-fleet", "Flota · Lando's Millennium Falcon", "Lando's Millennium Falcon a 7★", 
+                Fleet("corellia-fleet", "Flota · Lando's Millennium Falcon", "Lando's Millennium Falcon a 7★",
                     FleetTeam("Profundity con Lando", "Media", "Mantiene la nave requerida dentro de una flota Rebel funcional.",
                         S("Profundity", "PROFUNDITY"), S("Han's Millennium Falcon", "MILLENNIUMFALCON"), S("Outrider", "OUTRIDER"), S("Rebel Y-wing", "YWINGREBEL"), S("Lando's Millennium Falcon", "MILLENNIUMFALCONPRISTINE", "Lando's Millennium Falcon")),
                     S("Lando's Millennium Falcon", "MILLENNIUMFALCONPRISTINE", "Lando's Millennium Falcon"))
@@ -50,7 +50,7 @@ internal static class RiseOfEmpireMissionGuideCatalog
                     Team("JML · Mace · Kit", "Alta", "JML aporta margen al nodo con dos plazas fijadas.",
                         C("Jedi Master Luke Skywalker", 5, "JEDIMASTERLUKE"), C("Mace Windu", 5, "MACEWINDU"), C("Kit Fisto", 5, "KITFISTO"), C("Jedi Knight Luke Skywalker", 5, "JEDIKNIGHTLUKE"), C("Hermit Yoda", 5, "HERMITYODA")),
                     C("Mace Windu", 5, "MACEWINDU"), C("Kit Fisto", 5, "KITFISTO")),
-                Fleet("coruscant-fleet", "Flota · Outrider", "Outrider a 7★", 
+                Fleet("coruscant-fleet", "Flota · Outrider", "Outrider a 7★",
                     FleetTeam("Profundity", "Alta", "La flota Rebel estándar ya incorpora Outrider.",
                         S("Profundity", "PROFUNDITY"), S("Rebel Y-wing", "YWINGREBEL"), S("Han's Millennium Falcon", "MILLENNIUMFALCON"), S("Outrider", "OUTRIDER"), S("Phantom II", "PHANTOM2")),
                     S("Outrider", "OUTRIDER"))
@@ -65,7 +65,7 @@ internal static class RiseOfEmpireMissionGuideCatalog
                 Combat("geonosis-geos", "Geonosianos", "5 Geonosianos R6+", 6,
                     Team("Geonosianos", "Alta", "Composición completa de Geonosianos.",
                         C("Geonosian Brood Alpha", 6, "GEONOSIANBROODALPHA"), C("Geonosian Spy", 6, "GEONOSIANSPY"), C("Geonosian Soldier", 6, "GEONOSIANSOLDIER"), C("Sun Fac", 6, "SUNFAC"), C("Poggle the Lesser", 6, "POGGLETHELESSER"))),
-                Fleet("geonosis-fleet", "Flota Dark Side", "Naves a 7★", 
+                Fleet("geonosis-fleet", "Flota Dark Side", "Naves a 7★",
                     FleetTeam("Executor", "Alta", "Flota Dark Side consistente para la fase 2.",
                         S("Executor", "CAPITALEXECUTOR", "Executor"), S("Hound's Tooth", "HOUNDSTOOTH"), S("Razor Crest", "RAZORCREST"), S("Xanadu Blood", "XANADUBLOOD"), S("IG-2000", "IG2000")))
             ],
