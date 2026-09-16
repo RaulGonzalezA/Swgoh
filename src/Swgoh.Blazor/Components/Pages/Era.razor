@@ -1,0 +1,248 @@
+@page "/era/{AllyCode:long}"
+@using Swgoh.Blazor.Clients
+@inject EraApiClient EraClient
+
+<PageTitle>Era & Coliseo</PageTitle>
+
+<section class="era-shell">
+    @if (_loading)
+    {
+        <div class="era-state">Analizando la Era actual y tu roster…</div>
+    }
+    else if (_error is not null)
+    {
+        <div class="era-state error">@_error</div>
+    }
+    else if (_analysis is null)
+    {
+        <div class="era-state">No hay un jugador importado con ese ally code.</div>
+    }
+    else
+    {
+        <header class="era-hero">
+            <div>
+                <span class="section-kicker">Era actual · @_analysis.EraName</span>
+                <h1>Era & Coliseo</h1>
+                <p>Progreso de las nuevas figuras, Journey de Darth Jar Jar y guía de Coliseo basada en el roster importado.</p>
+            </div>
+            <div class="era-version">
+                <strong>@_analysis.CatalogVersion</strong>
+                <span>catálogo · desde @_analysis.StartedOn.ToString("dd/MM/yyyy")</span>
+            </div>
+        </header>
+
+        <div class="era-summary">
+            <article>
+                <span>Figuras de Era</span>
+                <strong>@_analysis.OwnedUnits/@_analysis.TotalUnits</strong>
+                <small>detectadas en roster</small>
+            </article>
+            <article>
+                <span>Darth Jar Jar</span>
+                <strong>@_analysis.Journey.StarReadyTiers/@_analysis.Journey.Tiers.Count</strong>
+                <small>tiers con estrellas listas</small>
+            </article>
+            <article>
+                <span>Coliseo</span>
+                <strong>T@_analysis.Coliseum.MaxTier</strong>
+                <small>@_analysis.Coliseum.OwnedEraUnits unidades de Era propias</small>
+            </article>
+        </div>
+
+        @if (!_analysis.Coliseum.EraLevelIsAvailableFromRoster)
+        {
+            <div class="era-warning">
+                <strong>Era Level todavía requiere comprobación manual.</strong>
+                <span>El roster público que guarda la aplicación no expone EL; estrellas, reliquias y propiedad sí se cruzan automáticamente.</span>
+            </div>
+        }
+
+        <section class="era-section">
+            <div class="era-section-heading">
+                <div>
+                    <span class="section-kicker">Roster</span>
+                    <h2>Nuevas figuras de Myths & Legends</h2>
+                </div>
+            </div>
+
+            <div class="era-units">
+                @foreach (EraApiClient.EraUnitStatusViewModel unit in _analysis.Units)
+                {
+                    <article class="era-unit @(unit.Owned ? "owned" : "missing")">
+                        <div class="era-unit-top">
+                            @if (unit.Owned)
+                            {
+                                <RichUnitPortrait Name="@unit.Name"
+                                                  ThumbnailName="@unit.ThumbnailName"
+                                                  RelicTier="@unit.RelicTier" />
+                            }
+                            else
+                            {
+                                <div class="era-unit-placeholder" aria-hidden="true">?</div>
+                            }
+                            <div>
+                                <span>@unit.Alignment · @unit.Role</span>
+                                <h3>@unit.Name</h3>
+                                <div class="era-tags">
+                                    @foreach (string category in unit.Categories)
+                                    {
+                                        <small>@category</small>
+                                    }
+                                    @if (unit.IsJourneyUnit)
+                                    {
+                                        <small class="journey">Journey</small>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (unit.Owned)
+                        {
+                            <div class="era-unit-stats">
+                                <span><strong>@unit.Stars★</strong> estrellas</span>
+                                <span><strong>R@unit.RelicTier</strong> reliquia</span>
+                                <span><strong>@FormatGp(unit.GalacticPower)</strong> GP</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="era-unit-missing">No detectada en el roster importado</div>
+                        }
+
+                        <p><strong>Sinergia:</strong> @unit.PrimarySynergy</p>
+                        <small class="era-unit-note">@unit.Notes</small>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="era-section">
+            <div class="era-section-heading">
+                <div>
+                    <span class="section-kicker">Journey Guide</span>
+                    <h2>Camino a @_analysis.Journey.UnitName</h2>
+                    <p>Las estrellas se validan contra tu roster. Los requisitos de Era Level se muestran aparte hasta que la fuente pública los exponga.</p>
+                </div>
+            </div>
+
+            <div class="journey-grid">
+                @foreach (EraApiClient.EraJourneyTierProgressViewModel tier in _analysis.Journey.Tiers)
+                {
+                    <article class="journey-tier @(tier.StarRequirementsMet ? "ready" : "blocked")">
+                        <header>
+                            <div>
+                                <span>Tier @tier.Tier</span>
+                                <strong>@tier.RequiredStars★ requeridas</strong>
+                            </div>
+                            <span class="journey-status">@(tier.StarRequirementsMet ? "ESTRELLAS OK" : "FALTAN ESTRELLAS")</span>
+                        </header>
+
+                        <div class="journey-required">
+                            @foreach (string unit in tier.RequiredUnits)
+                            {
+                                <span>@unit</span>
+                            }
+                        </div>
+
+                        @if (tier.MissingStarRequirements.Count > 0)
+                        {
+                            <div class="journey-gaps">
+                                @foreach (string gap in tier.MissingStarRequirements)
+                                {
+                                    <small>@gap</small>
+                                }
+                            </div>
+                        }
+
+                        <div class="journey-el">
+                            <strong>Era Level · comprobar en juego</strong>
+                            @foreach (EraApiClient.EraLevelRequirementViewModel requirement in tier.EraLevelRequirements)
+                            {
+                                <span>@requirement.UnitName → EL @requirement.EraLevel</span>
+                            }
+                        </div>
+                        <footer>@tier.RewardSummary</footer>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="era-section">
+            <div class="era-section-heading">
+                <div>
+                    <span class="section-kicker">Coliseo</span>
+                    <h2>Planner de la rotación actual</h2>
+                    <p>Úsalo como guía de preparación: la puntuación real y las Loaned Units siguen siendo parte del intento en juego.</p>
+                </div>
+            </div>
+
+            <div class="coliseum-bosses">
+                @foreach (EraApiClient.ColiseumBossViewModel boss in _analysis.Coliseum.Bosses)
+                {
+                    <article>
+                        <span>Boss</span>
+                        <h3>@boss.Name</h3>
+                        <p>@boss.StrategyNote</p>
+                        <small>@boss.RotationNote</small>
+                    </article>
+                }
+            </div>
+
+            <div class="coliseum-lower">
+                <article class="coliseum-tiers">
+                    <h3>Escalado de tiers</h3>
+                    @foreach (EraApiClient.ColiseumTierGuidanceViewModel tier in _analysis.Coliseum.TierGuidance)
+                    {
+                        <div>
+                            <strong>T@tier.Tier</strong>
+                            <span>@(tier.RecommendedEraLevel is int el ? $"EL {el}+" : "EL no fijado")</span>
+                            <small>@tier.Note</small>
+                        </div>
+                    }
+                </article>
+
+                <article class="coliseum-guidance">
+                    <h3>Cómo usarlo</h3>
+                    @foreach (string guidance in _analysis.Coliseum.GeneralGuidance)
+                    {
+                        <p>@guidance</p>
+                    }
+                </article>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private EraApiClient.EraAnalysisViewModel? _analysis;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _analysis = await EraClient.GetCurrentAsync(AllyCode);
+        }
+        catch (HttpRequestException exception)
+        {
+            _error = $"No se pudo cargar el análisis de Era: {exception.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FormatGp(long value) => value switch
+    {
+        >= 1_000_000 => $"{value / 1_000_000m:0.#}M",
+        >= 1_000 => $"{value / 1_000m:0.#}K",
+        _ => value.ToString()
+    };
+}

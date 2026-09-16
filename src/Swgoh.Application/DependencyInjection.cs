@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using Swgoh.Application.Conquest;
+using Swgoh.Application.Eras;
 using Swgoh.Application.Gac;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
@@ -23,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<ISquadService, SquadService>();
         services.AddScoped<IConquestService, ConquestService>();
         services.AddScoped<IConquestDailyPlanService, ConquestDailyPlanService>();
+        services.AddScoped<IEraService, EraService>();
         services.AddScoped<IRiseOfEmpireService, RiseOfEmpireService>();
         services.AddScoped<IRiseOfEmpireMissionGuideService, RiseOfEmpireMissionGuideService>();
         services.AddScoped<IRiseOfEmpireGuildService, RiseOfEmpireGuildService>();

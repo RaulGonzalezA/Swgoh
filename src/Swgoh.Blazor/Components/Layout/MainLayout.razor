@@ -48,6 +48,10 @@
                     <span class="command-nav-icon" aria-hidden="true">C</span>
                     <span>Conquista</span>
                 </NavLink>
+                <NavLink href="@($"/era/{allyCode}")" Match="NavLinkMatch.All">
+                    <span class="command-nav-icon" aria-hidden="true">✦</span>
+                    <span>Era & Coliseo</span>
+                </NavLink>
                 <NavLink href="@($"/territory-battles/{allyCode}/rise-of-the-empire")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">T</span>
                     <span>RotE</span>
@@ -61,6 +65,7 @@
                 <span class="command-nav-disabled"><span class="command-nav-icon">E</span>Estrategia</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">O</span>Round Optimizer</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">C</span>Conquista</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">✦</span>Era & Coliseo</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">T</span>RotE</span>
             }
 
@@ -140,6 +145,9 @@
                 <NavLink href="@($"/gac/{moreAllyCode}/round-optimizer")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
                     <span class="command-nav-icon">O</span><span><strong>Round Optimizer</strong><small>Optimiza defensa y ataque juntos</small></span>
                 </NavLink>
+                <NavLink href="@($"/era/{moreAllyCode}")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                    <span class="command-nav-icon">✦</span><span><strong>Era & Coliseo</strong><small>Figuras, Journey y bosses actuales</small></span>
+                </NavLink>
                 <NavLink href="@($"/territory-battles/{moreAllyCode}/rise-of-the-empire")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
                     <span class="command-nav-icon">T</span><span><strong>RotE</strong><small>Planetas, equipos y mejoras</small></span>
                 </NavLink>
@@ -154,6 +162,9 @@
                 </span>
                 <span class="command-mobile-more-disabled">
                     <span class="command-nav-icon">O</span><span><strong>Round Optimizer</strong><small>Selecciona primero un jugador</small></span>
+                </span>
+                <span class="command-mobile-more-disabled">
+                    <span class="command-nav-icon">✦</span><span><strong>Era & Coliseo</strong><small>Selecciona primero un jugador</small></span>
                 </span>
                 <span class="command-mobile-more-disabled">
                     <span class="command-nav-icon">T</span><span><strong>RotE</strong><small>Selecciona primero un jugador</small></span>
@@ -216,6 +227,7 @@
             string path = new Uri(Navigation.Uri).AbsolutePath;
             return path.Equals("/data", StringComparison.OrdinalIgnoreCase) ||
                    path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
+                   path.StartsWith("/era/", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith("/planner", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith("/strategy", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith("/round-optimizer", StringComparison.OrdinalIgnoreCase) ||
@@ -283,7 +295,7 @@
         string[] segments = new Uri(location).AbsolutePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (segments.Length < 2 ||
-            (segments[0] is not "player" and not "gac" and not "conquest" and not "territory-battles"))
+            (segments[0] is not "player" and not "gac" and not "conquest" and not "era" and not "territory-battles"))
         {
             return null;
         }
