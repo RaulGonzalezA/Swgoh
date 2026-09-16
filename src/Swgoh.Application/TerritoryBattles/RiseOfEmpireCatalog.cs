@@ -14,10 +14,10 @@ internal static class RiseOfEmpireCatalog
     private static readonly RiseOfEmpireMissionDefinition MandaloreUnlock = CombinedMission(
         "Desbloqueo de Mandalore desde Tatooine",
         "Special Unlock",
-        "5 Mandalorianos R7+, incluyendo Bo-Katan (Mand'alor) y The Mandalorian (Beskar Armor)",
+        "Bo-Katan (Mand'alor) + The Mandalorian (Beskar Armor) + otro Mandaloriano, todos R7+",
         7,
         "mandalor",
-        5,
+        3,
         [Unit("Bo-Katan (Mand'alor)", "BOKATANMANDALORE"), Unit("The Mandalorian (Beskar Armor)", "THEMANDALORIANBESKARARMOR")]);
 
     public static IReadOnlyCollection<RiseOfEmpirePlanetDefinition> Planets { get; } =

@@ -1,0 +1,276 @@
+using System.Collections.Concurrent;
+
+using Swgoh.Application.Abstractions;
+using Swgoh.Application.GameData;
+using Swgoh.Application.Players;
+using Swgoh.Domain.Players;
+
+namespace Swgoh.Application.TerritoryBattles;
+
+internal sealed class RiseOfEmpireGuildService(
+    IPlayerProfileService playerProfileService,
+    IRiseOfEmpireGuildPlayerRepository playerRepository,
+    IRiseOfEmpireGuildSource guildSource,
+    IRiseOfEmpireOperationsCatalog operationsCatalog,
+    ISwgohGameDataCatalog gameDataCatalog,
+    IRiseOfEmpireService individualService,
+    IClock clock) : IRiseOfEmpireGuildService, IRiseOfEmpireGuildSyncRunner
+{
+    internal const int MaxGuildMembers = 50;
+    internal const int MaxRefreshParallelism = 6;
+    private const int MaxAnalysisParallelism = 8;
+
+    public Task<RiseOfEmpireGuildAnalysis?> GetAsync(
+        long allyCode,
+        bool refreshGuildRoster,
+        CancellationToken cancellationToken = default) =>
+        GetCoreAsync(allyCode, refreshGuildRoster, progress: null, cancellationToken);
+
+    public Task<RiseOfEmpireGuildAnalysis?> SyncAsync(
+        long allyCode,
+        IRiseOfEmpireGuildSyncProgressSink progress,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        return GetCoreAsync(allyCode, refreshGuildRoster: true, progress, cancellationToken);
+    }
+
+    private async Task<RiseOfEmpireGuildAnalysis?> GetCoreAsync(
+        long allyCode,
+        bool refreshGuildRoster,
+        IRiseOfEmpireGuildSyncProgressSink? progress,
+        CancellationToken cancellationToken)
+    {
+        PlayerProfile? seed = await playerProfileService.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
+        if (seed is null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(seed.GuildId))
+        {
+            throw new InvalidOperationException("El jugador no tiene un gremio disponible en el perfil importado.");
+        }
+
+        var warnings = new List<string>();
+        RiseOfEmpireGuildSnapshot? snapshot = null;
+        if (refreshGuildRoster)
+        {
+            if (progress is not null)
+            {
+                await progress.ReportAsync(
+                    new RiseOfEmpireGuildSyncProgress(RiseOfEmpireGuildSyncStatus.DiscoveringMembers, 0, 0, 0),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            snapshot = await guildSource.GetAsync(seed.GuildId, cancellationToken).ConfigureAwait(false);
+            warnings.AddRange(snapshot.Warnings);
+            RiseOfEmpireGuildMemberReference[] members = [.. snapshot.Members.Take(MaxGuildMembers)];
+            if (snapshot.DetectedMembers > MaxGuildMembers)
+            {
+                warnings.Add($"Comlink devolvió {snapshot.DetectedMembers} miembros; RotE limita la sincronización a {MaxGuildMembers}.");
+            }
+
+            if (progress is not null)
+            {
+                await progress.ReportAsync(
+                    new RiseOfEmpireGuildSyncProgress(
+                        RiseOfEmpireGuildSyncStatus.RefreshingMembers,
+                        members.Length,
+                        0,
+                        0,
+                        GuildId: snapshot.GuildId,
+                        GuildName: snapshot.GuildName),
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            warnings.AddRange(await RefreshMembersAsync(members, progress, snapshot, cancellationToken).ConfigureAwait(false));
+        }
+        else
+        {
+            warnings.Add("El plan usa los rosters de gremio almacenados. Sincroniza el gremio para actualizar miembros y reliquias.");
+        }
+
+        PlayerProfile[] cached =
+        [
+            .. await playerRepository.FindByGuildIdAsync(seed.GuildId, MaxGuildMembers, cancellationToken).ConfigureAwait(false)
+        ];
+        PlayerProfile[] players = FilterCurrentMembers(cached, snapshot);
+        if (!players.Any(player => player.AllyCode == seed.AllyCode))
+        {
+            players = [.. players, seed];
+        }
+
+        int detectedMembers = Math.Min(snapshot?.DetectedMembers ?? players.Length, MaxGuildMembers);
+        string guildName = snapshot?.GuildName ?? seed.GuildName ?? "Gremio";
+        long guildGp = snapshot?.GalacticPower > 0
+            ? snapshot.GalacticPower
+            : players.Sum(player => player.GalacticPower);
+        if (detectedMembers > players.Length)
+        {
+            warnings.Add($"Se detectaron {detectedMembers} miembros, pero hay {players.Length} rosters utilizables; operaciones y mejoras usan solo los importados.");
+        }
+
+        if (progress is not null)
+        {
+            int failedMembers = Math.Max(0, detectedMembers - players.Length);
+            await progress.ReportAsync(
+                new RiseOfEmpireGuildSyncProgress(
+                    RiseOfEmpireGuildSyncStatus.BuildingPlan,
+                    detectedMembers,
+                    detectedMembers,
+                    failedMembers,
+                    GuildId: snapshot?.GuildId ?? seed.GuildId,
+                    GuildName: guildName),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        Task<IReadOnlyCollection<RiseOfEmpireOperationDefinition>> operationsTask = operationsCatalog.GetAsync(cancellationToken);
+        Task<GameDataCatalog> gameDataTask = gameDataCatalog.GetAsync(cancellationToken);
+        await Task.WhenAll(operationsTask, gameDataTask).ConfigureAwait(false);
+        IReadOnlyCollection<RiseOfEmpireOperationDefinition> operationDefinitions = await operationsTask.ConfigureAwait(false);
+        GameDataCatalog gameData = await gameDataTask.ConfigureAwait(false);
+
+        IReadOnlyCollection<RiseOfEmpireBonusUnlockReadiness> bonusUnlocks =
+            RiseOfEmpireBonusUnlockAnalyzer.Analyze(players, gameData);
+        HashSet<string> unlockedBonusPlanets = bonusUnlocks
+            .Where(unlock => unlock.ProjectedUnlocked)
+            .Select(unlock => unlock.PlanetName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        RiseOfEmpireOperationDefinition[] availableOperations =
+        [
+            .. operationDefinitions.Where(operation =>
+                !operation.IsBonus || unlockedBonusPlanets.Contains(operation.PlanetName))
+        ];
+
+        IReadOnlyCollection<RiseOfEmpireOperationPlan> operationPlans =
+            RiseOfEmpireOperationAllocator.Allocate(players, availableOperations, gameData);
+        IReadOnlyCollection<RiseOfEmpireGuildPhasePlan> phases =
+            RiseOfEmpireGuildRoutePlanner.Build(guildGp, operationPlans, bonusUnlocks);
+        IReadOnlyCollection<RiseOfEmpireAnalysis> individualAnalyses =
+            await GetIndividualAnalysesAsync(players, cancellationToken).ConfigureAwait(false);
+        IReadOnlyCollection<RiseOfEmpireGuildUpgradePriority> upgrades =
+            RiseOfEmpireGuildUpgradePlanner.Build(players, operationPlans, individualAnalyses, gameData);
+
+        warnings.Add("La ruta de estrellas es conservadora: cuenta despliegue y operaciones completas, pero no presupone victorias ni puntos de misiones de combate.");
+        warnings.Add("La preparación de Zeffo y Mandalore cuenta miembros con requisitos de roster; la victoria de la misión de desbloqueo no se da por garantizada.");
+
+        return new RiseOfEmpireGuildAnalysis(
+            snapshot?.GuildId ?? seed.GuildId,
+            guildName,
+            guildGp,
+            detectedMembers,
+            players.Length,
+            clock.UtcNow,
+            [.. warnings.Distinct(StringComparer.OrdinalIgnoreCase)],
+            phases,
+            operationPlans,
+            bonusUnlocks,
+            upgrades);
+    }
+
+    private async Task<IReadOnlyCollection<string>> RefreshMembersAsync(
+        IReadOnlyCollection<RiseOfEmpireGuildMemberReference> members,
+        IRiseOfEmpireGuildSyncProgressSink? progress,
+        RiseOfEmpireGuildSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (members.Count == 0)
+        {
+            return ["El gremio no devolvió miembros utilizables para sincronizar."];
+        }
+
+        var warnings = new ConcurrentBag<string>();
+        int completed = 0;
+        int failed = 0;
+        int maxParallelism = Math.Min(MaxRefreshParallelism, members.Count);
+        using var semaphore = new SemaphoreSlim(maxParallelism, maxParallelism);
+        Task[] tasks =
+        [
+            .. members.Select(async member =>
+            {
+                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await playerProfileService.RefreshFromGameAsync(member.AllyCode, cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException)
+                {
+                    Interlocked.Increment(ref failed);
+                    warnings.Add($"No se pudo actualizar el roster de {member.PlayerName}.");
+                }
+                catch (InvalidOperationException)
+                {
+                    Interlocked.Increment(ref failed);
+                    warnings.Add($"No se pudo persistir o analizar el roster de {member.PlayerName}.");
+                }
+                finally
+                {
+                    int done = Interlocked.Increment(ref completed);
+                    semaphore.Release();
+                    if (progress is not null)
+                    {
+                        await progress.ReportAsync(
+                            new RiseOfEmpireGuildSyncProgress(
+                                RiseOfEmpireGuildSyncStatus.RefreshingMembers,
+                                members.Count,
+                                done,
+                                Volatile.Read(ref failed),
+                                member.PlayerName,
+                                snapshot.GuildId,
+                                snapshot.GuildName),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            })
+        ];
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+        return [.. warnings.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private async Task<IReadOnlyCollection<RiseOfEmpireAnalysis>> GetIndividualAnalysesAsync(
+        IReadOnlyCollection<PlayerProfile> players,
+        CancellationToken cancellationToken)
+    {
+        var analyses = new ConcurrentBag<RiseOfEmpireAnalysis>();
+        using var semaphore = new SemaphoreSlim(MaxAnalysisParallelism, MaxAnalysisParallelism);
+        Task[] tasks =
+        [
+            .. players.Select(async player =>
+            {
+                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    RiseOfEmpireAnalysis? analysis = await individualService.GetAsync(player.AllyCode, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (analysis is not null)
+                    {
+                        analyses.Add(analysis);
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            })
+        ];
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+        return [.. analyses];
+    }
+
+    private static PlayerProfile[] FilterCurrentMembers(
+        IReadOnlyCollection<PlayerProfile> cached,
+        RiseOfEmpireGuildSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return [.. cached];
+        }
+
+        HashSet<long> current = snapshot.Members
+            .Take(MaxGuildMembers)
+            .Select(member => member.AllyCode)
+            .ToHashSet();
+        return [.. cached.Where(player => current.Contains(player.AllyCode))];
+    }
+}

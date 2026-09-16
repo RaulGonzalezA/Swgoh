@@ -26,7 +26,11 @@ builder.Services.AddHttpClient<GacAttackExecutionApiClient>(client => client.Bas
 builder.Services.AddHttpClient<GacHistoryApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddHttpClient<RiseOfEmpireApiClient>(client => client.BaseAddress = new Uri("https+http://api"));
+builder.Services.AddHttpClient<RiseOfEmpireApiClient>(client =>
+{
+    client.BaseAddress = new Uri("https+http://api");
+    client.Timeout = TimeSpan.FromMinutes(10);
+});
 builder.Services.AddScoped<PlayerSessionState>();
 builder.Services.AddScoped<PlayerPreferenceService>();
 builder.Services.AddScoped<PlayerContextService>();
