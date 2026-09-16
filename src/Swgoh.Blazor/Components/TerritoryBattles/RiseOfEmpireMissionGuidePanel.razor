@@ -1,0 +1,123 @@
+@using Swgoh.Blazor.Clients
+@inject RiseOfEmpireMissionGuideApiClient Client
+
+<section class="rote21-panel" aria-labelledby="rote21-title">
+    <div class="planner-section-heading">
+        <div>
+            <span class="section-kicker">RotE 2.1</span>
+            <h2 id="rote21-title">Equipos concretos por misión y flotas</h2>
+            <p>Composiciones de referencia cruzadas con tu roster. Las restricciones de entrada se separan de la recomendación táctica.</p>
+        </div>
+        @if (Analysis is not null)
+        {
+            <div class="rote21-summary">
+                <strong>@Analysis.ReadyTeams</strong><span>equipos listos</span>
+                <strong>@Analysis.ReadyFleetTeams</strong><span>flotas listas</span>
+            </div>
+        }
+    </div>
+
+    @if (Loading)
+    {
+        <UiLoadingState Title="Preparando equipos de misión" Description="Cruzo personajes, reliquias, naves y estrellas con las guías RotE 2.1." />
+    }
+    else if (Error is not null)
+    {
+        <UiAlert Tone="warning" Icon="!" Title="No se han podido cargar las guías 2.1" Description="@Error" />
+    }
+    else if (Analysis is null)
+    {
+        <UiEmptyState Icon="R" Title="Sin guías disponibles" Description="Actualiza el roster para calcular equipos concretos y flotas." />
+    }
+    else
+    {
+        @foreach (RiseOfEmpireMissionGuideApiClient.PlanetMissionGuidesViewModel planet in Analysis.Planets)
+        {
+            <details class="rote21-planet" open="@(planet.Phase <= 3)">
+                <summary>
+                    <span><strong>Fase @planet.Phase · @planet.PlanetName</strong><small>@planet.Missions.Count misiones guiadas</small></span>
+                    <span>@planet.Missions.Sum(mission => mission.ReadyTeamCount) listas</span>
+                </summary>
+                <div class="rote21-mission-grid">
+                    @foreach (RiseOfEmpireMissionGuideApiClient.MissionGuideViewModel mission in planet.Missions)
+                    {
+                        <article class="rote21-mission @(mission.IsFleet ? "fleet" : string.Empty)">
+                            <header>
+                                <div>
+                                    <span class="rote21-type">@(mission.IsFleet ? "FLOTA" : mission.Type.ToUpperInvariant())</span>
+                                    <h3>@mission.Name</h3>
+                                    <p>@mission.Requirement</p>
+                                </div>
+                                <span class="rote21-status @(mission.Eligible ? "ready" : "missing")">
+                                    @(mission.Eligible ? "ENTRADA OK" : "FALTA REQUISITO")
+                                </span>
+                            </header>
+
+                            @if (!mission.Eligible && mission.MissingRequirements.Count > 0)
+                            {
+                                <div class="rote21-missing-requirements">@string.Join(" · ", mission.MissingRequirements)</div>
+                            }
+
+                            @foreach (RiseOfEmpireMissionGuideApiClient.ConcreteTeamViewModel team in mission.RecommendedTeams.Take(2))
+                            {
+                                <div class="rote21-team @(team.Ready ? "ready" : string.Empty)">
+                                    <div class="rote21-team-heading">
+                                        <div><strong>@team.Name</strong><small>Confianza @team.Confidence.ToLowerInvariant()</small></div>
+                                        <span>@team.ReadyUnits/@team.RequiredUnits @(team.Ready ? "LISTO" : "")</span>
+                                    </div>
+                                    <div class="rote21-unit-row">
+                                        @foreach (RiseOfEmpireMissionGuideApiClient.GuideUnitViewModel unit in team.Units)
+                                        {
+                                            <div class="rote21-unit @(unit.Ready ? "ready" : "missing")" title="@unit.Name · @unit.Requirement">
+                                                <strong>@ShortName(unit.Name)</strong>
+                                                <small>@(unit.IsShip ? $"{unit.Rarity}★" : $"R{unit.RelicTier}")</small>
+                                            </div>
+                                        }
+                                    </div>
+                                    @if (team.MissingUnits.Count > 0)
+                                    {
+                                        <div class="rote21-gap"><strong>Falta:</strong> @string.Join(" · ", team.MissingUnits)</div>
+                                    }
+                                    <p class="rote21-rationale">@team.Rationale</p>
+                                </div>
+                            }
+                        </article>
+                    }
+                </div>
+            </details>
+        }
+        <p class="rote21-note">Las composiciones son guías de referencia: “listo” significa que tu roster cumple las piezas y niveles del equipo, no que la victoria esté garantizada.</p>
+    }
+</section>
+
+@code {
+    [Parameter] public long AllyCode { get; set; }
+
+    private RiseOfEmpireMissionGuideApiClient.MissionGuideAnalysisViewModel? Analysis { get; set; }
+    private bool Loading { get; set; } = true;
+    private string? Error { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Loading = true;
+        Error = null;
+        try
+        {
+            Analysis = await Client.GetAsync(AllyCode);
+        }
+        catch (HttpRequestException)
+        {
+            Error = "La API de equipos de misión no está disponible en este momento.";
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    private static string ShortName(string name)
+    {
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length <= 1 ? name[..Math.Min(name.Length, 10)] : string.Concat(parts.Take(2).Select(part => part[0]));
+    }
+}

@@ -59,6 +59,60 @@ public sealed record RiseOfEmpireMissionReadiness(
     bool Ready,
     IReadOnlyCollection<string> MissingRequirements);
 
+public sealed record RiseOfEmpireMissionGuideAnalysis(
+    long AllyCode,
+    string PlayerName,
+    DateTimeOffset RosterUpdatedAtUtc,
+    string CatalogVersion,
+    IReadOnlyCollection<RiseOfEmpirePlanetMissionGuides> Planets)
+{
+    public int ReadyTeams => Planets.SelectMany(planet => planet.Missions).Sum(mission => mission.ReadyTeamCount);
+    public int ReadyFleetTeams => Planets.SelectMany(planet => planet.Missions)
+        .Where(mission => mission.IsFleet)
+        .Sum(mission => mission.ReadyTeamCount);
+}
+
+public sealed record RiseOfEmpirePlanetMissionGuides(
+    string PlanetId,
+    string PlanetName,
+    int Phase,
+    IReadOnlyCollection<RiseOfEmpireMissionGuide> Missions);
+
+public sealed record RiseOfEmpireMissionGuide(
+    string Id,
+    string Name,
+    string Type,
+    string Requirement,
+    bool IsFleet,
+    int MinimumRelicTier,
+    bool Eligible,
+    IReadOnlyCollection<string> MissingRequirements,
+    IReadOnlyCollection<RiseOfEmpireConcreteTeamRecommendation> RecommendedTeams)
+{
+    public int ReadyTeamCount => RecommendedTeams.Count(team => team.Ready);
+}
+
+public sealed record RiseOfEmpireConcreteTeamRecommendation(
+    string Name,
+    string Confidence,
+    bool Ready,
+    int ReadyUnits,
+    int RequiredUnits,
+    IReadOnlyCollection<RiseOfEmpireGuideUnit> Units,
+    IReadOnlyCollection<string> MissingUnits,
+    string Rationale);
+
+public sealed record RiseOfEmpireGuideUnit(
+    string DefinitionId,
+    string Name,
+    string? ThumbnailName,
+    bool IsShip,
+    int Rarity,
+    int RelicTier,
+    long GalacticPower,
+    bool Ready,
+    string Requirement);
+
 public sealed record RiseOfEmpireUpgradePriority(
     int Rank,
     string DefinitionId,
