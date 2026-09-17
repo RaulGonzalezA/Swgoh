@@ -18,7 +18,7 @@ else if (_error is not null)
         </UiCard>
     }
 }
-else if (_plan is not null && ShouldRender)
+else if (_plan is not null && HasVisiblePlan)
 {
     <section class="farm-plan @(Compact ? "compact" : string.Empty)">
         <div class="farm-plan-heading">
@@ -31,7 +31,7 @@ else if (_plan is not null && ShouldRender)
             {
                 <div class="farm-plan-summary">
                     <span><strong>@_plan.ActiveTargetCount</strong> objetivos</span>
-                    <span><strong>@_plan.MissingResourceTypes</strong> déficits</span>
+                    <span><strong>@(_plan.HasInventorySnapshot ? _plan.MissingResourceTypes.ToString() : "—")</strong> déficits</span>
                     <span><strong>@_plan.SharedBottleneckCount</strong> compartidos</span>
                 </div>
             }
@@ -173,7 +173,7 @@ else if (_plan is not null && ShouldRender)
         }
     }
 
-    private bool ShouldRender => _plan is not null &&
+    private bool HasVisiblePlan => _plan is not null &&
         (_plan.ActiveTargetCount > 0 || !Compact || !string.IsNullOrWhiteSpace(DefinitionId));
 
     private string Heading => !string.IsNullOrWhiteSpace(DefinitionId)
@@ -222,7 +222,7 @@ else if (_plan is not null && ShouldRender)
 
     private static string ResourceGap(FarmingPlanApiClient.ResourcePriorityViewModel resource) => resource.Missing switch
     {
-        > 0 => $"faltan {resource.Missing.Value:N0}",
+        long missing when missing > 0 => $"faltan {missing:N0}",
         0 => "cubierto",
         _ => $"necesitas {resource.Required:N0}"
     };
