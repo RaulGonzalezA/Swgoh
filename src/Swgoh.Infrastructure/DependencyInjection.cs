@@ -9,6 +9,7 @@ using Swgoh.Application.Abstractions;
 using Swgoh.Application.Conquest;
 using Swgoh.Application.Gac;
 using Swgoh.Application.GameData;
+using Swgoh.Application.Investments;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
 using Swgoh.Application.TerritoryBattles;
@@ -57,6 +58,11 @@ public static class DependencyInjection
                     {
                         Name = PlayerSnapshotMongoRepository.AllyCodeCapturedAtIndexName
                     }));
+
+        services.AddMongoRepository<PlayerInventoryDocument, long>(
+            PlayerInventoryMongoRepository.CollectionName,
+            inventory => inventory.AllyCode,
+            collection => collection.CreateIfMissing());
 
         services.AddMongoRepository<SquadDefinitionDocument, string>(
             SquadMongoRepository.CollectionName,
@@ -289,6 +295,7 @@ public static class DependencyInjection
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPlayerRepository, PlayerMongoRepository>();
         services.AddSingleton<IPlayerSnapshotRepository, PlayerSnapshotMongoRepository>();
+        services.AddSingleton<IPlayerInventoryRepository, PlayerInventoryMongoRepository>();
         services.AddSingleton<ISquadRepository, SquadMongoRepository>();
         services.AddSingleton<IConquestPlanRepository, ConquestPlanMongoRepository>();
         services.AddSingleton<IRiseOfEmpireExecutionRepository, RiseOfEmpireExecutionMongoRepository>();
