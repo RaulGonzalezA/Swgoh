@@ -1,0 +1,150 @@
+@using Swgoh.Blazor.Clients
+@inject InvestmentApiClient InvestmentClient
+
+@if (!_loading && (_targets.Count > 0 || !Compact))
+{
+    <section class="target-plan @(Compact ? "compact" : string.Empty)">
+        <div class="target-plan-heading">
+            <div>
+                <span class="section-kicker">Plan activo</span>
+                <h2>@(Compact ? "Siguiente mejora" : "Objetivos persistentes")</h2>
+                <p>@(Compact ? "Tu objetivo guardado más reciente, recalculado con el roster actual." : "Tus objetivos manuales se mantienen separados del ranking analítico y muestran el progreso real.")</p>
+            </div>
+            @if (_targets.Count > 0)
+            {
+                <div class="target-plan-summary">
+                    <strong>@ActiveTargets.Count</strong><span>activos</span>
+                    @if (!Compact)
+                    {
+                        <strong>@CompletedTargets.Count</strong><span>completados</span>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="target-plan-state">@_error</p>
+        }
+        else if (_targets.Count == 0)
+        {
+            <div class="target-plan-empty">
+                <strong>Aún no has marcado objetivos.</strong>
+                <span>Abre cualquier Unit 360 para fijar una reliquia o estrellas objetivo.</span>
+                <a class="secondary-button button-link" href="@($"/player/{AllyCode}")">Abrir roster</a>
+            </div>
+        }
+        else
+        {
+            <div class="target-plan-list">
+                @foreach (InvestmentApiClient.TargetViewModel target in VisibleTargets)
+                {
+                    <article class="target-plan-card @(target.Completed ? "complete" : "active")">
+                        <div class="target-plan-unit">
+                            @if (!string.IsNullOrWhiteSpace(target.ThumbnailName))
+                            {
+                                <img src="@PortraitUrl(target.ThumbnailName)" alt="" loading="lazy" />
+                            }
+                            <div>
+                                <span>@(target.Completed ? "Completado" : $"{target.Progress:P0} del objetivo")</span>
+                                <h3>@target.Name</h3>
+                                <strong>@target.SuggestedAction</strong>
+                            </div>
+                        </div>
+                        <div class="target-plan-progress" aria-label="Progreso @target.Progress:P0">
+                            <span style="@($"width:{Math.Clamp(target.Progress * 100m, 0m, 100m):0.#}%")"></span>
+                        </div>
+                        <div class="target-plan-facts">
+                            @if (target.RelicStepsRemaining > 0)
+                            {
+                                <span><strong>@target.RelicStepsRemaining</strong> relic steps</span>
+                            }
+                            @if (target.StarStepsRemaining > 0)
+                            {
+                                <span><strong>@target.StarStepsRemaining</strong> estrellas</span>
+                            }
+                            @if (target.Inventory is not null)
+                            {
+                                <span><strong>@target.Inventory.Coverage.ToString("P0")</strong> materiales</span>
+                                @if (target.Inventory.MissingResourceTypes > 0)
+                                {
+                                    <span><strong>@target.Inventory.MissingResourceTypes</strong> recursos pendientes</span>
+                                }
+                            }
+                        </div>
+                        @if (!Compact && target.Inventory is not null && !target.Inventory.MaterialsReady)
+                        {
+                            <div class="target-plan-missing">
+                                @foreach (InvestmentApiClient.ResourceNeedViewModel need in target.Inventory.Resources.Where(item => item.Missing > 0).OrderByDescending(item => item.Missing).Take(5))
+                                {
+                                    <span>@need.ResourceName: <strong>-@need.Missing.ToString("N0")</strong></span>
+                                }
+                            </div>
+                        }
+                        <a class="secondary-button button-link" href="@UnitHref(target)">Abrir Unit 360 →</a>
+                    </article>
+                }
+            </div>
+
+            @if (Compact && _targets.Count > 1)
+            {
+                <a class="target-plan-more" href="@($"/investments/{AllyCode}")">Ver los @_targets.Count objetivos en Investment Optimizer →</a>
+            }
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public long AllyCode { get; set; }
+    [Parameter] public bool Compact { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private IReadOnlyCollection<InvestmentApiClient.TargetViewModel> _targets = [];
+    private long? _loadedAllyCode;
+
+    private IReadOnlyCollection<InvestmentApiClient.TargetViewModel> ActiveTargets =>
+        [.. _targets.Where(target => !target.Completed)];
+
+    private IReadOnlyCollection<InvestmentApiClient.TargetViewModel> CompletedTargets =>
+        [.. _targets.Where(target => target.Completed)];
+
+    private IEnumerable<InvestmentApiClient.TargetViewModel> VisibleTargets => Compact
+        ? ActiveTargets.Take(1).Concat(ActiveTargets.Count == 0 ? CompletedTargets.Take(1) : [])
+        : _targets;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedAllyCode == AllyCode)
+        {
+            return;
+        }
+
+        _loadedAllyCode = AllyCode;
+        _loading = true;
+        _error = null;
+        try
+        {
+            _targets = await InvestmentClient.GetTargetsAsync(AllyCode);
+        }
+        catch (Exception exception)
+        {
+            _error = $"No se pudo cargar el plan activo: {exception.Message}";
+            _targets = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string UnitHref(InvestmentApiClient.TargetViewModel target) =>
+        $"/player/{AllyCode}/units/{Uri.EscapeDataString(target.DefinitionId)}";
+
+    private static string PortraitUrl(string thumbnailName)
+    {
+        string assetName = thumbnailName.Trim();
+        if (!assetName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) assetName += ".png";
+        return "/unit-assets/" + Uri.EscapeDataString(assetName);
+    }
+}
