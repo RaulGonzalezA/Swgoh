@@ -11,11 +11,18 @@ public sealed class GacAttackExecutionApiClient(HttpClient httpClient)
         string status,
         int? banners,
         string? notes,
+        IReadOnlyCollection<string>? remainingEnemyUnitDefinitionIds = null,
+        bool preloadedTurnMeter = false,
         CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response = await httpClient.PostAsJsonAsync(
             $"/api/v1/gac/players/{allyCode}/planner/current/attacks/{attackId}/result",
-            new ExecuteAttackRequest(status, banners, notes),
+            new ExecuteAttackRequest(
+                status,
+                banners,
+                notes,
+                remainingEnemyUnitDefinitionIds,
+                preloadedTurnMeter),
             cancellationToken);
         if (response.IsSuccessStatusCode)
         {
@@ -37,7 +44,12 @@ public sealed class GacAttackExecutionApiClient(HttpClient httpClient)
 
     public sealed record ExecutionResult(ExecutionEnvelopeViewModel? Envelope, string? Message);
 
-    public sealed record ExecuteAttackRequest(string Status, int? Banners, string? Notes);
+    public sealed record ExecuteAttackRequest(
+        string Status,
+        int? Banners,
+        string? Notes,
+        IReadOnlyCollection<string>? RemainingEnemyUnitDefinitionIds = null,
+        bool PreloadedTurnMeter = false);
 
     public sealed record ExecutionEnvelopeViewModel(
         GacPlannerApiClient.PlannerViewModel Planner,
@@ -53,5 +65,11 @@ public sealed class GacAttackExecutionApiClient(HttpClient httpClient)
         Guid AttackId,
         string Status,
         int? Banners,
-        string? Notes);
+        string? Notes,
+        IReadOnlyCollection<string>? RemainingEnemyUnitDefinitionIds = null,
+        bool PreloadedTurnMeter = false,
+        bool IsCleanup = false)
+    {
+        public IReadOnlyCollection<string> EnemySurvivors => RemainingEnemyUnitDefinitionIds ?? [];
+    }
 }
