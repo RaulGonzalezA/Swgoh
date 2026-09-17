@@ -28,6 +28,10 @@
                     <span class="command-nav-icon" aria-hidden="true">R</span>
                     <span>Roster</span>
                 </NavLink>
+                <NavLink href="@($"/investments/{allyCode}")" Match="NavLinkMatch.All">
+                    <span class="command-nav-icon" aria-hidden="true">I</span>
+                    <span>Inversiones</span>
+                </NavLink>
                 <NavLink href="@($"/gac/{allyCode}")" Match="NavLinkMatch.All">
                     <span class="command-nav-icon" aria-hidden="true">G</span>
                     <span>GAC</span>
@@ -60,6 +64,7 @@
             else
             {
                 <span class="command-nav-disabled"><span class="command-nav-icon">R</span>Roster</span>
+                <span class="command-nav-disabled"><span class="command-nav-icon">I</span>Inversiones</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">G</span>GAC</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">P</span>Planner</span>
                 <span class="command-nav-disabled"><span class="command-nav-icon">E</span>Estrategia</span>
@@ -136,6 +141,9 @@
             </div>
             @if (NavigationAllyCode is long moreAllyCode)
             {
+                <NavLink href="@($"/investments/{moreAllyCode}")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
+                    <span class="command-nav-icon">I</span><span><strong>Inversiones</strong><small>Prioridades globales de mejora</small></span>
+                </NavLink>
                 <NavLink href="@($"/gac/{moreAllyCode}/planner")" Match="NavLinkMatch.All" @onclick="CloseMobileMore">
                     <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Diseña y ejecuta la ronda</small></span>
                 </NavLink>
@@ -154,6 +162,9 @@
             }
             else
             {
+                <span class="command-mobile-more-disabled">
+                    <span class="command-nav-icon">I</span><span><strong>Inversiones</strong><small>Selecciona primero un jugador</small></span>
+                </span>
                 <span class="command-mobile-more-disabled">
                     <span class="command-nav-icon">P</span><span><strong>Planner</strong><small>Selecciona primero un jugador</small></span>
                 </span>
@@ -227,6 +238,7 @@
             string path = new Uri(Navigation.Uri).AbsolutePath;
             return path.Equals("/data", StringComparison.OrdinalIgnoreCase) ||
                    path.Equals("/settings", StringComparison.OrdinalIgnoreCase) ||
+                   path.StartsWith("/investments/", StringComparison.OrdinalIgnoreCase) ||
                    path.StartsWith("/era/", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith("/planner", StringComparison.OrdinalIgnoreCase) ||
                    path.EndsWith("/strategy", StringComparison.OrdinalIgnoreCase) ||
@@ -295,7 +307,7 @@
         string[] segments = new Uri(location).AbsolutePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (segments.Length < 2 ||
-            (segments[0] is not "player" and not "gac" and not "conquest" and not "era" and not "territory-battles"))
+            (segments[0] is not "player" and not "investments" and not "gac" and not "conquest" and not "era" and not "territory-battles"))
         {
             return null;
         }

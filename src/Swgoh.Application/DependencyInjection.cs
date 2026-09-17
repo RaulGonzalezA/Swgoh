@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Swgoh.Application.Conquest;
 using Swgoh.Application.Eras;
 using Swgoh.Application.Gac;
+using Swgoh.Application.Investments;
 using Swgoh.Application.Players;
 using Swgoh.Application.Squads;
 using Swgoh.Application.TerritoryBattles;
@@ -58,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IGacAttackPlanOptimizerService, HardenedGacAttackPlanOptimizerService>();
         services.AddScoped<IGacJointRoundOptimizerService, GacJointRoundOptimizerService>();
         services.AddScoped<IGacAttackExecutionService, GacAttackExecutionService>();
+        services.AddScoped<IInvestmentOptimizerService, InvestmentOptimizerService>();
         return services;
     }
 }

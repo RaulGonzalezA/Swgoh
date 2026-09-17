@@ -119,6 +119,7 @@ app.MapConquestEndpoints();
 app.MapConquestDailyPlanEndpoints();
 app.MapEraEndpoints();
 app.MapRiseOfEmpireEndpoints();
+app.MapInvestmentEndpoints();
 app.MapGacEndpoints();
 app.MapGacScoutingCacheEndpoints();
 app.MapGacPlannerEndpoints();
