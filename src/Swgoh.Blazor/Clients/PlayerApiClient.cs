@@ -90,6 +90,28 @@ public sealed class PlayerApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<RosterPageViewModel>(cancellationToken);
     }
 
+    public async Task<RosterUnitViewModel?> GetUnitAsync(
+        long allyCode,
+        string definitionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionId);
+
+        string normalizedDefinitionId = definitionId.Trim();
+        RosterPageViewModel? roster = await GetRosterAsync(
+            allyCode,
+            page: 1,
+            pageSize: 100,
+            search: normalizedDefinitionId,
+            orderBy: "DefinitionId",
+            direction: "Ascending",
+            cancellationToken: cancellationToken);
+
+        return roster?.Items.FirstOrDefault(unit =>
+            string.Equals(unit.DefinitionId, normalizedDefinitionId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(unit.Id, normalizedDefinitionId, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static void AppendOptional(StringBuilder query, string name, object? value)
     {
         if (value is null)
