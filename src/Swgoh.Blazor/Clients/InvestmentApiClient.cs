@@ -57,6 +57,71 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
             ?? throw new InvalidOperationException("Inventory API returned an empty response after saving.");
     }
 
+    public async Task<IReadOnlyCollection<TargetViewModel>> GetTargetsAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            $"/api/v1/investments/players/{allyCode}/targets",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IReadOnlyCollection<TargetViewModel>>(cancellationToken) ?? [];
+    }
+
+    public async Task<TargetViewModel?> GetTargetAsync(
+        long allyCode,
+        string definitionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionId);
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            $"/api/v1/investments/players/{allyCode}/targets/{Uri.EscapeDataString(definitionId.Trim())}",
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TargetViewModel>(cancellationToken);
+    }
+
+    public async Task<TargetViewModel> SaveTargetAsync(
+        long allyCode,
+        string definitionId,
+        int? targetRelicTier,
+        int? targetStars,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionId);
+        var request = new TargetUpdateViewModel(targetRelicTier, targetStars);
+        using HttpResponseMessage response = await httpClient.PutAsJsonAsync(
+            $"/api/v1/investments/players/{allyCode}/targets/{Uri.EscapeDataString(definitionId.Trim())}",
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TargetViewModel>(cancellationToken)
+            ?? throw new InvalidOperationException("Investment target API returned an empty response after saving.");
+    }
+
+    public async Task<bool> DeleteTargetAsync(
+        long allyCode,
+        string definitionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(definitionId);
+        using HttpResponseMessage response = await httpClient.DeleteAsync(
+            $"/api/v1/investments/players/{allyCode}/targets/{Uri.EscapeDataString(definitionId.Trim())}",
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public enum InvestmentModuleViewModel
     {
         Gac = 1,
@@ -105,6 +170,25 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         int MissingResourceTypes,
         string Summary,
         IReadOnlyCollection<ResourceNeedViewModel> Resources);
+
+    public sealed record TargetViewModel(
+        long AllyCode,
+        string DefinitionId,
+        string Name,
+        string? ThumbnailName,
+        bool IsShip,
+        int CurrentRelicTier,
+        int CurrentStars,
+        int? TargetRelicTier,
+        int? TargetStars,
+        bool Completed,
+        decimal Progress,
+        int RelicStepsRemaining,
+        int StarStepsRemaining,
+        string SuggestedAction,
+        InventoryFitViewModel? Inventory,
+        DateTimeOffset CreatedAtUtc,
+        DateTimeOffset UpdatedAtUtc);
 
     public sealed record RecommendationViewModel(
         int Rank,
@@ -181,4 +265,8 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         string Id,
         string Name,
         long Quantity);
+
+    private sealed record TargetUpdateViewModel(
+        int? TargetRelicTier,
+        int? TargetStars);
 }
