@@ -6,7 +6,7 @@
         <div>
             <span class="section-kicker">Modo ejecución</span>
             <h2 id="gac-execution-title">Ataca, registra el resultado y recalcula</h2>
-            <p>Los equipos usados quedan consumidos. Victoria o fallo alimentan tu histórico personal y el siguiente ataque se recalcula automáticamente.</p>
+            <p>Los equipos usados quedan consumidos. Si fallas, indica qué enemigos sobreviven y si quedan con TM precargado para que el siguiente counter se calcule como cleanup real.</p>
         </div>
         <div class="gac-execution-summary">
             <span><strong>@PlannedAttacks.Count</strong> preparados</span>
@@ -25,8 +25,23 @@
             <div>
                 <span>@(LastExecution.Execution.Status == "Won" ? "✓ Resultado registrado" : "× Fallo registrado")</span>
                 <strong>@ExecutionLabel(LastExecution.Execution)</strong>
+                @if (LastExecution.Execution.IsCleanup)
+                {
+                    <span class="gac-live-badge">Cleanup</span>
+                }
+                @if (LastExecution.Execution.PreloadedTurnMeter)
+                {
+                    <span class="gac-live-badge danger">TM precargado</span>
+                }
             </div>
-            <small>El resultado ya forma parte de tu aprendizaje personal y el plan ha sido recalculado.</small>
+            @if (LastExecution.Execution.Status == "Failed")
+            {
+                <small>@LastExecution.Execution.EnemySurvivors.Count enemigo(s) siguen vivos. El siguiente cálculo ya usa esa defensa reducida.</small>
+            }
+            else
+            {
+                <small>El resultado ya forma parte de tu aprendizaje personal y el plan ha sido recalculado.</small>
+            }
         </div>
 
         @if (LastExecution.NextRecommendation is not null)
@@ -113,7 +128,7 @@
         <div class="gac-execution-editor">
             <div class="gac-execution-editor-heading">
                 <div>
-                    <span>Intento #@selectedAttack.Attempt</span>
+                    <span>@(selectedAttack.IsCleanup ? "Cleanup" : "Ataque") · intento #@selectedAttack.Attempt</span>
                     <strong>@selectedAttack.Team.Name</strong>
                     <small>@(selectedDefense?.Label ?? selectedDefense?.Squad.Leader.Name ?? "Defensa rival")</small>
                 </div>
@@ -185,6 +200,37 @@
                 </button>
             </div>
 
+            @if (ExecutionStatus == "Failed" && selectedDefense is not null)
+            {
+                <div class="gac-live-state-editor">
+                    <div class="gac-live-state-heading">
+                        <div>
+                            <span class="section-kicker">Estado que queda</span>
+                            <strong>Marca los enemigos que siguen vivos</strong>
+                            <small>El siguiente counter se calculará únicamente contra estas unidades.</small>
+                        </div>
+                        <span class="gac-live-count">@RemainingEnemyUnits.Count / @selectedDefense.Squad.AllUnits.Count vivos</span>
+                    </div>
+                    <div class="gac-survivor-grid">
+                        @foreach (GacPlannerApiClient.PlannerUnitViewModel unit in selectedDefense.Squad.AllUnits)
+                        {
+                            bool survives = RemainingEnemyUnits.Contains(unit.DefinitionId);
+                            <button type="button"
+                                    class="gac-survivor-chip @(survives ? "selected" : "defeated")"
+                                    aria-pressed="@survives"
+                                    @onclick="() => ToggleSurvivor(unit.DefinitionId)">
+                                <span>@(survives ? "✓" : "×")</span>
+                                @unit.Name
+                            </button>
+                        }
+                    </div>
+                    <label class="gac-preload-toggle">
+                        <input type="checkbox" @bind="ExecutionPreloadedTurnMeter" />
+                        <span><strong>TM precargado</strong><small>Actívalo si el combate dejó medidor de turno acumulado en la defensa.</small></span>
+                    </label>
+                </div>
+            }
+
             @if (ExecutionError is not null)
             {
                 <div class="status-card status-error" role="alert"><span class="status-icon">!</span><div><strong>No se pudo registrar el resultado</strong><p>@ExecutionError</p></div></div>
@@ -207,7 +253,7 @@
                 GacPlannerApiClient.VisibleDefenseViewModel? defense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == attack.DefenseId);
                 <article class="gac-execution-card @(SelectedAttackId == attack.Id ? "selected" : string.Empty)">
                     <div class="gac-execution-card-copy">
-                        <span>@(defense?.Zone ?? "Zona") · intento #@attack.Attempt</span>
+                        <span>@(defense?.Zone ?? "Zona") · @(attack.IsCleanup ? "cleanup" : "intento") #@attack.Attempt</span>
                         <strong>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa") → @attack.Team.Name</strong>
                         @if (!string.IsNullOrWhiteSpace(attack.Notes))
                         {
@@ -246,8 +292,23 @@
                 GacPlannerApiClient.VisibleDefenseViewModel? defense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == attack.DefenseId);
                 <div class="gac-execution-history-row">
                     <span class="gac-history-status gac-history-@attack.Status.ToLowerInvariant()">@(attack.Status == "Won" ? "✓" : "×")</span>
-                    <div><strong>@attack.Team.Name</strong><small>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa") · intento #@attack.Attempt</small></div>
-                    <span>@(attack.Banners is int banners ? $"{banners} banners" : "sin banners")</span>
+                    <div>
+                        <strong>@attack.Team.Name</strong>
+                        <small>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa") · intento #@attack.Attempt</small>
+                        @if (attack.Status == "Failed")
+                        {
+                            <small class="gac-live-history-detail">
+                                @attack.EnemySurvivors.Count superviviente(s)@(attack.PreloadedTurnMeter ? " · TM precargado" : string.Empty)
+                            </small>
+                        }
+                    </div>
+                    <div class="gac-history-meta">
+                        @if (attack.IsCleanup)
+                        {
+                            <span class="gac-live-badge">Cleanup</span>
+                        }
+                        <span>@(attack.Banners is int banners ? $"{banners} banners" : "sin banners")</span>
+                    </div>
                 </div>
             }
         </div>
@@ -277,6 +338,8 @@
     private string ExecutionStatus { get; set; } = "Won";
     private int? ExecutionBanners { get; set; }
     private string ExecutionNotes { get; set; } = string.Empty;
+    private bool ExecutionPreloadedTurnMeter { get; set; }
+    private HashSet<string> RemainingEnemyUnits { get; } = new(StringComparer.OrdinalIgnoreCase);
     private bool ExecutionBusy { get; set; }
     private string? ExecutionError { get; set; }
     private GacAttackExecutionApiClient.ExecutionEnvelopeViewModel? LastExecution { get; set; }
@@ -333,6 +396,8 @@
         ExecutionStatus = "Won";
         ExecutionBanners = attack.Banners;
         ExecutionNotes = string.Empty;
+        ExecutionPreloadedTurnMeter = false;
+        InitializeSurvivors(attack.DefenseId);
         ExecutionError = null;
     }
 
@@ -342,12 +407,48 @@
         ExecutionStatus = "Won";
         ExecutionBanners = null;
         ExecutionNotes = string.Empty;
+        ExecutionPreloadedTurnMeter = false;
+        RemainingEnemyUnits.Clear();
         ExecutionError = null;
     }
 
-    private void SelectWon() => ExecutionStatus = "Won";
+    private void SelectWon()
+    {
+        ExecutionStatus = "Won";
+        ExecutionPreloadedTurnMeter = false;
+    }
 
-    private void SelectFailed() => ExecutionStatus = "Failed";
+    private void SelectFailed()
+    {
+        ExecutionStatus = "Failed";
+        if (SelectedAttack is { } attack && RemainingEnemyUnits.Count == 0)
+        {
+            InitializeSurvivors(attack.DefenseId);
+        }
+    }
+
+    private void InitializeSurvivors(Guid defenseId)
+    {
+        RemainingEnemyUnits.Clear();
+        GacPlannerApiClient.VisibleDefenseViewModel? defense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == defenseId);
+        if (defense is null)
+        {
+            return;
+        }
+
+        foreach (GacPlannerApiClient.PlannerUnitViewModel unit in defense.Squad.AllUnits)
+        {
+            RemainingEnemyUnits.Add(unit.DefinitionId);
+        }
+    }
+
+    private void ToggleSurvivor(string definitionId)
+    {
+        if (!RemainingEnemyUnits.Remove(definitionId))
+        {
+            RemainingEnemyUnits.Add(definitionId);
+        }
+    }
 
     private async Task SubmitExecutionAsync()
     {
@@ -362,6 +463,13 @@
             return;
         }
 
+        if (ExecutionStatus == "Failed" && RemainingEnemyUnits.Count == 0)
+        {
+            ExecutionError = "Si el ataque falla debe quedar al menos un enemigo vivo. Si no queda ninguno, registra la batalla como victoria.";
+            return;
+        }
+
+        string[]? survivors = ExecutionStatus == "Failed" ? [.. RemainingEnemyUnits] : null;
         ExecutionBusy = true;
         ExecutionError = null;
         try
@@ -371,7 +479,9 @@
                 attackId,
                 ExecutionStatus,
                 ExecutionBanners,
-                string.IsNullOrWhiteSpace(ExecutionNotes) ? null : ExecutionNotes.Trim());
+                string.IsNullOrWhiteSpace(ExecutionNotes) ? null : ExecutionNotes.Trim(),
+                survivors,
+                ExecutionStatus == "Failed" && ExecutionPreloadedTurnMeter);
             if (result.Envelope is null)
             {
                 ExecutionError = result.Message ?? "No se ha podido registrar el resultado.";
@@ -413,6 +523,9 @@
     private static string ExecutionLabel(GacAttackExecutionApiClient.ExecutedAttackViewModel execution)
     {
         string outcome = execution.Status == "Won" ? "Victoria" : "Fallo";
-        return execution.Banners is int banners ? $"{outcome} · {banners} banners" : outcome;
+        string label = execution.Banners is int banners ? $"{outcome} · {banners} banners" : outcome;
+        return execution.Status == "Failed"
+            ? $"{label} · {execution.EnemySurvivors.Count} vivos"
+            : label;
     }
 }
