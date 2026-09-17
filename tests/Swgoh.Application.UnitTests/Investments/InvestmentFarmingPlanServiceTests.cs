@@ -18,8 +18,7 @@ public sealed class InvestmentFarmingPlanServiceTests
             CreateTarget("A", "Unit A", currentRelic: 5, targetRelic: 7),
             CreateTarget("B", "Unit B", currentRelic: 5, targetRelic: 7)
         ];
-        PlayerInventorySnapshot inventory = CreateInventory(resource =>
-            resource.Id == "credits" ? 1_000_000 : 1_000_000);
+        PlayerInventorySnapshot inventory = CreateInventory(_ => 1_000_000);
         var service = CreateService(targets, inventory);
 
         InvestmentFarmingPlan plan = await service.GetAsync(AllyCode, CancellationToken.None);
