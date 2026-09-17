@@ -23,10 +23,12 @@ public sealed class InvestmentRecommendationBuilderTests
         Assert.Equal(2, first.ModuleCount);
         Assert.Equal(37m, first.Score);
         Assert.Equal("Media", first.Priority);
+        Assert.Equal("Estratégica", first.ValueRating);
+        Assert.Null(first.EstimatedCost);
     }
 
     [Fact]
-    public void Build_UsesVerifiedRelicTargetInSuggestedAction()
+    public void Build_UsesVerifiedRelicTargetAndAddsEstimatedCost()
     {
         InvestmentSignal[] signals =
         [
@@ -49,6 +51,10 @@ public sealed class InvestmentRecommendationBuilderTests
         Assert.Equal("R5 → R7", result.SuggestedAction);
         Assert.True(result.HasConcreteTarget);
         Assert.Equal(45m, result.Score);
+        Assert.NotNull(result.EstimatedCost);
+        Assert.Equal(2, result.EstimatedCost.RelicSteps);
+        Assert.True(result.EstimatedCost.CostIndex > 0m);
+        Assert.NotNull(result.ImpactPerCost);
     }
 
     [Fact]
@@ -77,6 +83,24 @@ public sealed class InvestmentRecommendationBuilderTests
         Assert.Equal("3★ → 5★", result.SuggestedAction);
         Assert.Equal(53m, result.Score);
         Assert.Equal("Alta", result.Priority);
+        Assert.NotNull(result.EstimatedCost);
+        Assert.Equal(2, result.EstimatedCost.StarSteps);
+    }
+
+    [Fact]
+    public void Build_PrefersCheaperUpgradeWhenImpactIsSimilar()
+    {
+        InvestmentSignal[] signals =
+        [
+            new InvestmentSignal("CHEAP", "Cheap", null, 6, 7, InvestmentModule.RiseOfEmpire, 40m, "One step.", TargetRelicTier: 7, ConcreteTarget: true),
+            new InvestmentSignal("EXPENSIVE", "Expensive", null, 3, 7, InvestmentModule.RiseOfEmpire, 42m, "Four steps.", TargetRelicTier: 7, ConcreteTarget: true)
+        ];
+
+        IReadOnlyCollection<InvestmentRecommendation> result = InvestmentRecommendationBuilder.Build(signals);
+
+        Assert.Equal("CHEAP", result.First().DefinitionId);
+        Assert.True(result.First().ImpactPerCost > result.Last().ImpactPerCost);
+        Assert.True(result.First().ValueScore > result.Last().ValueScore);
     }
 
     private static InvestmentSignal Signal(
