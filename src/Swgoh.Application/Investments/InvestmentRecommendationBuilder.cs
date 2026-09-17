@@ -5,6 +5,8 @@ internal static class InvestmentRecommendationBuilder
     private const decimal CrossModuleBonus = 8m;
     private const decimal ConcreteTargetBonus = 5m;
     private const decimal MaximumScore = 100m;
+    private const decimal ImpactWeight = 0.65m;
+    private const decimal EfficiencyWeight = 0.35m;
 
     public static IReadOnlyCollection<InvestmentRecommendation> Build(
         IEnumerable<InvestmentSignal> signals,
@@ -19,7 +21,8 @@ internal static class InvestmentRecommendationBuilder
                 .Where(signal => !string.IsNullOrWhiteSpace(signal.DefinitionId))
                 .GroupBy(signal => signal.DefinitionId, StringComparer.OrdinalIgnoreCase)
                 .Select(BuildRecommendation)
-                .OrderByDescending(item => item.Score)
+                .OrderByDescending(item => item.ValueScore)
+                .ThenByDescending(item => item.Score)
                 .ThenByDescending(item => item.ModuleCount)
                 .ThenByDescending(item => item.HasConcreteTarget)
                 .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
@@ -66,6 +69,15 @@ internal static class InvestmentRecommendationBuilder
         decimal crossModule = Math.Max(0, impacts.Length - 1) * CrossModuleBonus;
         decimal concrete = impacts.Any(impact => impact.ConcreteTarget) ? ConcreteTargetBonus : 0m;
         decimal score = Math.Min(MaximumScore, Math.Round(moduleScore + crossModule + concrete, 1));
+        InvestmentCostEstimate? estimatedCost = InvestmentCostEstimator.Estimate(
+            currentRelic,
+            currentStars,
+            targetRelic,
+            targetStars);
+        decimal? impactPerCost = estimatedCost is null || estimatedCost.CostIndex <= 0m
+            ? null
+            : Math.Round(score / estimatedCost.CostIndex, 2);
+        decimal valueScore = CalculateValueScore(score, impactPerCost, estimatedCost is not null);
 
         return new InvestmentRecommendation(
             0,
@@ -77,9 +89,25 @@ internal static class InvestmentRecommendationBuilder
             targetRelic,
             targetStars,
             score,
+            valueScore,
+            impactPerCost,
             Priority(score),
+            ValueRating(valueScore, estimatedCost is not null),
             SuggestedAction(currentRelic, currentStars, targetRelic, targetStars),
+            BenefitSummary(impacts, targetRelic, targetStars),
+            estimatedCost,
             impacts);
+    }
+
+    private static decimal CalculateValueScore(decimal score, decimal? impactPerCost, bool hasCost)
+    {
+        if (!hasCost || impactPerCost is null)
+        {
+            return Math.Round(score * 0.85m, 1);
+        }
+
+        decimal efficiencyScore = Math.Min(MaximumScore, impactPerCost.Value * 35m);
+        return Math.Round((score * ImpactWeight) + (efficiencyScore * EfficiencyWeight), 1);
     }
 
     private static InvestmentModuleImpact BuildModuleImpact(IGrouping<InvestmentModule, InvestmentSignal> group)
@@ -125,6 +153,15 @@ internal static class InvestmentRecommendationBuilder
         _ => "Oportunidad"
     };
 
+    private static string ValueRating(decimal valueScore, bool hasCost) => (hasCost, valueScore) switch
+    {
+        (false, _) => "Estratégica",
+        (true, >= 70m) => "Excelente",
+        (true, >= 55m) => "Muy buena",
+        (true, >= 40m) => "Buena",
+        _ => "Selectiva"
+    };
+
     private static string SuggestedAction(
         int currentRelic,
         int currentStars,
@@ -145,5 +182,19 @@ internal static class InvestmentRecommendationBuilder
         return actions.Count > 0
             ? string.Join(" · ", actions)
             : "Prioridad estratégica: refuerza mods, habilidades y supervivencia según el módulo.";
+    }
+
+    private static string BenefitSummary(
+        IReadOnlyCollection<InvestmentModuleImpact> impacts,
+        int? targetRelic,
+        int? targetStars)
+    {
+        string moduleText = impacts.Count == 1
+            ? "1 módulo"
+            : $"{impacts.Count} módulos";
+        string targetText = targetRelic is not null || targetStars is not null
+            ? " con un objetivo verificable"
+            : " como inversión estratégica";
+        return $"Concentra impacto en {moduleText}{targetText}.";
     }
 }

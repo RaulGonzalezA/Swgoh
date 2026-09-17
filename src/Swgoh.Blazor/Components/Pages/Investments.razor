@@ -7,7 +7,7 @@
 <section class="investment-shell">
     @if (_loading)
     {
-        <div class="investment-state">Cruzando GAC, RotE, Conquista, Era y Coliseo…</div>
+        <div class="investment-state">Cruzando impacto y coste de GAC, RotE, Conquista, Era y Coliseo…</div>
     }
     else if (_error is not null)
     {
@@ -23,44 +23,23 @@
             <div>
                 <span class="section-kicker">Investment Optimizer global</span>
                 <h1>¿Dónde merece la pena invertir ahora?</h1>
-                <p>Una sola cola de prioridades construida con el uso real de tus unidades en GAC, los desbloqueos de RotE, los equipos de Conquista y los requisitos actuales de Era/Coliseo.</p>
+                <p>La lista ya no mira solo impacto: pondera también el esfuerzo estimado del objetivo para destacar las mejoras con mejor retorno.</p>
             </div>
             <button class="secondary-button" type="button" @onclick="ReloadAsync" disabled="@_loading">Recalcular</button>
         </header>
 
         <div class="investment-summary">
-            <article>
-                <span>Recomendaciones</span>
-                <strong>@_optimization.Recommendations.Count</strong>
-                <small>ordenadas por impacto combinado</small>
-            </article>
-            <article>
-                <span>Valor transversal</span>
-                <strong>@_optimization.CrossModuleRecommendations</strong>
-                <small>impactan 2+ módulos</small>
-            </article>
-            <article>
-                <span>Objetivo concreto</span>
-                <strong>@_optimization.ConcreteTargets</strong>
-                <small>reliquia o estrellas verificables</small>
-            </article>
-            <article>
-                <span>Roster</span>
-                <strong>@AgeLabel(_optimization.RosterUpdatedAtUtc)</strong>
-                <small>frescura de los datos base</small>
-            </article>
+            <article><span>Recomendaciones</span><strong>@_optimization.Recommendations.Count</strong><small>ordenadas por valor</small></article>
+            <article><span>Con coste estimado</span><strong>@_optimization.CostedRecommendations</strong><small>objetivos comparables</small></article>
+            <article><span>Alto retorno</span><strong>@_optimization.HighValueRecommendations</strong><small>value score ≥ 60</small></article>
+            <article><span>Roster</span><strong>@AgeLabel(_optimization.RosterUpdatedAtUtc)</strong><small>frescura de los datos base</small></article>
         </div>
 
         <section class="investment-modules" aria-label="Cobertura por módulo">
             @foreach (InvestmentApiClient.ModuleStatusViewModel module in _optimization.Modules)
             {
-                <button type="button"
-                        class="investment-module @(module.Available ? "available" : "unavailable") @(_selectedModule == module.Module ? "selected" : string.Empty)"
-                        title="@module.Message"
-                        @onclick="() => ToggleModule(module.Module)">
-                    <span>@ModuleLabel(module.Module)</span>
-                    <strong>@module.SignalCount</strong>
-                    <small>@(module.Available ? "señales" : "no disponible")</small>
+                <button type="button" class="investment-module @(module.Available ? "available" : "unavailable") @(_selectedModule == module.Module ? "selected" : string.Empty)" title="@module.Message" @onclick="() => ToggleModule(module.Module)">
+                    <span>@ModuleLabel(module.Module)</span><strong>@module.SignalCount</strong><small>@(module.Available ? "señales" : "no disponible")</small>
                 </button>
             }
             @if (_selectedModule is not null)
@@ -70,8 +49,8 @@
         </section>
 
         <div class="investment-explainer">
-            <strong>Cómo leer la lista</strong>
-            <span>RotE y Journey pueden fijar un objetivo concreto porque exponen requisitos reales. GAC, Conquista y Coliseo aportan valor estratégico, pero no fuerzan una reliquia inventada si el módulo no la exige.</span>
+            <strong>Impacto / coste</strong>
+            <span>El índice de coste es relativo y sirve para comparar objetivos entre sí. No pretende ser un inventario exacto de materiales y no descuenta recursos que ya tengas.</span>
         </div>
 
         @if (FilteredRecommendations.Count == 0)
@@ -95,9 +74,28 @@
                                 <span class="investment-unit-fallback">@Initials(recommendation.Name)</span>
                             }
                             <div>
-                                <span class="investment-priority">@recommendation.Priority · @recommendation.Score.ToString("0.#")</span>
+                                <span class="investment-priority">@recommendation.Priority · impacto @recommendation.Score.ToString("0.#")</span>
                                 <h2>@recommendation.Name</h2>
                                 <p class="investment-action">@recommendation.SuggestedAction</p>
+                                <div class="investment-value-row">
+                                    <span><strong>Valor</strong> @recommendation.ValueScore.ToString("0.#") · @recommendation.ValueRating</span>
+                                    @if (recommendation.ImpactPerCost is decimal efficiency)
+                                    {
+                                        <span><strong>Impacto/coste</strong> @efficiency.ToString("0.##")</span>
+                                    }
+                                </div>
+                                @if (recommendation.EstimatedCost is not null)
+                                {
+                                    <div class="investment-cost">
+                                        <strong>Coste @recommendation.EstimatedCost.CostBand · índice @recommendation.EstimatedCost.CostIndex.ToString("0.#")</strong>
+                                        <small>@recommendation.EstimatedCost.Summary</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="investment-cost strategic"><strong>Coste no cuantificado</strong><small>Prioridad estratégica sin objetivo concreto de reliquia/estrellas.</small></div>
+                                }
+                                <p class="investment-benefit">@recommendation.BenefitSummary</p>
                                 <div class="investment-badges">
                                     @foreach (InvestmentApiClient.ModuleImpactViewModel impact in recommendation.Impacts)
                                     {
@@ -115,10 +113,7 @@
                             @foreach (InvestmentApiClient.ModuleImpactViewModel impact in recommendation.Impacts)
                             {
                                 <div class="investment-impact">
-                                    <div>
-                                        <strong>@ModuleLabel(impact.Module)</strong>
-                                        <span>+@impact.Score.ToString("0.#")</span>
-                                    </div>
+                                    <div><strong>@ModuleLabel(impact.Module)</strong><span>+@impact.Score.ToString("0.#")</span></div>
                                     <p>@impact.Reason</p>
                                     @if (impact.ConcreteTarget)
                                     {
@@ -135,46 +130,28 @@
 </section>
 
 @code {
-    [Parameter]
-    public long AllyCode { get; set; }
-
+    [Parameter] public long AllyCode { get; set; }
     private bool _loading = true;
     private string? _error;
     private InvestmentApiClient.OptimizationViewModel? _optimization;
     private InvestmentApiClient.InvestmentModuleViewModel? _selectedModule;
 
     private IReadOnlyCollection<InvestmentApiClient.RecommendationViewModel> FilteredRecommendations =>
-        _optimization is null
-            ? []
-            : _selectedModule is null
-                ? _optimization.Recommendations
-                : [.. _optimization.Recommendations.Where(item => item.Impacts.Any(impact => impact.Module == _selectedModule))];
+        _optimization is null ? [] : _selectedModule is null ? _optimization.Recommendations : [.. _optimization.Recommendations.Where(item => item.Impacts.Any(impact => impact.Module == _selectedModule))];
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
-
     private async Task ReloadAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         _loading = true;
         _error = null;
-        try
-        {
-            _optimization = await InvestmentClient.GetCurrentAsync(AllyCode);
-        }
-        catch (Exception exception)
-        {
-            _error = $"No se pudo calcular el Investment Optimizer: {exception.Message}";
-        }
-        finally
-        {
-            _loading = false;
-        }
+        try { _optimization = await InvestmentClient.GetCurrentAsync(AllyCode); }
+        catch (Exception exception) { _error = $"No se pudo calcular el Investment Optimizer: {exception.Message}"; }
+        finally { _loading = false; }
     }
 
-    private void ToggleModule(InvestmentApiClient.InvestmentModuleViewModel module) =>
-        _selectedModule = _selectedModule == module ? null : module;
-
+    private void ToggleModule(InvestmentApiClient.InvestmentModuleViewModel module) => _selectedModule = _selectedModule == module ? null : module;
     private void ClearModuleFilter() => _selectedModule = null;
 
     private static string ModuleLabel(InvestmentApiClient.InvestmentModuleViewModel module) => module switch
@@ -190,30 +167,13 @@
     private static string ImpactTarget(InvestmentApiClient.ModuleImpactViewModel impact)
     {
         var values = new List<string>(2);
-        if (impact.TargetRelicTier is int relic)
-        {
-            values.Add($"Objetivo R{relic}");
-        }
-        if (impact.TargetStars is int stars)
-        {
-            values.Add($"Objetivo {stars}★");
-        }
+        if (impact.TargetRelicTier is int relic) values.Add($"Objetivo R{relic}");
+        if (impact.TargetStars is int stars) values.Add($"Objetivo {stars}★");
         return string.Join(" · ", values);
     }
 
-    private static string PriorityCss(string priority) => priority switch
-    {
-        "Crítica" => "critical",
-        "Alta" => "high",
-        "Media" => "medium",
-        _ => "opportunity"
-    };
-
-    private static string Initials(string name)
-    {
-        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
-    }
+    private static string PriorityCss(string priority) => priority switch { "Crítica" => "critical", "Alta" => "high", "Media" => "medium", _ => "opportunity" };
+    private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(2).Select(part => char.ToUpperInvariant(part[0])));
 
     private static string AgeLabel(DateTimeOffset updatedAtUtc)
     {

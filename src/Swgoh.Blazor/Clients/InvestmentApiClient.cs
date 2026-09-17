@@ -38,6 +38,14 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         int? TargetStars,
         bool ConcreteTarget);
 
+    public sealed record CostEstimateViewModel(
+        decimal CostIndex,
+        string CostBand,
+        int RelicSteps,
+        int StarSteps,
+        bool IsEstimate,
+        string Summary);
+
     public sealed record RecommendationViewModel(
         int Rank,
         string DefinitionId,
@@ -48,11 +56,17 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         int? TargetRelicTier,
         int? TargetStars,
         decimal Score,
+        decimal ValueScore,
+        decimal? ImpactPerCost,
         string Priority,
+        string ValueRating,
         string SuggestedAction,
+        string BenefitSummary,
+        CostEstimateViewModel? EstimatedCost,
         IReadOnlyCollection<ModuleImpactViewModel> Impacts,
         int ModuleCount,
-        bool HasConcreteTarget);
+        bool HasConcreteTarget,
+        bool HasEstimatedCost);
 
     public sealed record ModuleStatusViewModel(
         InvestmentModuleViewModel Module,
@@ -68,5 +82,7 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         IReadOnlyCollection<RecommendationViewModel> Recommendations,
         IReadOnlyCollection<ModuleStatusViewModel> Modules,
         int CrossModuleRecommendations,
-        int ConcreteTargets);
+        int ConcreteTargets,
+        int CostedRecommendations,
+        int HighValueRecommendations);
 }
