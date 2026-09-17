@@ -36,7 +36,7 @@ public sealed record InvestmentResourceNeed(
 public sealed record InvestmentInventoryFit(
     DateTimeOffset CapturedAtUtc,
     string Source,
-    bool CanCompleteNow,
+    bool MaterialsReady,
     decimal Coverage,
     int MissingResourceTypes,
     string Summary,
@@ -67,7 +67,7 @@ public sealed record InvestmentRecommendation(
     public bool HasConcreteTarget => TargetRelicTier is not null || TargetStars is not null;
     public bool HasEstimatedCost => EstimatedCost is not null;
     public bool UsesRealInventory => Inventory is not null;
-    public bool CanCompleteNow => Inventory?.CanCompleteNow is true;
+    public bool MaterialsReady => Inventory?.MaterialsReady is true;
 }
 
 public sealed record InvestmentModuleStatus(
@@ -90,7 +90,7 @@ public sealed record InvestmentOptimizationResult(
     public int ConcreteTargets => Recommendations.Count(item => item.HasConcreteTarget);
     public int CostedRecommendations => Recommendations.Count(item => item.HasEstimatedCost);
     public int HighValueRecommendations => Recommendations.Count(item => item.InventoryAdjustedValueScore >= 60m);
-    public int ReadyNowRecommendations => Recommendations.Count(item => item.CanCompleteNow);
+    public int MaterialsReadyRecommendations => Recommendations.Count(item => item.MaterialsReady);
     public int InventoryAdjustedRecommendations => Recommendations.Count(item => item.UsesRealInventory);
     public bool HasInventorySnapshot => InventoryCapturedAtUtc is not null;
 }
