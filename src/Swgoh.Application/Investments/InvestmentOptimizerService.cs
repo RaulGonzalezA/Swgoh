@@ -22,6 +22,7 @@ internal sealed class InvestmentOptimizerService(
     IRiseOfEmpireService riseOfEmpireService,
     IConquestService conquestService,
     IEraService eraService,
+    IPlayerInventoryService inventoryService,
     IClock clock) : IInvestmentOptimizerService
 {
     private const int MaximumRecommendations = 20;
@@ -48,13 +49,18 @@ internal sealed class InvestmentOptimizerService(
         Task<ModuleFetch<EraAnalysis?>> eraTask = CaptureAsync(
             () => eraService.GetCurrentAsync(allyCode, cancellationToken),
             cancellationToken);
+        Task<ModuleFetch<PlayerInventorySnapshot?>> inventoryTask = CaptureAsync(
+            () => inventoryService.GetAsync(allyCode, cancellationToken),
+            cancellationToken);
 
-        await Task.WhenAll(gacTask, roteTask, conquestTask, eraTask).ConfigureAwait(false);
+        await Task.WhenAll(gacTask, roteTask, conquestTask, eraTask, inventoryTask).ConfigureAwait(false);
 
         ModuleFetch<GacPlannerLookup> gac = await gacTask.ConfigureAwait(false);
         ModuleFetch<RiseOfEmpireAnalysis?> rote = await roteTask.ConfigureAwait(false);
         ModuleFetch<ConquestOptimizationResult?> conquest = await conquestTask.ConfigureAwait(false);
         ModuleFetch<EraAnalysis?> era = await eraTask.ConfigureAwait(false);
+        ModuleFetch<PlayerInventorySnapshot?> inventoryFetch = await inventoryTask.ConfigureAwait(false);
+        PlayerInventorySnapshot? inventory = inventoryFetch.Succeeded ? inventoryFetch.Value : null;
 
         var signals = new List<InvestmentSignal>();
         var statuses = new List<InvestmentModuleStatus>(5);
@@ -65,7 +71,7 @@ internal sealed class InvestmentOptimizerService(
         AddEraSignals(era, signals, statuses);
 
         IReadOnlyCollection<InvestmentRecommendation> recommendations =
-            InvestmentRecommendationBuilder.Build(signals, MaximumRecommendations);
+            InvestmentRecommendationBuilder.Build(signals, MaximumRecommendations, inventory);
 
         return new InvestmentOptimizationResult(
             player.AllyCode,
@@ -73,7 +79,9 @@ internal sealed class InvestmentOptimizerService(
             player.UpdatedAtUtc,
             clock.UtcNow,
             recommendations,
-            statuses);
+            statuses,
+            inventory?.CapturedAtUtc,
+            inventory?.Source);
     }
 
     private static void AddGacSignals(

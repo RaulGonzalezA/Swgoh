@@ -16,6 +16,10 @@ internal static class InvestmentEndpoints
 
         group.MapGet("/current", GetCurrentAsync)
             .WithSummary("Build a single investment priority list across GAC, RotE, Conquest, Era and Coliseum");
+        group.MapGet("/inventory", GetInventoryAsync)
+            .WithSummary("Get the persisted real-material inventory used by the investment optimizer");
+        group.MapPut("/inventory", PutInventoryAsync)
+            .WithSummary("Replace the persisted real-material inventory snapshot used by the investment optimizer");
         return endpoints;
     }
 
@@ -33,10 +37,104 @@ internal static class InvestmentEndpoints
         }
         catch (ArgumentOutOfRangeException exception)
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["allyCode"] = [exception.Message]
-            });
+            return Validation(exception);
         }
     }
+
+    private static async Task<IResult> GetInventoryAsync(
+        long allyCode,
+        IPlayerInventoryService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            PlayerInventorySnapshot? snapshot = await service
+                .GetAsync(allyCode, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(ToInventoryResponse(snapshot));
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> PutInventoryAsync(
+        long allyCode,
+        InventoryUpdateRequest request,
+        IPlayerInventoryService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            PlayerInventoryImport inventory = new(
+                request.CapturedAtUtc,
+                request.Source,
+                [
+                    .. request.Resources.Select(resource => new PlayerInventoryResource(
+                        resource.Id,
+                        resource.Name ?? resource.Id,
+                        resource.Quantity))
+                ]);
+            PlayerInventorySnapshot saved = await service
+                .ImportAsync(allyCode, inventory, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(ToInventoryResponse(saved));
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static InventoryResponse ToInventoryResponse(PlayerInventorySnapshot? snapshot)
+    {
+        IReadOnlyDictionary<string, long> quantities = snapshot?.Resources
+            .ToDictionary(resource => resource.Id, resource => resource.Quantity, StringComparer.Ordinal)
+            ?? new Dictionary<string, long>(StringComparer.Ordinal);
+
+        return new InventoryResponse(
+            snapshot is not null,
+            snapshot?.CapturedAtUtc,
+            snapshot?.Source,
+            [
+                .. PlayerInventoryCatalog.Resources
+                    .OrderBy(resource => resource.SortOrder)
+                    .Select(resource => new InventoryResourceResponse(
+                        resource.Id,
+                        resource.Name,
+                        resource.Kind,
+                        resource.SortOrder,
+                        quantities.GetValueOrDefault(resource.Id)))
+            ]);
+    }
+
+    private static IResult Validation(ArgumentException exception) =>
+        Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [exception.ParamName ?? "inventory"] = [exception.Message]
+        });
+
+    private sealed record InventoryUpdateRequest(
+        DateTimeOffset? CapturedAtUtc,
+        string? Source,
+        IReadOnlyCollection<InventoryResourceRequest> Resources);
+
+    private sealed record InventoryResourceRequest(
+        string Id,
+        string? Name,
+        long Quantity);
+
+    private sealed record InventoryResponse(
+        bool HasSnapshot,
+        DateTimeOffset? CapturedAtUtc,
+        string? Source,
+        IReadOnlyCollection<InventoryResourceResponse> Resources);
+
+    private sealed record InventoryResourceResponse(
+        string Id,
+        string Name,
+        InventoryResourceKind Kind,
+        int SortOrder,
+        long Quantity);
 }
