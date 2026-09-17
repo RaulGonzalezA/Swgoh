@@ -188,6 +188,24 @@ public static class DependencyInjection
                         Name = GacPersonalBattleMongoRepository.PlayerRoundIndexName
                     }));
 
+        IndexKeysDefinition<GacLiveAttackStateDocument> liveAttackStateIndexKeys =
+            Builders<GacLiveAttackStateDocument>.IndexKeys
+                .Ascending(state => state.PlanId)
+                .Ascending(state => state.DefenseId)
+                .Ascending(state => state.Attempt)
+                .Descending(state => state.RecordedAtUtc);
+        services.AddMongoRepository<GacLiveAttackStateDocument, string>(
+            GacLiveAttackStateMongoRepository.CollectionName,
+            state => state.Id,
+            collection => collection
+                .CreateIfMissing()
+                .HasIndex(
+                    liveAttackStateIndexKeys,
+                    new CreateIndexOptions
+                    {
+                        Name = GacLiveAttackStateMongoRepository.PlanDefenseAttemptIndexName
+                    }));
+
         IndexKeysDefinition<ConquestPlanDocument> conquestPlanIndexKeys = Builders<ConquestPlanDocument>.IndexKeys
             .Ascending(plan => plan.AllyCode)
             .Descending(plan => plan.UpdatedAtUtc);
@@ -281,6 +299,7 @@ public static class DependencyInjection
         services.AddSingleton<IGacDefenseStrategyRepository, GacDefenseStrategyMongoRepository>();
         services.AddSingleton<IGacRoundPlanRepository, GacRoundPlanMongoRepository>();
         services.AddSingleton<IGacPersonalBattleRepository, GacPersonalBattleMongoRepository>();
+        services.AddSingleton<IGacLiveAttackStateRepository, GacLiveAttackStateMongoRepository>();
         services.AddSingleton<IComlinkGacClient, ComlinkGacClient>();
         services.AddSingleton<GacExactBracketResolver>();
         services.AddSingleton<SwgohComlinkFastGacOpponentSource>();
