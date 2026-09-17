@@ -110,7 +110,9 @@
         [.. _targets.Where(target => target.Completed)];
 
     private IEnumerable<InvestmentApiClient.TargetViewModel> VisibleTargets => Compact
-        ? ActiveTargets.Take(1).Concat(ActiveTargets.Count == 0 ? CompletedTargets.Take(1) : [])
+        ? ActiveTargets.Take(1).Concat(ActiveTargets.Count == 0
+            ? CompletedTargets.Take(1)
+            : Enumerable.Empty<InvestmentApiClient.TargetViewModel>())
         : _targets;
 
     protected override async Task OnParametersSetAsync()
