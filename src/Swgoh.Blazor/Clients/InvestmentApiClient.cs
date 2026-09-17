@@ -100,7 +100,7 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
     public sealed record InventoryFitViewModel(
         DateTimeOffset CapturedAtUtc,
         string Source,
-        bool CanCompleteNow,
+        bool MaterialsReady,
         decimal Coverage,
         int MissingResourceTypes,
         string Summary,
@@ -130,7 +130,7 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         bool HasConcreteTarget,
         bool HasEstimatedCost,
         bool UsesRealInventory,
-        bool CanCompleteNow);
+        bool MaterialsReady);
 
     public sealed record ModuleStatusViewModel(
         InvestmentModuleViewModel Module,
@@ -151,7 +151,7 @@ public sealed class InvestmentApiClient(HttpClient httpClient)
         int ConcreteTargets,
         int CostedRecommendations,
         int HighValueRecommendations,
-        int ReadyNowRecommendations,
+        int MaterialsReadyRecommendations,
         int InventoryAdjustedRecommendations,
         bool HasInventorySnapshot);
 
