@@ -1,0 +1,313 @@
+@page "/player/{AllyCode:long}/units/{DefinitionId}"
+@rendermode InteractiveServer
+@using Swgoh.Blazor.Clients
+@inject PlayerApiClient PlayerClient
+@inject InvestmentApiClient InvestmentClient
+
+<PageTitle>@(_unit is null ? "Unit 360" : $"{_unit.Name} · Unit 360") · SWGOH Assistant</PageTitle>
+
+<section class="unit360-shell">
+    @if (_loading)
+    {
+        <UiLoadingState Title="Construyendo Unit 360"
+                        Description="Cruzando roster, stats, mods, inversión, inventario e impacto por modo…" />
+    }
+    else if (_error is not null)
+    {
+        <UiCard Kicker="Unit 360" Title="No se pudo cargar la unidad" Variant="accent">
+            <p>@_error</p>
+            <a class="secondary-button button-link" href="@($"/player/{AllyCode}")">Volver al roster</a>
+        </UiCard>
+    }
+    else if (_unit is null)
+    {
+        <UiCard Kicker="Unit 360" Title="Unidad no encontrada">
+            <p>No hay una unidad con el identificador <strong>@DefinitionId</strong> en este roster.</p>
+            <a class="secondary-button button-link" href="@($"/player/{AllyCode}")">Volver al roster</a>
+        </UiCard>
+    }
+    else
+    {
+        <header class="unit360-hero">
+            <div class="unit360-portrait-shell @(_unit.IsShip ? "ship" : string.Empty)">
+                <span class="unit360-fallback">@Initial(_unit.Name)</span>
+                @if (PortraitUrl is not null)
+                {
+                    <img src="@PortraitUrl" alt="Retrato de @_unit.Name" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none'" />
+                }
+                <span class="unit360-progress">@ProgressLabel</span>
+            </div>
+            <div class="unit360-identity">
+                <span class="ui-kicker">Unit 360 · @(_unit.IsShip ? "Nave" : "Personaje")</span>
+                <h1>@_unit.Name</h1>
+                <p class="unit360-definition">@_unit.DefinitionId</p>
+                <div class="unit360-stars" aria-label="@_unit.Rarity estrellas">@RarityLabel(_unit.Rarity)</div>
+                <div class="unit360-hero-metrics">
+                    <span><strong>@_unit.GalacticPower.ToString("N0")</strong> GP</span>
+                    <span><strong>@_unit.Level</strong> nivel</span>
+                    <span><strong>@_unit.ZetaCount</strong> zetas</span>
+                    <span><strong>@_unit.OmicronCount</strong> omicrons</span>
+                    @if (!_unit.IsShip)
+                    {
+                        <span><strong>@_unit.EquippedModCount/6</strong> mods</span>
+                    }
+                </div>
+            </div>
+            <div class="unit360-actions">
+                <a class="ghost-button button-link" href="@($"/player/{AllyCode}")">Roster</a>
+                <a class="secondary-button button-link" href="@($"/investments/{AllyCode}")">Investment Optimizer</a>
+            </div>
+        </header>
+
+        <div class="unit360-grid">
+            <section class="unit360-card unit360-current">
+                <div class="unit360-section-heading">
+                    <div><span class="section-kicker">Estado actual</span><h2>Progreso y preparación</h2></div>
+                    <small>@AgeLabel(_optimization?.RosterUpdatedAtUtc)</small>
+                </div>
+                <div class="unit360-metric-grid">
+                    <article><span>Progreso</span><strong>@ProgressLabel</strong><small>@(_unit.IsShip ? $"{_unit.Rarity}/7 estrellas" : $"Gear {_unit.GearTier}")</small></article>
+                    <article><span>Rareza</span><strong>@_unit.Rarity/7</strong><small>estrellas</small></article>
+                    <article><span>Zetas</span><strong>@_unit.ZetaCount</strong><small>aplicadas</small></article>
+                    <article><span>Omicrons</span><strong>@_unit.OmicronCount</strong><small>aplicadas</small></article>
+                </div>
+
+                @if (_unit.Factions.Count > 0)
+                {
+                    <div class="unit360-factions">
+                        @foreach (string faction in _unit.Factions)
+                        {
+                            <span>@faction</span>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="unit360-card unit360-investment @(_recommendation is null ? "neutral" : PriorityCss(_recommendation.Priority))">
+                <div class="unit360-section-heading">
+                    <div><span class="section-kicker">Investment Optimizer</span><h2>Qué haría ahora</h2></div>
+                    @if (_recommendation is not null)
+                    {
+                        <span class="unit360-rank">#@_recommendation.Rank</span>
+                    }
+                </div>
+
+                @if (_recommendation is null)
+                {
+                    <p class="unit360-muted">Ahora mismo esta unidad no genera una recomendación prioritaria en GAC, RotE, Conquista, Era o Coliseo. Sigue siendo visible aquí para revisar su estado y preparación.</p>
+                }
+                else
+                {
+                    <div class="unit360-recommendation-title">
+                        <strong>@_recommendation.SuggestedAction</strong>
+                        <span>@_recommendation.Priority · @_recommendation.ValueRating</span>
+                    </div>
+                    <div class="unit360-score-grid">
+                        <article><span>Impacto</span><strong>@_recommendation.Score.ToString("0.#")</strong></article>
+                        <article><span>Valor</span><strong>@_recommendation.ValueScore.ToString("0.#")</strong></article>
+                        <article><span>Valor real</span><strong>@_recommendation.InventoryAdjustedValueScore.ToString("0.#")</strong></article>
+                        <article><span>Módulos</span><strong>@_recommendation.ModuleCount</strong></article>
+                    </div>
+                    <p class="unit360-benefit">@_recommendation.BenefitSummary</p>
+
+                    @if (_recommendation.Inventory is not null)
+                    {
+                        <div class="unit360-inventory-fit @(_recommendation.Inventory.MaterialsReady ? "ready" : "missing")">
+                            <div>
+                                <strong>@(_recommendation.Inventory.MaterialsReady ? "Relic mats cubiertos" : $"Cobertura {_recommendation.Inventory.Coverage:P0}")</strong>
+                                <span>@_recommendation.Inventory.Summary</span>
+                            </div>
+                            <div class="unit360-resource-list">
+                                @foreach (InvestmentApiClient.ResourceNeedViewModel need in _recommendation.Inventory.Resources.OrderByDescending(item => item.Missing).ThenBy(item => item.ResourceName))
+                                {
+                                    <div class="unit360-resource @((need.Sufficient) ? "ok" : "short")">
+                                        <span>@need.ResourceName</span>
+                                        <strong>@need.Available.ToString("N0") / @need.Required.ToString("N0")</strong>
+                                        <small>@(need.Sufficient ? "cubierto" : $"faltan {need.Missing:N0}")</small>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else if (_recommendation.EstimatedCost is not null)
+                    {
+                        <div class="unit360-cost">
+                            <strong>Coste @_recommendation.EstimatedCost.CostBand · índice @_recommendation.EstimatedCost.CostIndex.ToString("0.#")</strong>
+                            <span>@_recommendation.EstimatedCost.Summary</span>
+                        </div>
+                    }
+                }
+            </section>
+        </div>
+
+        @if (_unit.Stats is not null)
+        {
+            <section class="unit360-card">
+                <div class="unit360-section-heading">
+                    <div><span class="section-kicker">Stats reales</span><h2>Rendimiento actual</h2></div>
+                    <small>con mods aplicados</small>
+                </div>
+                <div class="unit360-stat-grid">
+                    @if (_unit.Stats.Speed is decimal speed) { <article><span>Velocidad</span><strong>@FormatNumber(speed)</strong></article> }
+                    @if (_unit.Stats.Health is decimal health) { <article><span>Salud</span><strong>@FormatNumber(health)</strong></article> }
+                    @if (_unit.Stats.Protection is decimal protection) { <article><span>Protección</span><strong>@FormatNumber(protection)</strong></article> }
+                    @if (_unit.Stats.PhysicalDamage is decimal physicalDamage) { <article><span>Daño físico</span><strong>@FormatNumber(physicalDamage)</strong></article> }
+                    @if (_unit.Stats.SpecialDamage is decimal specialDamage) { <article><span>Daño especial</span><strong>@FormatNumber(specialDamage)</strong></article> }
+                    @if (_unit.Stats.Armor is decimal armor) { <article><span>Armadura</span><strong>@FormatNumber(armor)</strong></article> }
+                    @if (_unit.Stats.Resistance is decimal resistance) { <article><span>Resistencia</span><strong>@FormatNumber(resistance)</strong></article> }
+                    @if (_unit.Stats.Potency is decimal potency) { <article><span>Potencia</span><strong>@FormatPercent(potency)</strong></article> }
+                    @if (_unit.Stats.Tenacity is decimal tenacity) { <article><span>Tenacidad</span><strong>@FormatPercent(tenacity)</strong></article> }
+                    @if (_unit.Stats.CriticalDamage is decimal criticalDamage) { <article><span>Daño crítico</span><strong>@FormatPercent(criticalDamage)</strong></article> }
+                </div>
+            </section>
+        }
+
+        @if (_unit.Mods is not null && !_unit.IsShip)
+        {
+            <section class="unit360-card">
+                <div class="unit360-section-heading">
+                    <div><span class="section-kicker">Mods</span><h2>Preparación táctica</h2></div>
+                    <span class="unit360-status @(_unit.Mods.IsComplete ? "ready" : "warning")">@(_unit.Mods.IsComplete ? "Completo" : "Incompleto")</span>
+                </div>
+                <div class="unit360-metric-grid">
+                    <article><span>Equipados</span><strong>@_unit.Mods.EquippedCount/6</strong><small>slots</small></article>
+                    <article><span>6 puntos</span><strong>@_unit.Mods.SixDotCount</strong><small>mods</small></article>
+                    <article><span>Set velocidad</span><strong>@_unit.Mods.SpeedSetModCount</strong><small>mods</small></article>
+                    <article><span>Primaria velocidad</span><strong>@_unit.Mods.SpeedPrimaryCount</strong><small>mods</small></article>
+                    @if (_unit.Mods.SpeedBonus is decimal speedBonus)
+                    {
+                        <article><span>Velocidad mods</span><strong>+@FormatNumber(speedBonus)</strong><small>bonus</small></article>
+                    }
+                </div>
+            </section>
+        }
+
+        <section class="unit360-card">
+            <div class="unit360-section-heading">
+                <div><span class="section-kicker">Impacto transversal</span><h2>Dónde cambia tu cuenta</h2></div>
+                <small>@(_recommendation?.Impacts.Count ?? 0) señales activas</small>
+            </div>
+
+            @if (_recommendation is null || _recommendation.Impacts.Count == 0)
+            {
+                <p class="unit360-muted">No hay señales activas de inversión para esta unidad en este momento.</p>
+            }
+            else
+            {
+                <div class="unit360-impact-grid">
+                    @foreach (InvestmentApiClient.ModuleImpactViewModel impact in _recommendation.Impacts.OrderByDescending(item => item.Score))
+                    {
+                        <a class="unit360-impact" href="@ModuleHref(impact.Module)">
+                            <div><strong>@ModuleLabel(impact.Module)</strong><span>+@impact.Score.ToString("0.#")</span></div>
+                            <p>@impact.Reason</p>
+                            @if (impact.ConcreteTarget)
+                            {
+                                <small>@TargetLabel(impact)</small>
+                            }
+                            <em>Abrir módulo →</em>
+                        </a>
+                    }
+                </div>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    [Parameter] public long AllyCode { get; set; }
+    [Parameter] public string DefinitionId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private string? _error;
+    private PlayerApiClient.RosterUnitViewModel? _unit;
+    private InvestmentApiClient.OptimizationViewModel? _optimization;
+    private InvestmentApiClient.RecommendationViewModel? _recommendation;
+
+    private string ProgressLabel => _unit is null ? "—" : _unit.IsShip ? $"{_unit.Rarity}★" : _unit.RelicTier > 0 ? $"R{_unit.RelicTier}" : $"G{_unit.GearTier}";
+    private string? PortraitUrl => BuildPortraitUrl(_unit?.ThumbnailName);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _unit = null;
+        _recommendation = null;
+        try
+        {
+            Task<PlayerApiClient.RosterUnitViewModel?> unitTask = PlayerClient.GetUnitAsync(AllyCode, DefinitionId);
+            Task<InvestmentApiClient.OptimizationViewModel?> investmentTask = InvestmentClient.GetCurrentAsync(AllyCode);
+            await Task.WhenAll(unitTask, investmentTask);
+            _unit = await unitTask;
+            _optimization = await investmentTask;
+            _recommendation = _optimization?.Recommendations.FirstOrDefault(item =>
+                string.Equals(item.DefinitionId, _unit?.DefinitionId ?? DefinitionId, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string ModuleHref(InvestmentApiClient.InvestmentModuleViewModel module) => module switch
+    {
+        InvestmentApiClient.InvestmentModuleViewModel.Gac => $"/gac/{AllyCode}",
+        InvestmentApiClient.InvestmentModuleViewModel.RiseOfEmpire => $"/territory-battles/{AllyCode}/rise-of-the-empire",
+        InvestmentApiClient.InvestmentModuleViewModel.Conquest => $"/conquest/{AllyCode}",
+        InvestmentApiClient.InvestmentModuleViewModel.Era => $"/era/{AllyCode}",
+        InvestmentApiClient.InvestmentModuleViewModel.Coliseum => $"/era/{AllyCode}",
+        _ => $"/player/{AllyCode}"
+    };
+
+    private static string ModuleLabel(InvestmentApiClient.InvestmentModuleViewModel module) => module switch
+    {
+        InvestmentApiClient.InvestmentModuleViewModel.Gac => "Gran Arena",
+        InvestmentApiClient.InvestmentModuleViewModel.RiseOfEmpire => "RotE",
+        InvestmentApiClient.InvestmentModuleViewModel.Conquest => "Conquista",
+        InvestmentApiClient.InvestmentModuleViewModel.Era => "Era",
+        InvestmentApiClient.InvestmentModuleViewModel.Coliseum => "Coliseo",
+        _ => module.ToString()
+    };
+
+    private static string TargetLabel(InvestmentApiClient.ModuleImpactViewModel impact)
+    {
+        var values = new List<string>(2);
+        if (impact.TargetRelicTier is int relic) values.Add($"R{relic}");
+        if (impact.TargetStars is int stars) values.Add($"{stars}★");
+        return values.Count == 0 ? "Objetivo concreto" : $"Objetivo {string.Join(" · ", values)}";
+    }
+
+    private static string PriorityCss(string priority) => priority switch
+    {
+        "Crítica" => "critical",
+        "Alta" => "high",
+        "Media" => "medium",
+        _ => "opportunity"
+    };
+
+    private static string? BuildPortraitUrl(string? thumbnailName)
+    {
+        if (string.IsNullOrWhiteSpace(thumbnailName)) return null;
+        string assetName = thumbnailName.Trim();
+        if (!assetName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) assetName += ".png";
+        return "/unit-assets/" + Uri.EscapeDataString(assetName);
+    }
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name) ? "?" : char.ToUpperInvariant(name.Trim()[0]).ToString();
+    private static string RarityLabel(int rarity) => new('★', Math.Clamp(rarity, 0, 7));
+    private static string FormatNumber(decimal value) => Math.Round(value).ToString("N0");
+    private static string FormatPercent(decimal value) => value <= 1.5m ? value.ToString("P1") : $"{value:N1}%";
+
+    private static string AgeLabel(DateTimeOffset? updatedAtUtc)
+    {
+        if (updatedAtUtc is null) return "sin fecha";
+        TimeSpan age = DateTimeOffset.UtcNow - updatedAtUtc.Value;
+        if (age < TimeSpan.FromMinutes(1)) return "actualizado ahora";
+        if (age < TimeSpan.FromHours(1)) return $"hace {Math.Max(1, (int)age.TotalMinutes)} min";
+        if (age < TimeSpan.FromDays(1)) return $"hace {Math.Max(1, (int)age.TotalHours)} h";
+        return $"hace {Math.Max(1, (int)age.TotalDays)} d";
+    }
+}

@@ -1,4 +1,5 @@
 @using Swgoh.Blazor.Clients
+@inject NavigationManager Navigation
 
 <article class="roster-unit-card">
     <div class="roster-unit-portrait @(Unit.IsShip ? "ship" : string.Empty)">
@@ -54,7 +55,11 @@
             </div>
         }
 
-        <button class="secondary-button roster-unit-action" type="button" @onclick="OpenAsync">Ver ficha y uso GAC →</button>
+        <button class="ghost-button roster-unit-action" type="button" @onclick="OpenAsync">Vista rápida</button>
+        @if (Unit360Href is not null)
+        {
+            <a class="secondary-button button-link roster-unit-action" href="@Unit360Href">Abrir Unit 360 →</a>
+        }
     </div>
 </article>
 
@@ -65,7 +70,21 @@
     public PlayerApiClient.RosterUnitViewModel Unit { get; set; } = null!;
 
     [Parameter]
+    public long? AllyCode { get; set; }
+
+    [Parameter]
     public EventCallback<PlayerApiClient.RosterUnitViewModel> OpenDetails { get; set; }
+
+    private string? Unit360Href
+    {
+        get
+        {
+            long? allyCode = AllyCode ?? AllyCodeFromCurrentRoute();
+            return allyCode is null
+                ? null
+                : $"/player/{allyCode.Value}/units/{Uri.EscapeDataString(Unit.DefinitionId)}";
+        }
+    }
 
     private string? PortraitUrl
     {
@@ -84,6 +103,17 @@
 
             return AssetBaseUrl + Uri.EscapeDataString(assetName);
         }
+    }
+
+    private long? AllyCodeFromCurrentRoute()
+    {
+        string[] segments = Navigation.ToBaseRelativePath(Navigation.Uri)
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length >= 2
+            && string.Equals(segments[0], "player", StringComparison.OrdinalIgnoreCase)
+            && long.TryParse(segments[1], out long allyCode)
+                ? allyCode
+                : null;
     }
 
     private Task OpenAsync() => OpenDetails.InvokeAsync(Unit);
