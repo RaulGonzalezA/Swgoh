@@ -355,7 +355,10 @@ internal static class GacPlannerEndpoints
         string Status,
         string? Notes,
         int? Banners,
-        string? DatacronId)
+        string? DatacronId,
+        IReadOnlyCollection<string> RemainingEnemyUnitDefinitionIds,
+        bool PreloadedTurnMeter,
+        bool IsCleanup)
     {
         public static AttackResponse From(GacAttackAssignmentDetails attack) => new(
             attack.Id,
@@ -365,7 +368,10 @@ internal static class GacPlannerEndpoints
             attack.Status.ToString(),
             attack.Notes,
             attack.Banners,
-            attack.DatacronId);
+            attack.DatacronId,
+            attack.EnemySurvivors,
+            attack.PreloadedTurnMeter,
+            attack.IsCleanup);
     }
 
     internal sealed record ConflictResponse(
