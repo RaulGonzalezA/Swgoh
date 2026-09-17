@@ -7,7 +7,7 @@
 <section class="investment-shell">
     @if (_loading)
     {
-        <div class="investment-state">Cruzando impacto y coste de GAC, RotE, Conquista, Era y Coliseo…</div>
+        <div class="investment-state">Cruzando impacto, coste e inventario de GAC, RotE, Conquista, Era y Coliseo…</div>
     }
     else if (_error is not null)
     {
@@ -23,17 +23,73 @@
             <div>
                 <span class="section-kicker">Investment Optimizer global</span>
                 <h1>¿Dónde merece la pena invertir ahora?</h1>
-                <p>La lista ya no mira solo impacto: pondera también el esfuerzo estimado del objetivo para destacar las mejoras con mejor retorno.</p>
+                <p>Combina impacto transversal, coste teórico y tu snapshot real de materiales para distinguir lo importante de lo que además puedes completar ya.</p>
             </div>
             <button class="secondary-button" type="button" @onclick="ReloadAsync" disabled="@_loading">Recalcular</button>
         </header>
 
         <div class="investment-summary">
-            <article><span>Recomendaciones</span><strong>@_optimization.Recommendations.Count</strong><small>ordenadas por valor</small></article>
-            <article><span>Con coste estimado</span><strong>@_optimization.CostedRecommendations</strong><small>objetivos comparables</small></article>
-            <article><span>Alto retorno</span><strong>@_optimization.HighValueRecommendations</strong><small>value score ≥ 60</small></article>
+            <article><span>Recomendaciones</span><strong>@_optimization.Recommendations.Count</strong><small>ordenadas por valor real</small></article>
+            <article><span>Listas ahora</span><strong>@_optimization.ReadyNowRecommendations</strong><small>materiales suficientes</small></article>
+            <article><span>Con inventario</span><strong>@_optimization.InventoryAdjustedRecommendations</strong><small>ranking ajustado a recursos</small></article>
             <article><span>Roster</span><strong>@AgeLabel(_optimization.RosterUpdatedAtUtc)</strong><small>frescura de los datos base</small></article>
         </div>
+
+        @if (_inventory is not null)
+        {
+            <section class="inventory-panel">
+                <div class="inventory-header">
+                    <div>
+                        <span class="section-kicker">Inventario real</span>
+                        <h2>Materiales disponibles</h2>
+                        <p>El proveedor público del juego no expone materiales privados. Guarda aquí un snapshot real y el optimizador descontará estas cantidades de cada objetivo de reliquia.</p>
+                    </div>
+                    <div class="inventory-meta">
+                        @if (_inventory.HasSnapshot && _inventory.CapturedAtUtc is DateTimeOffset captured)
+                        {
+                            <strong>@AgeLabel(captured)</strong>
+                            <small>@(_inventory.Source ?? "manual")</small>
+                        }
+                        else
+                        {
+                            <strong>Sin snapshot</strong>
+                            <small>se usa coste relativo</small>
+                        }
+                    </div>
+                </div>
+
+                <div class="inventory-source">
+                    <label for="inventory-source">Origen</label>
+                    <input id="inventory-source" maxlength="80" @bind="_inventory.Source" placeholder="manual, captura del juego…" />
+                </div>
+
+                @foreach (var group in _inventory.Resources.OrderBy(resource => resource.SortOrder).GroupBy(resource => resource.Kind))
+                {
+                    <div class="inventory-group">
+                        <h3>@InventoryKindLabel(group.Key)</h3>
+                        <div class="inventory-grid">
+                            @foreach (InvestmentApiClient.InventoryResourceViewModel resource in group)
+                            {
+                                <label class="inventory-resource">
+                                    <span>@resource.Name</span>
+                                    <input type="number" min="0" step="1" @bind="resource.Quantity" />
+                                </label>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="inventory-actions">
+                    <button class="secondary-button" type="button" @onclick="SaveInventoryAsync" disabled="@_inventorySaving">
+                        @(_inventorySaving ? "Guardando…" : "Guardar inventario y recalcular")
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_inventoryMessage))
+                    {
+                        <span>@_inventoryMessage</span>
+                    }
+                </div>
+            </section>
+        }
 
         <section class="investment-modules" aria-label="Cobertura por módulo">
             @foreach (InvestmentApiClient.ModuleStatusViewModel module in _optimization.Modules)
@@ -49,8 +105,8 @@
         </section>
 
         <div class="investment-explainer">
-            <strong>Impacto / coste</strong>
-            <span>El índice de coste es relativo y sirve para comparar objetivos entre sí. No pretende ser un inventario exacto de materiales y no descuenta recursos que ya tengas.</span>
+            <strong>Valor real</strong>
+            <span>Cuando hay inventario, el ranking combina impacto/coste con cobertura de materiales. Los objetivos que puedes completar ya suben; si el snapshot no existe, el cálculo mantiene el coste relativo anterior.</span>
         </div>
 
         @if (FilteredRecommendations.Count == 0)
@@ -78,13 +134,30 @@
                                 <h2>@recommendation.Name</h2>
                                 <p class="investment-action">@recommendation.SuggestedAction</p>
                                 <div class="investment-value-row">
-                                    <span><strong>Valor</strong> @recommendation.ValueScore.ToString("0.#") · @recommendation.ValueRating</span>
+                                    <span><strong>@(recommendation.UsesRealInventory ? "Valor real" : "Valor")</strong> @recommendation.InventoryAdjustedValueScore.ToString("0.#") · @recommendation.ValueRating</span>
                                     @if (recommendation.ImpactPerCost is decimal efficiency)
                                     {
                                         <span><strong>Impacto/coste</strong> @efficiency.ToString("0.##")</span>
                                     }
                                 </div>
-                                @if (recommendation.EstimatedCost is not null)
+
+                                @if (recommendation.Inventory is not null)
+                                {
+                                    <div class="inventory-fit @(recommendation.Inventory.CanCompleteNow ? "ready" : "missing")">
+                                        <strong>@(recommendation.Inventory.CanCompleteNow ? "Puedes completarlo ahora" : $"Cobertura {recommendation.Inventory.Coverage:P0}")</strong>
+                                        <small>@recommendation.Inventory.Summary</small>
+                                        @if (!recommendation.Inventory.CanCompleteNow)
+                                        {
+                                            <div class="missing-resources">
+                                                @foreach (InvestmentApiClient.ResourceNeedViewModel need in recommendation.Inventory.Resources.Where(need => need.Missing > 0).Take(6))
+                                                {
+                                                    <span><strong>@need.ResourceName:</strong> faltan @need.Missing.ToString("N0") · tienes @need.Available.ToString("N0") / @need.Required.ToString("N0")</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else if (recommendation.EstimatedCost is not null)
                                 {
                                     <div class="investment-cost">
                                         <strong>Coste @recommendation.EstimatedCost.CostBand · índice @recommendation.EstimatedCost.CostIndex.ToString("0.#")</strong>
@@ -95,6 +168,7 @@
                                 {
                                     <div class="investment-cost strategic"><strong>Coste no cuantificado</strong><small>Prioridad estratégica sin objetivo concreto de reliquia/estrellas.</small></div>
                                 }
+
                                 <p class="investment-benefit">@recommendation.BenefitSummary</p>
                                 <div class="investment-badges">
                                     @foreach (InvestmentApiClient.ModuleImpactViewModel impact in recommendation.Impacts)
@@ -132,8 +206,11 @@
 @code {
     [Parameter] public long AllyCode { get; set; }
     private bool _loading = true;
+    private bool _inventorySaving;
     private string? _error;
+    private string? _inventoryMessage;
     private InvestmentApiClient.OptimizationViewModel? _optimization;
+    private InvestmentApiClient.InventoryViewModel? _inventory;
     private InvestmentApiClient.InvestmentModuleViewModel? _selectedModule;
 
     private IReadOnlyCollection<InvestmentApiClient.RecommendationViewModel> FilteredRecommendations =>
@@ -146,9 +223,48 @@
     {
         _loading = true;
         _error = null;
-        try { _optimization = await InvestmentClient.GetCurrentAsync(AllyCode); }
-        catch (Exception exception) { _error = $"No se pudo calcular el Investment Optimizer: {exception.Message}"; }
-        finally { _loading = false; }
+        _inventoryMessage = null;
+        try
+        {
+            Task<InvestmentApiClient.OptimizationViewModel?> optimizationTask = InvestmentClient.GetCurrentAsync(AllyCode);
+            Task<InvestmentApiClient.InventoryViewModel> inventoryTask = InvestmentClient.GetInventoryAsync(AllyCode);
+            await Task.WhenAll(optimizationTask, inventoryTask);
+            _optimization = await optimizationTask;
+            _inventory = await inventoryTask;
+        }
+        catch (Exception exception)
+        {
+            _error = $"No se pudo calcular el Investment Optimizer: {exception.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveInventoryAsync()
+    {
+        if (_inventory is null || _inventorySaving)
+        {
+            return;
+        }
+
+        _inventorySaving = true;
+        _inventoryMessage = null;
+        try
+        {
+            _inventory = await InvestmentClient.SaveInventoryAsync(AllyCode, _inventory);
+            _optimization = await InvestmentClient.GetCurrentAsync(AllyCode);
+            _inventoryMessage = "Inventario guardado. Ranking recalculado con tus materiales reales.";
+        }
+        catch (Exception exception)
+        {
+            _inventoryMessage = $"No se pudo guardar el inventario: {exception.Message}";
+        }
+        finally
+        {
+            _inventorySaving = false;
+        }
     }
 
     private void ToggleModule(InvestmentApiClient.InvestmentModuleViewModel module) => _selectedModule = _selectedModule == module ? null : module;
@@ -162,6 +278,14 @@
         InvestmentApiClient.InvestmentModuleViewModel.Era => "Era",
         InvestmentApiClient.InvestmentModuleViewModel.Coliseum => "Coliseo",
         _ => module.ToString()
+    };
+
+    private static string InventoryKindLabel(InvestmentApiClient.InventoryResourceKindViewModel kind) => kind switch
+    {
+        InvestmentApiClient.InventoryResourceKindViewModel.Currency => "Moneda",
+        InvestmentApiClient.InventoryResourceKindViewModel.RelicMaterial => "Materiales de reliquia",
+        InvestmentApiClient.InventoryResourceKindViewModel.SignalData => "Signal Data",
+        _ => kind.ToString()
     };
 
     private static string ImpactTarget(InvestmentApiClient.ModuleImpactViewModel impact)
