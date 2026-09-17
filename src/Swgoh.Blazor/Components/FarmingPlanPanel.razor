@@ -139,10 +139,13 @@ else if (_plan is not null && ShouldRender)
     [Parameter, EditorRequired] public long AllyCode { get; set; }
     [Parameter] public string? DefinitionId { get; set; }
     [Parameter] public bool Compact { get; set; }
+    [Parameter] public long RefreshToken { get; set; }
 
     private bool _loading = true;
     private string? _error;
     private long? _loadedAllyCode;
+    private long _loadedRefreshToken = long.MinValue;
+    private string? _loadedDefinitionId;
     private FarmingPlanApiClient.FarmingPlanViewModel? _plan;
 
     private IReadOnlyList<FarmingPlanApiClient.ResourcePriorityViewModel> VisibleResources
@@ -191,12 +194,16 @@ else if (_plan is not null && ShouldRender)
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedAllyCode == AllyCode)
+        if (_loadedAllyCode == AllyCode
+            && _loadedRefreshToken == RefreshToken
+            && string.Equals(_loadedDefinitionId, DefinitionId, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         _loadedAllyCode = AllyCode;
+        _loadedRefreshToken = RefreshToken;
+        _loadedDefinitionId = DefinitionId;
         _loading = true;
         _error = null;
         try
