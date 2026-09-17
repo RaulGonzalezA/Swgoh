@@ -154,15 +154,15 @@ internal static class InvestmentRecommendationBuilder
                 : Math.Min(1m, (decimal)need.Available / need.Required)),
             3);
         int missingTypes = needs.Count(need => !need.Sufficient);
-        bool canComplete = missingTypes == 0;
-        string summary = canComplete
-            ? "Tienes en el snapshot todos los materiales necesarios para este objetivo."
+        bool materialsReady = missingTypes == 0;
+        string summary = materialsReady
+            ? "El snapshot cubre todos los materiales de reliquia contabilizados para este objetivo."
             : $"Faltan materiales en {missingTypes} tipo{(missingTypes == 1 ? string.Empty : "s")} de recurso; cobertura {coverage:P0}.";
 
         return new InvestmentInventoryFit(
             inventory.CapturedAtUtc,
             inventory.Source,
-            canComplete,
+            materialsReady,
             coverage,
             missingTypes,
             summary,
@@ -178,7 +178,7 @@ internal static class InvestmentRecommendationBuilder
             return valueScore;
         }
 
-        if (inventoryFit.CanCompleteNow)
+        if (inventoryFit.MaterialsReady)
         {
             return Math.Min(MaximumScore, Math.Round(valueScore + 10m, 1));
         }
@@ -284,8 +284,8 @@ internal static class InvestmentRecommendationBuilder
         string targetText = targetRelic is not null || targetStars is not null
             ? " con un objetivo verificable"
             : " como inversión estratégica";
-        string inventoryText = inventoryFit?.CanCompleteNow is true
-            ? " Además, el inventario actual permite completarlo ya."
+        string inventoryText = inventoryFit?.MaterialsReady is true
+            ? " Además, el snapshot cubre sus materiales de reliquia."
             : string.Empty;
         return $"Concentra impacto en {moduleText}{targetText}.{inventoryText}";
     }
