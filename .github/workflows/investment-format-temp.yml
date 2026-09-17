@@ -1,0 +1,49 @@
+name: Temporary Investment Format
+
+on:
+  push:
+    branches: [ feat/investment-real-inventory ]
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: feat/investment-real-inventory
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Authenticate GitHub Packages
+        run: >-
+          dotnet nuget update source github-rga
+          --username "${{ github.actor }}"
+          --password "${{ secrets.NUGET_PAT }}"
+          --store-password-in-clear-text
+          --configfile NuGet.config
+
+      - name: Restore
+        run: dotnet restore Swgoh.sln
+
+      - name: Format
+        run: dotnet format Swgoh.sln --no-restore
+
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: apply dotnet format"
+          git push origin HEAD:feat/investment-real-inventory
