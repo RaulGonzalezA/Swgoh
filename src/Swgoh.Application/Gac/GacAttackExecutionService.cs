@@ -16,9 +16,9 @@ internal sealed class GacAttackExecutionService(
     IGacPlannerService plannerService,
     IGacRoundPlanRepository planRepository,
     IGacPersonalBattleRepository personalBattleRepository,
-    IGacLiveAttackStateRepository liveStateRepository,
     IGacAttackPlanOptimizerService optimizerService,
-    IClock clock) : IGacAttackExecutionService
+    IClock clock,
+    IGacLiveAttackStateRepository? liveStateRepository = null) : IGacAttackExecutionService
 {
     private static readonly TimeSpan PostCommitOperationTimeout = TimeSpan.FromSeconds(10);
 
@@ -200,6 +200,11 @@ internal sealed class GacAttackExecutionService(
         GacLiveAttackState state,
         ICollection<string> warnings)
     {
+        if (liveStateRepository is null)
+        {
+            return;
+        }
+
         using var timeout = new CancellationTokenSource(PostCommitOperationTimeout);
         try
         {
