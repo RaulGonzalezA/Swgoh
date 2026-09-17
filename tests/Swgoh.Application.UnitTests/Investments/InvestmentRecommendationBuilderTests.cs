@@ -107,7 +107,7 @@ public sealed class InvestmentRecommendationBuilderTests
         Assert.True(result.MaterialsReady);
         Assert.NotNull(result.Inventory);
         Assert.Equal(1m, result.Inventory.Coverage);
-        Assert.Empty(result.Inventory.Resources.Where(resource => !resource.Sufficient));
+        Assert.DoesNotContain(result.Inventory.Resources, resource => !resource.Sufficient);
         Assert.True(result.InventoryAdjustedValueScore > result.ValueScore);
     }
 
@@ -122,8 +122,8 @@ public sealed class InvestmentRecommendationBuilderTests
         Assert.False(result.MaterialsReady);
         Assert.NotNull(result.Inventory);
         Assert.Equal(2, result.Inventory.MissingResourceTypes);
-        InvestmentResourceNeed electrium = Assert.Single(result.Inventory.Resources.Where(resource => resource.ResourceId == "electrium_conductor"));
-        InvestmentResourceNeed zinbiddle = Assert.Single(result.Inventory.Resources.Where(resource => resource.ResourceId == "zinbiddle_card"));
+        InvestmentResourceNeed electrium = Assert.Single(result.Inventory.Resources, resource => resource.ResourceId == "electrium_conductor");
+        InvestmentResourceNeed zinbiddle = Assert.Single(result.Inventory.Resources, resource => resource.ResourceId == "zinbiddle_card");
         Assert.Equal(30, electrium.Missing);
         Assert.Equal(10, zinbiddle.Missing);
         Assert.True(result.Inventory.Coverage < 1m);
