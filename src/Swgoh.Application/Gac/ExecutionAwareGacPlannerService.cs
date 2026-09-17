@@ -1,3 +1,5 @@
+using Swgoh.Domain.Gac;
+
 namespace Swgoh.Application.Gac;
 
 internal sealed class ExecutionAwareGacPlannerService(
@@ -91,7 +93,7 @@ internal sealed class ExecutionAwareGacPlannerService(
                     return defense;
                 }
 
-                if (live.Status == Domain.Gac.GacAttackPlanStatus.Won)
+                if (live.Status == GacAttackPlanStatus.Won)
                 {
                     return defense with { Defeated = true };
                 }
