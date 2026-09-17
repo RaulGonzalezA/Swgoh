@@ -96,7 +96,7 @@ public sealed class InvestmentRecommendationBuilderTests
     }
 
     [Fact]
-    public void Build_WithCompleteInventory_MarksUpgradeReadyNowAndBoostsValue()
+    public void Build_WithCompleteInventory_MarksRelicMaterialsReadyAndBoostsValue()
     {
         InvestmentSignal[] signals = [RelicSignal("READY", 5, 7, 40m)];
         PlayerInventorySnapshot inventory = R5ToR7Inventory(complete: true);
@@ -104,7 +104,7 @@ public sealed class InvestmentRecommendationBuilderTests
         InvestmentRecommendation result = Assert.Single(InvestmentRecommendationBuilder.Build(signals, inventory: inventory));
 
         Assert.True(result.UsesRealInventory);
-        Assert.True(result.CanCompleteNow);
+        Assert.True(result.MaterialsReady);
         Assert.NotNull(result.Inventory);
         Assert.Equal(1m, result.Inventory.Coverage);
         Assert.Empty(result.Inventory.Resources.Where(resource => !resource.Sufficient));
@@ -119,7 +119,7 @@ public sealed class InvestmentRecommendationBuilderTests
 
         InvestmentRecommendation result = Assert.Single(InvestmentRecommendationBuilder.Build(signals, inventory: inventory));
 
-        Assert.False(result.CanCompleteNow);
+        Assert.False(result.MaterialsReady);
         Assert.NotNull(result.Inventory);
         Assert.Equal(2, result.Inventory.MissingResourceTypes);
         InvestmentResourceNeed electrium = Assert.Single(result.Inventory.Resources.Where(resource => resource.ResourceId == "electrium_conductor"));
