@@ -59,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IGacAttackPlanOptimizerService, HardenedGacAttackPlanOptimizerService>();
         services.AddScoped<IGacJointRoundOptimizerService, GacJointRoundOptimizerService>();
         services.AddScoped<IGacAttackExecutionService, GacAttackExecutionService>();
+        services.AddScoped<IPlayerInventoryService, PlayerInventoryService>();
         services.AddScoped<IInvestmentOptimizerService, InvestmentOptimizerService>();
         return services;
     }
