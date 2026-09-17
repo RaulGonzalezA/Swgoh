@@ -16,7 +16,7 @@ internal static class GacAttackExecutionEndpoints
             .WithTags("GAC Planner");
 
         group.MapPost("/{attackId:guid}/result", ExecuteAsync)
-            .WithSummary("Record a GAC attack result, learn from it and recalculate the next attack");
+            .WithSummary("Record a GAC attack result, remaining enemies and preload state, then recalculate the next attack");
 
         return endpoints;
     }
@@ -37,7 +37,9 @@ internal static class GacAttackExecutionEndpoints
                 new ExecuteGacAttackResult(
                     ParseStatus(request.Status),
                     request.Banners,
-                    request.Notes),
+                    request.Notes,
+                    request.RemainingEnemyUnitDefinitionIds,
+                    request.PreloadedTurnMeter),
                 cancellationToken);
             return ToResult(lookup);
         }
@@ -67,7 +69,10 @@ internal static class GacAttackExecutionEndpoints
                     execution.AttackId,
                     execution.Status.ToString(),
                     execution.Banners,
-                    execution.Notes),
+                    execution.Notes,
+                    execution.RemainingEnemyUnitDefinitionIds,
+                    execution.PreloadedTurnMeter,
+                    execution.IsCleanup),
                 execution.NextRecommendation is null
                     ? null
                     : GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse.From(
@@ -99,7 +104,12 @@ internal static class GacAttackExecutionEndpoints
         };
     }
 
-    internal sealed record ExecuteAttackRequest(string Status, int? Banners, string? Notes);
+    internal sealed record ExecuteAttackRequest(
+        string Status,
+        int? Banners,
+        string? Notes,
+        IReadOnlyCollection<string>? RemainingEnemyUnitDefinitionIds = null,
+        bool PreloadedTurnMeter = false);
 
     internal sealed record ExecutionEnvelope(
         GacPlannerEndpoints.GacPlannerResponse Planner,
@@ -112,5 +122,8 @@ internal static class GacAttackExecutionEndpoints
         Guid AttackId,
         string Status,
         int? Banners,
-        string? Notes);
+        string? Notes,
+        IReadOnlyCollection<string> RemainingEnemyUnitDefinitionIds,
+        bool PreloadedTurnMeter,
+        bool IsCleanup);
 }
