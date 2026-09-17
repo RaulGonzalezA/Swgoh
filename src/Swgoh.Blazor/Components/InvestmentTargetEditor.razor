@@ -1,0 +1,235 @@
+@using Swgoh.Blazor.Clients
+@inject InvestmentApiClient InvestmentClient
+
+<section class="target-editor">
+    <div class="target-editor-heading">
+        <div>
+            <span class="section-kicker">Objetivo persistente</span>
+            <h2>@(Target is null ? "Marcar como objetivo" : "Plan activo")</h2>
+            <p>Se guarda en tu perfil y se recalcula contra el roster e inventario actuales.</p>
+        </div>
+        @if (Target is not null)
+        {
+            <span class="target-editor-status @(Target.Completed ? "complete" : "active")">
+                @(Target.Completed ? "Completado" : $"{Target.Progress:P0}")
+            </span>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <p class="target-editor-message">Cargando objetivo…</p>
+    }
+    else
+    {
+        @if (Target is not null)
+        {
+            <div class="target-editor-current">
+                <strong>@Target.SuggestedAction</strong>
+                <span>@RemainingLabel(Target)</span>
+                @if (Target.Inventory is not null)
+                {
+                    <small>@(Target.Inventory.MaterialsReady ? "Relic mats cubiertos" : $"Cobertura de materiales {Target.Inventory.Coverage:P0}")</small>
+                }
+            </div>
+
+            @if (Target.Inventory is not null && !Target.Inventory.MaterialsReady)
+            {
+                <div class="target-editor-missing">
+                    @foreach (InvestmentApiClient.ResourceNeedViewModel need in Target.Inventory.Resources.Where(item => item.Missing > 0).OrderByDescending(item => item.Missing).Take(6))
+                    {
+                        <span><strong>@need.ResourceName</strong> · faltan @need.Missing.ToString("N0")</span>
+                    }
+                </div>
+            }
+        }
+
+        <div class="target-editor-form">
+            @if (!Unit.IsShip)
+            {
+                <label>
+                    <span>Reliquia objetivo</span>
+                    <select @bind="_targetRelic">
+                        <option value="">Sin objetivo</option>
+                        @for (int relic = Math.Max(1, Unit.RelicTier + 1); relic <= 10; relic++)
+                        {
+                            <option value="@relic">R@relic</option>
+                        }
+                    </select>
+                </label>
+            }
+            <label>
+                <span>Estrellas objetivo</span>
+                <select @bind="_targetStars">
+                    <option value="">Sin objetivo</option>
+                    @for (int stars = Math.Max(1, Unit.Rarity + 1); stars <= 7; stars++)
+                    {
+                        <option value="@stars">@stars★</option>
+                    }
+                </select>
+            </label>
+            <button class="primary-button" type="button" @onclick="SaveAsync" disabled="@(_saving || !CanSave)">
+                @(_saving ? "Guardando…" : Target is null ? "Marcar como objetivo" : "Actualizar objetivo")
+            </button>
+            @if (Target is not null)
+            {
+                <button class="ghost-button" type="button" @onclick="DeleteAsync" disabled="@_saving">Quitar objetivo</button>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <p class="target-editor-message">@_message</p>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public long AllyCode { get; set; }
+    [Parameter, EditorRequired] public PlayerApiClient.RosterUnitViewModel Unit { get; set; } = null!;
+    [Parameter] public int? SuggestedRelicTier { get; set; }
+    [Parameter] public int? SuggestedStars { get; set; }
+    [Parameter] public EventCallback<InvestmentApiClient.TargetViewModel?> TargetChanged { get; set; }
+
+    private InvestmentApiClient.TargetViewModel? Target { get; set; }
+    private bool _loading = true;
+    private bool _saving;
+    private string _targetRelic = string.Empty;
+    private string _targetStars = string.Empty;
+    private string? _message;
+    private string? _loadedKey;
+
+    private bool CanSave => Parse(_targetRelic) is not null || Parse(_targetStars) is not null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        string key = $"{AllyCode}:{Unit.DefinitionId}";
+        if (string.Equals(_loadedKey, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _loadedKey = key;
+        _loading = true;
+        _message = null;
+        try
+        {
+            Target = await InvestmentClient.GetTargetAsync(AllyCode, Unit.DefinitionId);
+            SeedEditor();
+        }
+        catch (Exception exception)
+        {
+            _message = $"No se pudo cargar el objetivo: {exception.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SeedEditor()
+    {
+        _targetRelic = Target?.TargetRelicTier?.ToString()
+            ?? ValidRelicSuggestion()?.ToString()
+            ?? string.Empty;
+        _targetStars = Target?.TargetStars?.ToString()
+            ?? ValidStarSuggestion()?.ToString()
+            ?? string.Empty;
+
+        if (string.IsNullOrEmpty(_targetRelic) && string.IsNullOrEmpty(_targetStars))
+        {
+            if (!Unit.IsShip && Unit.RelicTier < 10)
+            {
+                _targetRelic = Math.Min(10, Math.Max(Unit.RelicTier + 1, 5)).ToString();
+            }
+            else if (Unit.Rarity < 7)
+            {
+                _targetStars = "7";
+            }
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || !CanSave)
+        {
+            return;
+        }
+
+        _saving = true;
+        _message = null;
+        try
+        {
+            Target = await InvestmentClient.SaveTargetAsync(
+                AllyCode,
+                Unit.DefinitionId,
+                Parse(_targetRelic),
+                Parse(_targetStars));
+            _message = "Objetivo guardado. El plan activo ya usa el estado actual del roster e inventario.";
+            await TargetChanged.InvokeAsync(Target);
+        }
+        catch (Exception exception)
+        {
+            _message = $"No se pudo guardar el objetivo: {exception.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_saving || Target is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        _message = null;
+        try
+        {
+            await InvestmentClient.DeleteTargetAsync(AllyCode, Unit.DefinitionId);
+            Target = null;
+            SeedEditor();
+            _message = "Objetivo eliminado.";
+            await TargetChanged.InvokeAsync(null);
+        }
+        catch (Exception exception)
+        {
+            _message = $"No se pudo eliminar el objetivo: {exception.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private int? ValidRelicSuggestion() => !Unit.IsShip
+        && SuggestedRelicTier is int relic
+        && relic > Unit.RelicTier
+        && relic <= 10
+            ? relic
+            : null;
+
+    private int? ValidStarSuggestion() => SuggestedStars is int stars
+        && stars > Unit.Rarity
+        && stars <= 7
+            ? stars
+            : null;
+
+    private static int? Parse(string value) => int.TryParse(value, out int parsed) ? parsed : null;
+
+    private static string RemainingLabel(InvestmentApiClient.TargetViewModel target)
+    {
+        if (target.Completed)
+        {
+            return "El roster actual ya cumple este objetivo.";
+        }
+
+        var values = new List<string>(2);
+        if (target.RelicStepsRemaining > 0) values.Add($"{target.RelicStepsRemaining} nivel(es) de reliquia");
+        if (target.StarStepsRemaining > 0) values.Add($"{target.StarStepsRemaining} estrella(s)");
+        return values.Count == 0 ? "Sin pasos pendientes." : $"Pendiente: {string.Join(" · ", values)}";
+    }
+}

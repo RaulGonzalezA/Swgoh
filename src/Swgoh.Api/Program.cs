@@ -19,6 +19,7 @@ builder.AddServiceDefaults();
 builder.Services
     .AddApplication()
     .AddInfrastructure(builder.Configuration)
+    .AddInvestmentTargetInfrastructure()
     .AddRiseOfEmpireGuildInfrastructure(builder.Configuration);
 builder.Services.AddProblemDetails();
 
