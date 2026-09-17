@@ -84,6 +84,13 @@
     }
 </section>
 
+@if (!_loading && Target is not null && !Target.Completed)
+{
+    <FarmingPlanPanel AllyCode="AllyCode"
+                      DefinitionId="Unit.DefinitionId"
+                      RefreshToken="_farmingRefreshToken" />
+}
+
 @code {
     [Parameter, EditorRequired] public long AllyCode { get; set; }
     [Parameter, EditorRequired] public PlayerApiClient.RosterUnitViewModel Unit { get; set; } = null!;
@@ -94,6 +101,7 @@
     private InvestmentApiClient.TargetViewModel? Target { get; set; }
     private bool _loading = true;
     private bool _saving;
+    private long _farmingRefreshToken;
     private string _targetRelic = string.Empty;
     private string _targetStars = string.Empty;
     private string? _message;
@@ -165,7 +173,8 @@
                 Unit.DefinitionId,
                 Parse(_targetRelic),
                 Parse(_targetStars));
-            _message = "Objetivo guardado. El plan activo ya usa el estado actual del roster e inventario.";
+            _farmingRefreshToken++;
+            _message = "Objetivo guardado. El plan activo y el farmeo ya usan el estado actual del roster e inventario.";
             await TargetChanged.InvokeAsync(Target);
         }
         catch (Exception exception)
@@ -191,6 +200,7 @@
         {
             await InvestmentClient.DeleteTargetAsync(AllyCode, Unit.DefinitionId);
             Target = null;
+            _farmingRefreshToken++;
             SeedEditor();
             _message = "Objetivo eliminado.";
             await TargetChanged.InvokeAsync(null);

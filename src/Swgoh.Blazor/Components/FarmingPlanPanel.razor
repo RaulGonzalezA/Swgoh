@@ -1,0 +1,259 @@
+@using Swgoh.Blazor.Clients
+@inject FarmingPlanApiClient FarmingClient
+
+@if (_loading)
+{
+    @if (!Compact)
+    {
+        <UiLoadingState Title="Calculando plan de farmeo"
+                        Description="Agregando objetivos y descontando el inventario una sola vez…" />
+    }
+}
+else if (_error is not null)
+{
+    @if (!Compact)
+    {
+        <UiCard Kicker="Plan de farmeo" Title="No se pudo calcular">
+            <p>@_error</p>
+        </UiCard>
+    }
+}
+else if (_plan is not null && HasVisiblePlan)
+{
+    <section class="farm-plan @(Compact ? "compact" : string.Empty)">
+        <div class="farm-plan-heading">
+            <div>
+                <span class="section-kicker">Plan de farmeo</span>
+                <h2>@Heading</h2>
+                <p>@Description</p>
+            </div>
+            @if (!Compact)
+            {
+                <div class="farm-plan-summary">
+                    <span><strong>@_plan.ActiveTargetCount</strong> objetivos</span>
+                    <span><strong>@(_plan.HasInventorySnapshot ? _plan.MissingResourceTypes.ToString() : "—")</strong> déficits</span>
+                    <span><strong>@_plan.SharedBottleneckCount</strong> compartidos</span>
+                </div>
+            }
+        </div>
+
+        @if (!_plan.HasInventorySnapshot)
+        {
+            <div class="farm-plan-notice">
+                <strong>Falta inventario real</strong>
+                <span>Puedo ordenar los requisitos, pero no calcular el déficit exacto hasta que guardes un snapshot.</span>
+                <a href="@($"/investments/{AllyCode}")">Actualizar inventario →</a>
+            </div>
+        }
+
+        @if (VisibleResources.Count == 0)
+        {
+            <div class="farm-plan-empty">
+                <strong>@EmptyTitle</strong>
+                <span>@EmptyDescription</span>
+            </div>
+        }
+        else
+        {
+            <div class="farm-resource-list">
+                @foreach (FarmingPlanApiClient.ResourcePriorityViewModel resource in VisibleResources)
+                {
+                    <article class="farm-resource-card priority-@PriorityCss(resource.Priority)">
+                        <div class="farm-resource-rank">#@resource.Rank</div>
+                        <div class="farm-resource-main">
+                            <div class="farm-resource-title">
+                                <div>
+                                    <span>@resource.LaneLabel</span>
+                                    <h3>@resource.ResourceName</h3>
+                                </div>
+                                <strong>@ResourceGap(resource)</strong>
+                            </div>
+
+                            @if (resource.Coverage is decimal coverage)
+                            {
+                                <div class="farm-progress" aria-label="Cobertura @coverage:P0">
+                                    <span style="@($"width:{Math.Clamp(coverage * 100m, 0m, 100m):0.#}%")"></span>
+                                </div>
+                            }
+
+                            <div class="farm-resource-facts">
+                                <span>Requiere <strong>@resource.Required.ToString("N0")</strong></span>
+                                @if (resource.Available is long available)
+                                {
+                                    <span>Tienes <strong>@available.ToString("N0")</strong></span>
+                                }
+                                <span>Afecta a <strong>@resource.AffectedTargetCount</strong> objetivo@(resource.AffectedTargetCount == 1 ? string.Empty : "s")</span>
+                                @if (resource.SharedBottleneck)
+                                {
+                                    <span class="farm-shared">Cuello de botella compartido</span>
+                                }
+                            </div>
+                            <p>@resource.Action</p>
+                            <small>@TargetNames(resource)</small>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (!Compact && string.IsNullOrWhiteSpace(DefinitionId) && _plan.Targets.Count > 0)
+        {
+            <div class="farm-targets">
+                <div class="farm-targets-heading">
+                    <strong>Distancia por objetivo</strong>
+                    <span>La cobertura individual orienta; el déficit global de arriba es el que evita reutilizar inventario.</span>
+                </div>
+                @foreach (FarmingPlanApiClient.TargetPlanViewModel target in _plan.Targets)
+                {
+                    <a class="farm-target-card" href="@UnitHref(target.DefinitionId)">
+                        <div>
+                            <strong>@target.Name</strong>
+                            <span>@TargetProgress(target)</span>
+                        </div>
+                        <div>
+                            @if (target.MaterialCoverage is decimal targetCoverage)
+                            {
+                                <strong>@targetCoverage.ToString("P0")</strong>
+                                <span>cobertura</span>
+                            }
+                            else
+                            {
+                                <strong>—</strong>
+                                <span>sin snapshot</span>
+                            }
+                        </div>
+                        <small>@target.Summary</small>
+                    </a>
+                }
+            </div>
+        }
+
+        @if (Compact && _plan.ActiveTargetCount > 0)
+        {
+            <a class="farm-plan-more" href="@($"/investments/{AllyCode}")">Abrir plan de farmeo completo →</a>
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public long AllyCode { get; set; }
+    [Parameter] public string? DefinitionId { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public long RefreshToken { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private long? _loadedAllyCode;
+    private long _loadedRefreshToken = long.MinValue;
+    private string? _loadedDefinitionId;
+    private FarmingPlanApiClient.FarmingPlanViewModel? _plan;
+
+    private IReadOnlyList<FarmingPlanApiClient.ResourcePriorityViewModel> VisibleResources
+    {
+        get
+        {
+            if (_plan is null)
+            {
+                return [];
+            }
+
+            IEnumerable<FarmingPlanApiClient.ResourcePriorityViewModel> resources = _plan.Resources;
+            if (!string.IsNullOrWhiteSpace(DefinitionId))
+            {
+                resources = resources.Where(resource => resource.Targets.Any(target =>
+                    string.Equals(target.DefinitionId, DefinitionId, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (_plan.HasInventorySnapshot)
+            {
+                resources = resources.Where(resource => resource.Missing is > 0);
+            }
+
+            return [.. (Compact ? resources.Take(3) : resources)];
+        }
+    }
+
+    private bool HasVisiblePlan => _plan is not null &&
+        (_plan.ActiveTargetCount > 0 || !Compact || !string.IsNullOrWhiteSpace(DefinitionId));
+
+    private string Heading => !string.IsNullOrWhiteSpace(DefinitionId)
+        ? "Qué falta para este objetivo"
+        : Compact ? "Qué farmear ahora" : "Déficit real de tus objetivos";
+
+    private string Description => !string.IsNullOrWhiteSpace(DefinitionId)
+        ? "Solo los materiales que alimentan esta unidad, manteniendo visible si compiten con otros objetivos."
+        : "Prioriza cuellos de botella compartidos y descuenta tu inventario una sola vez entre todos los objetivos activos.";
+
+    private string EmptyTitle => _plan?.HasInventorySnapshot is true
+        ? "No hay materiales de reliquia pendientes aquí."
+        : "No hay requisitos de reliquia que ordenar.";
+
+    private string EmptyDescription => !string.IsNullOrWhiteSpace(DefinitionId)
+        ? "Este objetivo puede estar cubierto, ser solo de estrellas o no requerir una subida de reliquia."
+        : "Marca objetivos de reliquia desde Unit 360 para construir el plan.";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedAllyCode == AllyCode
+            && _loadedRefreshToken == RefreshToken
+            && string.Equals(_loadedDefinitionId, DefinitionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _loadedAllyCode = AllyCode;
+        _loadedRefreshToken = RefreshToken;
+        _loadedDefinitionId = DefinitionId;
+        _loading = true;
+        _error = null;
+        try
+        {
+            _plan = await FarmingClient.GetAsync(AllyCode);
+        }
+        catch (Exception exception)
+        {
+            _error = $"No se pudo cargar el plan de farmeo: {exception.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string ResourceGap(FarmingPlanApiClient.ResourcePriorityViewModel resource) => resource.Missing switch
+    {
+        long missing when missing > 0 => $"faltan {missing:N0}",
+        0 => "cubierto",
+        _ => $"necesitas {resource.Required:N0}"
+    };
+
+    private static string TargetNames(FarmingPlanApiClient.ResourcePriorityViewModel resource) =>
+        string.Join(" · ", resource.Targets.Select(target => $"{target.Name} ({target.Required:N0})"));
+
+    private string UnitHref(string definitionId) =>
+        $"/player/{AllyCode}/units/{Uri.EscapeDataString(definitionId)}";
+
+    private static string TargetProgress(FarmingPlanApiClient.TargetPlanViewModel target)
+    {
+        var values = new List<string>(2);
+        if (target.TargetRelicTier is int relic)
+        {
+            values.Add($"R{target.CurrentRelicTier} → R{relic}");
+        }
+
+        if (target.TargetStars is int stars && stars > target.CurrentStars)
+        {
+            values.Add($"{target.CurrentStars}★ → {stars}★");
+        }
+
+        return values.Count == 0 ? "Objetivo activo" : string.Join(" · ", values);
+    }
+
+    private static string PriorityCss(string priority) => priority switch
+    {
+        "Crítica" => "critical",
+        "Alta" => "high",
+        "Media" => "medium",
+        _ => "covered"
+    };
+}

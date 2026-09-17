@@ -28,6 +28,8 @@ internal static class InvestmentEndpoints
             .WithSummary("Create or replace a persistent investment target for one unit");
         group.MapDelete("/targets/{definitionId}", DeleteTargetAsync)
             .WithSummary("Remove a persistent investment target");
+        group.MapGet("/farming-plan", GetFarmingPlanAsync)
+            .WithSummary("Build a farming plan across active investment targets without double-counting inventory");
         return endpoints;
     }
 
@@ -166,6 +168,22 @@ internal static class InvestmentEndpoints
         {
             bool deleted = await service.DeleteAsync(allyCode, definitionId, cancellationToken).ConfigureAwait(false);
             return deleted ? Results.NoContent() : Results.NotFound();
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> GetFarmingPlanAsync(
+        long allyCode,
+        IInvestmentFarmingPlanService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            InvestmentFarmingPlan plan = await service.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(plan);
         }
         catch (ArgumentException exception)
         {

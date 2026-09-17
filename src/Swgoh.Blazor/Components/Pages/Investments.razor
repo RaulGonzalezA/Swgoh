@@ -36,6 +36,7 @@
         </div>
 
         <InvestmentTargetPlan AllyCode="AllyCode" />
+        <FarmingPlanPanel AllyCode="AllyCode" RefreshToken="_farmingRefreshToken" />
 
         @if (_inventory is not null)
         {
@@ -209,6 +210,7 @@
     [Parameter] public long AllyCode { get; set; }
     private bool _loading = true;
     private bool _inventorySaving;
+    private long _farmingRefreshToken;
     private string? _error;
     private string? _inventoryMessage;
     private InvestmentApiClient.OptimizationViewModel? _optimization;
@@ -219,7 +221,12 @@
         _optimization is null ? [] : _selectedModule is null ? _optimization.Recommendations : [.. _optimization.Recommendations.Where(item => item.Impacts.Any(impact => impact.Module == _selectedModule))];
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
-    private async Task ReloadAsync() => await LoadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await LoadAsync();
+        _farmingRefreshToken++;
+    }
 
     private async Task LoadAsync()
     {
@@ -257,7 +264,8 @@
         {
             _inventory = await InvestmentClient.SaveInventoryAsync(AllyCode, _inventory);
             _optimization = await InvestmentClient.GetCurrentAsync(AllyCode);
-            _inventoryMessage = "Inventario guardado. Ranking recalculado con tus materiales reales.";
+            _farmingRefreshToken++;
+            _inventoryMessage = "Inventario guardado. Ranking y plan de farmeo recalculados con tus materiales reales.";
         }
         catch (Exception exception)
         {

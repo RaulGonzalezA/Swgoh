@@ -92,6 +92,11 @@
             }
         }
     </section>
+
+    @if (Compact && ActiveTargets.Count > 0)
+    {
+        <FarmingPlanPanel AllyCode="AllyCode" Compact="true" />
+    }
 }
 
 @code {
