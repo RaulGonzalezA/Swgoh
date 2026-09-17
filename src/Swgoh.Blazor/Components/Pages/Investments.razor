@@ -23,14 +23,14 @@
             <div>
                 <span class="section-kicker">Investment Optimizer global</span>
                 <h1>¿Dónde merece la pena invertir ahora?</h1>
-                <p>Combina impacto transversal, coste teórico y tu snapshot real de materiales para distinguir lo importante de lo que además puedes completar ya.</p>
+                <p>Combina impacto transversal, coste teórico y tu snapshot real para destacar los objetivos cuyos materiales de reliquia ya tienes más cubiertos.</p>
             </div>
             <button class="secondary-button" type="button" @onclick="ReloadAsync" disabled="@_loading">Recalcular</button>
         </header>
 
         <div class="investment-summary">
             <article><span>Recomendaciones</span><strong>@_optimization.Recommendations.Count</strong><small>ordenadas por valor real</small></article>
-            <article><span>Listas ahora</span><strong>@_optimization.ReadyNowRecommendations</strong><small>materiales suficientes</small></article>
+            <article><span>Materiales listos</span><strong>@_optimization.MaterialsReadyRecommendations</strong><small>relic mats cubiertos</small></article>
             <article><span>Con inventario</span><strong>@_optimization.InventoryAdjustedRecommendations</strong><small>ranking ajustado a recursos</small></article>
             <article><span>Roster</span><strong>@AgeLabel(_optimization.RosterUpdatedAtUtc)</strong><small>frescura de los datos base</small></article>
         </div>
@@ -42,7 +42,7 @@
                     <div>
                         <span class="section-kicker">Inventario real</span>
                         <h2>Materiales disponibles</h2>
-                        <p>El proveedor público del juego no expone materiales privados. Guarda aquí un snapshot real y el optimizador descontará estas cantidades de cada objetivo de reliquia.</p>
+                        <p>El proveedor público del juego no expone materiales privados. Guarda aquí un snapshot real y el optimizador descontará estas cantidades de los requisitos de reliquia conocidos.</p>
                     </div>
                     <div class="inventory-meta">
                         @if (_inventory.HasSnapshot && _inventory.CapturedAtUtc is DateTimeOffset captured)
@@ -106,7 +106,7 @@
 
         <div class="investment-explainer">
             <strong>Valor real</strong>
-            <span>Cuando hay inventario, el ranking combina impacto/coste con cobertura de materiales. Los objetivos que puedes completar ya suben; si el snapshot no existe, el cálculo mantiene el coste relativo anterior.</span>
+            <span>Cuando hay inventario, el ranking combina impacto/coste con cobertura de relic mats. Tenerlos cubiertos mejora la prioridad, pero no afirma que dispongas también de todo el gear, fragmentos u otros prerrequisitos no visibles.</span>
         </div>
 
         @if (FilteredRecommendations.Count == 0)
@@ -143,10 +143,10 @@
 
                                 @if (recommendation.Inventory is not null)
                                 {
-                                    <div class="inventory-fit @(recommendation.Inventory.CanCompleteNow ? "ready" : "missing")">
-                                        <strong>@(recommendation.Inventory.CanCompleteNow ? "Puedes completarlo ahora" : $"Cobertura {recommendation.Inventory.Coverage:P0}")</strong>
+                                    <div class="inventory-fit @(recommendation.Inventory.MaterialsReady ? "ready" : "missing")">
+                                        <strong>@(recommendation.Inventory.MaterialsReady ? "Relic mats cubiertos" : $"Cobertura {recommendation.Inventory.Coverage:P0}")</strong>
                                         <small>@recommendation.Inventory.Summary</small>
-                                        @if (!recommendation.Inventory.CanCompleteNow)
+                                        @if (!recommendation.Inventory.MaterialsReady)
                                         {
                                             <div class="missing-resources">
                                                 @foreach (InvestmentApiClient.ResourceNeedViewModel need in recommendation.Inventory.Resources.Where(need => need.Missing > 0).Take(6))
