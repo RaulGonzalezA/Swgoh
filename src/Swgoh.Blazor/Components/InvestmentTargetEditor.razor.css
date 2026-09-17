@@ -1,0 +1,17 @@
+.target-editor { display:grid; gap:.8rem; padding:1rem; border:1px solid color-mix(in srgb,var(--accent) 38%,var(--border-color)); border-radius:1rem; background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 5%,var(--surface-1)),var(--surface-1)); }
+.target-editor-heading { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
+.target-editor-heading h2 { margin:.15rem 0 .25rem; }
+.target-editor-heading p { margin:0; color:var(--text-muted); }
+.target-editor-status { flex:0 0 auto; padding:.3rem .55rem; border:1px solid var(--border-color); border-radius:999px; font-size:.78rem; font-weight:900; }
+.target-editor-status.active { color:var(--accent); border-color:color-mix(in srgb,var(--accent) 48%,var(--border-color)); }
+.target-editor-status.complete { color:var(--success); border-color:color-mix(in srgb,var(--success) 48%,var(--border-color)); }
+.target-editor-current { display:grid; gap:.16rem; padding:.7rem; border:1px solid var(--border-color); border-radius:.75rem; background:var(--surface-2); }
+.target-editor-current span,.target-editor-current small,.target-editor-message { color:var(--text-muted); }
+.target-editor-missing { display:flex; flex-wrap:wrap; gap:.35rem; }
+.target-editor-missing span { padding:.26rem .45rem; border:1px solid color-mix(in srgb,var(--warning) 42%,var(--border-color)); border-radius:.55rem; color:var(--warning); font-size:.74rem; background:color-mix(in srgb,var(--warning) 5%,var(--surface-1)); }
+.target-editor-form { display:flex; flex-wrap:wrap; gap:.6rem; align-items:end; }
+.target-editor-form label { display:grid; gap:.25rem; min-width:9rem; }
+.target-editor-form label span { color:var(--text-muted); font-size:.74rem; font-weight:800; }
+.target-editor-form select { padding:.48rem .55rem; border:1px solid var(--border-color); border-radius:.55rem; background:var(--surface-2); color:inherit; }
+.target-editor-message { margin:0; font-size:.82rem; }
+@media (max-width:620px) { .target-editor-heading { flex-direction:column; } .target-editor-form { align-items:stretch; } .target-editor-form label,.target-editor-form button { width:100%; } }
