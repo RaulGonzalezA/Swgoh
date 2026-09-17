@@ -90,7 +90,13 @@ public sealed record GacAttackAssignmentDetails(
     GacAttackPlanStatus Status,
     string? Notes,
     int? Banners = null,
-    string? DatacronId = null);
+    string? DatacronId = null,
+    IReadOnlyCollection<string>? RemainingEnemyUnitDefinitionIds = null,
+    bool PreloadedTurnMeter = false)
+{
+    public IReadOnlyCollection<string> EnemySurvivors => RemainingEnemyUnitDefinitionIds ?? [];
+    public bool IsCleanup => Attempt > 1;
+}
 
 public sealed record GacPlannerConflict(
     string Code,

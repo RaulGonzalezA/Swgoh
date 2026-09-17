@@ -5,13 +5,18 @@ namespace Swgoh.Application.Gac;
 public sealed record ExecuteGacAttackResult(
     GacAttackPlanStatus Status,
     int? Banners,
-    string? Notes);
+    string? Notes,
+    IReadOnlyCollection<string>? RemainingEnemyUnitDefinitionIds = null,
+    bool PreloadedTurnMeter = false);
 
 public sealed record GacAttackExecutionResult(
     Guid AttackId,
     GacAttackPlanStatus Status,
     int? Banners,
     string? Notes,
+    IReadOnlyCollection<string> RemainingEnemyUnitDefinitionIds,
+    bool PreloadedTurnMeter,
+    bool IsCleanup,
     GacPlannerState State,
     GacAttackOptimizationResult? Optimization,
     GacAttackOptimizationRecommendation? NextRecommendation,

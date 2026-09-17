@@ -283,7 +283,13 @@ public sealed class GacPlannerApiClient(HttpClient httpClient)
         string Status,
         string? Notes,
         int? Banners,
-        string? DatacronId = null);
+        string? DatacronId = null,
+        IReadOnlyCollection<string>? RemainingEnemyUnitDefinitionIds = null,
+        bool PreloadedTurnMeter = false,
+        bool IsCleanup = false)
+    {
+        public IReadOnlyCollection<string> EnemySurvivors => RemainingEnemyUnitDefinitionIds ?? [];
+    }
 
     public sealed record ConflictViewModel(
         string Code,
