@@ -44,7 +44,8 @@ public static class DependencyInjection
         services.AddSingleton<GacOptimizationCoordinator>();
         services.AddScoped<IGacGeneratedTeamLifecycleService, GacGeneratedTeamLifecycleService>();
         services.AddScoped<GacPlannerService>();
-        services.AddScoped<IGacPlannerService, LearningGacPlannerService>();
+        services.AddScoped<LearningGacPlannerService>();
+        services.AddScoped<IGacPlannerService, ExecutionAwareGacPlannerService>();
         services.AddScoped<IGacPlannerContextService, GacPlannerContextService>();
         services.AddScoped<IGacPlannerMutationService, GacPlannerMutationService>();
         services.AddScoped<GacDefenseStrategyService>();
