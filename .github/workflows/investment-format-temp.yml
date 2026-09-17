@@ -33,15 +33,22 @@ jobs:
       - name: Restore
         run: dotnet restore Swgoh.sln
 
-      - name: Format
-        run: dotnet format Swgoh.sln --no-restore
+      - name: Restore NuGet config before diagnostics
+        run: git checkout -- NuGet.config
 
-      - name: Export formatting patch
-        run: git diff --binary > investment-format.patch
+      - name: Capture format diagnostics
+        shell: bash
+        run: |
+          set +e
+          dotnet format Swgoh.sln --verify-no-changes --no-restore --verbosity diagnostic > format-diagnostics.log 2>&1
+          echo $? > format-exit-code.txt
+          exit 0
 
-      - name: Upload formatting patch
+      - name: Upload format diagnostics
         uses: actions/upload-artifact@v6
         with:
-          name: investment-format-patch
-          path: investment-format.patch
+          name: investment-format-diagnostics
+          path: |
+            format-diagnostics.log
+            format-exit-code.txt
           if-no-files-found: error
