@@ -25,6 +25,23 @@ public sealed record InvestmentCostEstimate(
     bool IsEstimate,
     string Summary);
 
+public sealed record InvestmentResourceNeed(
+    string ResourceId,
+    string ResourceName,
+    long Required,
+    long Available,
+    long Missing,
+    bool Sufficient);
+
+public sealed record InvestmentInventoryFit(
+    DateTimeOffset CapturedAtUtc,
+    string Source,
+    bool CanCompleteNow,
+    decimal Coverage,
+    int MissingResourceTypes,
+    string Summary,
+    IReadOnlyCollection<InvestmentResourceNeed> Resources);
+
 public sealed record InvestmentRecommendation(
     int Rank,
     string DefinitionId,
@@ -36,17 +53,21 @@ public sealed record InvestmentRecommendation(
     int? TargetStars,
     decimal Score,
     decimal ValueScore,
+    decimal InventoryAdjustedValueScore,
     decimal? ImpactPerCost,
     string Priority,
     string ValueRating,
     string SuggestedAction,
     string BenefitSummary,
     InvestmentCostEstimate? EstimatedCost,
+    InvestmentInventoryFit? Inventory,
     IReadOnlyCollection<InvestmentModuleImpact> Impacts)
 {
     public int ModuleCount => Impacts.Select(impact => impact.Module).Distinct().Count();
     public bool HasConcreteTarget => TargetRelicTier is not null || TargetStars is not null;
     public bool HasEstimatedCost => EstimatedCost is not null;
+    public bool UsesRealInventory => Inventory is not null;
+    public bool CanCompleteNow => Inventory?.CanCompleteNow is true;
 }
 
 public sealed record InvestmentModuleStatus(
@@ -61,12 +82,17 @@ public sealed record InvestmentOptimizationResult(
     DateTimeOffset RosterUpdatedAtUtc,
     DateTimeOffset GeneratedAtUtc,
     IReadOnlyCollection<InvestmentRecommendation> Recommendations,
-    IReadOnlyCollection<InvestmentModuleStatus> Modules)
+    IReadOnlyCollection<InvestmentModuleStatus> Modules,
+    DateTimeOffset? InventoryCapturedAtUtc,
+    string? InventorySource)
 {
     public int CrossModuleRecommendations => Recommendations.Count(item => item.ModuleCount >= 2);
     public int ConcreteTargets => Recommendations.Count(item => item.HasConcreteTarget);
     public int CostedRecommendations => Recommendations.Count(item => item.HasEstimatedCost);
-    public int HighValueRecommendations => Recommendations.Count(item => item.ValueScore >= 60m);
+    public int HighValueRecommendations => Recommendations.Count(item => item.InventoryAdjustedValueScore >= 60m);
+    public int ReadyNowRecommendations => Recommendations.Count(item => item.CanCompleteNow);
+    public int InventoryAdjustedRecommendations => Recommendations.Count(item => item.UsesRealInventory);
+    public bool HasInventorySnapshot => InventoryCapturedAtUtc is not null;
 }
 
 internal sealed record InvestmentSignal(
