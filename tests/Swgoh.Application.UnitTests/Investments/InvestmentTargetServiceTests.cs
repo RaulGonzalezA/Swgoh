@@ -2,6 +2,8 @@ using Swgoh.Application.Abstractions;
 using Swgoh.Application.Investments;
 using Swgoh.Application.Players;
 
+using Xunit;
+
 namespace Swgoh.Application.UnitTests.Investments;
 
 public sealed class InvestmentTargetServiceTests
