@@ -5,7 +5,7 @@ on:
     branches: [ feat/investment-real-inventory ]
 
 permissions:
-  contents: write
+  contents: read
   packages: read
 
 jobs:
@@ -36,14 +36,12 @@ jobs:
       - name: Format
         run: dotnet format Swgoh.sln --no-restore
 
-      - name: Commit formatting
-        run: |
-          if git diff --quiet; then
-            echo "No formatting changes required."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "style: apply dotnet format"
-          git push origin HEAD:feat/investment-real-inventory
+      - name: Export formatting patch
+        run: git diff --binary > investment-format.patch
+
+      - name: Upload formatting patch
+        uses: actions/upload-artifact@v6
+        with:
+          name: investment-format-patch
+          path: investment-format.patch
+          if-no-files-found: error
