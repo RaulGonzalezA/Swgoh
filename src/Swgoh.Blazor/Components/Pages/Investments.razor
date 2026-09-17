@@ -1,0 +1,226 @@
+@page "/investments/{AllyCode:long}"
+@using Swgoh.Blazor.Clients
+@inject InvestmentApiClient InvestmentClient
+
+<PageTitle>Investment Optimizer · SWGOH Assistant</PageTitle>
+
+<section class="investment-shell">
+    @if (_loading)
+    {
+        <div class="investment-state">Cruzando GAC, RotE, Conquista, Era y Coliseo…</div>
+    }
+    else if (_error is not null)
+    {
+        <div class="investment-state error">@_error</div>
+    }
+    else if (_optimization is null)
+    {
+        <div class="investment-state">No hay un jugador importado con ese ally code.</div>
+    }
+    else
+    {
+        <header class="investment-hero">
+            <div>
+                <span class="section-kicker">Investment Optimizer global</span>
+                <h1>¿Dónde merece la pena invertir ahora?</h1>
+                <p>Una sola cola de prioridades construida con el uso real de tus unidades en GAC, los desbloqueos de RotE, los equipos de Conquista y los requisitos actuales de Era/Coliseo.</p>
+            </div>
+            <button class="secondary-button" type="button" @onclick="ReloadAsync" disabled="@_loading">Recalcular</button>
+        </header>
+
+        <div class="investment-summary">
+            <article>
+                <span>Recomendaciones</span>
+                <strong>@_optimization.Recommendations.Count</strong>
+                <small>ordenadas por impacto combinado</small>
+            </article>
+            <article>
+                <span>Valor transversal</span>
+                <strong>@_optimization.CrossModuleRecommendations</strong>
+                <small>impactan 2+ módulos</small>
+            </article>
+            <article>
+                <span>Objetivo concreto</span>
+                <strong>@_optimization.ConcreteTargets</strong>
+                <small>reliquia o estrellas verificables</small>
+            </article>
+            <article>
+                <span>Roster</span>
+                <strong>@AgeLabel(_optimization.RosterUpdatedAtUtc)</strong>
+                <small>frescura de los datos base</small>
+            </article>
+        </div>
+
+        <section class="investment-modules" aria-label="Cobertura por módulo">
+            @foreach (InvestmentApiClient.ModuleStatusViewModel module in _optimization.Modules)
+            {
+                <button type="button"
+                        class="investment-module @(module.Available ? "available" : "unavailable") @(_selectedModule == module.Module ? "selected" : string.Empty)"
+                        title="@module.Message"
+                        @onclick="() => ToggleModule(module.Module)">
+                    <span>@ModuleLabel(module.Module)</span>
+                    <strong>@module.SignalCount</strong>
+                    <small>@(module.Available ? "señales" : "no disponible")</small>
+                </button>
+            }
+            @if (_selectedModule is not null)
+            {
+                <button type="button" class="investment-clear-filter" @onclick="ClearModuleFilter">Ver todas</button>
+            }
+        </section>
+
+        <div class="investment-explainer">
+            <strong>Cómo leer la lista</strong>
+            <span>RotE y Journey pueden fijar un objetivo concreto porque exponen requisitos reales. GAC, Conquista y Coliseo aportan valor estratégico, pero no fuerzan una reliquia inventada si el módulo no la exige.</span>
+        </div>
+
+        @if (FilteredRecommendations.Count == 0)
+        {
+            <div class="investment-state compact">No hay recomendaciones para el filtro seleccionado.</div>
+        }
+        else
+        {
+            <div class="investment-list">
+                @foreach (InvestmentApiClient.RecommendationViewModel recommendation in FilteredRecommendations)
+                {
+                    <article class="investment-card priority-@PriorityCss(recommendation.Priority)">
+                        <div class="investment-rank">#@recommendation.Rank</div>
+                        <div class="investment-unit">
+                            @if (!string.IsNullOrWhiteSpace(recommendation.ThumbnailName))
+                            {
+                                <img src="@($"/unit-assets/{Uri.EscapeDataString(recommendation.ThumbnailName)}")" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span class="investment-unit-fallback">@Initials(recommendation.Name)</span>
+                            }
+                            <div>
+                                <span class="investment-priority">@recommendation.Priority · @recommendation.Score.ToString("0.#")</span>
+                                <h2>@recommendation.Name</h2>
+                                <p class="investment-action">@recommendation.SuggestedAction</p>
+                                <div class="investment-badges">
+                                    @foreach (InvestmentApiClient.ModuleImpactViewModel impact in recommendation.Impacts)
+                                    {
+                                        <span>@ModuleLabel(impact.Module)</span>
+                                    }
+                                    @if (recommendation.ModuleCount >= 2)
+                                    {
+                                        <span class="cross-module">+ transversal</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="investment-impact-list">
+                            @foreach (InvestmentApiClient.ModuleImpactViewModel impact in recommendation.Impacts)
+                            {
+                                <div class="investment-impact">
+                                    <div>
+                                        <strong>@ModuleLabel(impact.Module)</strong>
+                                        <span>+@impact.Score.ToString("0.#")</span>
+                                    </div>
+                                    <p>@impact.Reason</p>
+                                    @if (impact.ConcreteTarget)
+                                    {
+                                        <small>@ImpactTarget(impact)</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter]
+    public long AllyCode { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private InvestmentApiClient.OptimizationViewModel? _optimization;
+    private InvestmentApiClient.InvestmentModuleViewModel? _selectedModule;
+
+    private IReadOnlyCollection<InvestmentApiClient.RecommendationViewModel> FilteredRecommendations =>
+        _optimization is null
+            ? []
+            : _selectedModule is null
+                ? _optimization.Recommendations
+                : [.. _optimization.Recommendations.Where(item => item.Impacts.Any(impact => impact.Module == _selectedModule))];
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task ReloadAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _optimization = await InvestmentClient.GetCurrentAsync(AllyCode);
+        }
+        catch (Exception exception)
+        {
+            _error = $"No se pudo calcular el Investment Optimizer: {exception.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleModule(InvestmentApiClient.InvestmentModuleViewModel module) =>
+        _selectedModule = _selectedModule == module ? null : module;
+
+    private void ClearModuleFilter() => _selectedModule = null;
+
+    private static string ModuleLabel(InvestmentApiClient.InvestmentModuleViewModel module) => module switch
+    {
+        InvestmentApiClient.InvestmentModuleViewModel.Gac => "GAC",
+        InvestmentApiClient.InvestmentModuleViewModel.RiseOfEmpire => "RotE",
+        InvestmentApiClient.InvestmentModuleViewModel.Conquest => "Conquista",
+        InvestmentApiClient.InvestmentModuleViewModel.Era => "Era",
+        InvestmentApiClient.InvestmentModuleViewModel.Coliseum => "Coliseo",
+        _ => module.ToString()
+    };
+
+    private static string ImpactTarget(InvestmentApiClient.ModuleImpactViewModel impact)
+    {
+        var values = new List<string>(2);
+        if (impact.TargetRelicTier is int relic)
+        {
+            values.Add($"Objetivo R{relic}");
+        }
+        if (impact.TargetStars is int stars)
+        {
+            values.Add($"Objetivo {stars}★");
+        }
+        return string.Join(" · ", values);
+    }
+
+    private static string PriorityCss(string priority) => priority switch
+    {
+        "Crítica" => "critical",
+        "Alta" => "high",
+        "Media" => "medium",
+        _ => "opportunity"
+    };
+
+    private static string Initials(string name)
+    {
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
+    }
+
+    private static string AgeLabel(DateTimeOffset updatedAtUtc)
+    {
+        TimeSpan age = DateTimeOffset.UtcNow - updatedAtUtc;
+        if (age < TimeSpan.FromMinutes(1)) return "ahora";
+        if (age < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)age.TotalMinutes)} min";
+        if (age < TimeSpan.FromDays(1)) return $"{Math.Max(1, (int)age.TotalHours)} h";
+        return $"{Math.Max(1, (int)age.TotalDays)} d";
+    }
+}
