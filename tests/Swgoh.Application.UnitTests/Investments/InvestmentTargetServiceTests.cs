@@ -26,7 +26,7 @@ public sealed class InvestmentTargetServiceTests
         Assert.Equal(2, result.RelicStepsRemaining);
         Assert.False(result.Completed);
         Assert.NotNull(result.Inventory);
-        Assert.True(result.Inventory.MissingResourceTypes > 0);
+        Assert.InRange(result.Inventory.MissingResourceTypes, 1, int.MaxValue);
         Assert.NotNull(await repository.GetAsync(AllyCode, unit.DefinitionId, CancellationToken.None));
     }
 
