@@ -54,7 +54,11 @@
             </div>
         }
 
-        <button class="secondary-button roster-unit-action" type="button" @onclick="OpenAsync">Ver ficha y uso GAC →</button>
+        <button class="ghost-button roster-unit-action" type="button" @onclick="OpenAsync">Vista rápida</button>
+        @if (AllyCode is long allyCode)
+        {
+            <a class="secondary-button button-link roster-unit-action" href="@($"/player/{allyCode}/units/{Uri.EscapeDataString(Unit.DefinitionId)}")">Abrir Unit 360 →</a>
+        }
     </div>
 </article>
 
@@ -63,6 +67,9 @@
 
     [Parameter, EditorRequired]
     public PlayerApiClient.RosterUnitViewModel Unit { get; set; } = null!;
+
+    [Parameter]
+    public long? AllyCode { get; set; }
 
     [Parameter]
     public EventCallback<PlayerApiClient.RosterUnitViewModel> OpenDetails { get; set; }
