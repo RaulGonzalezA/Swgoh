@@ -16,6 +16,7 @@ internal sealed class GacAttackExecutionService(
     IGacPlannerService plannerService,
     IGacRoundPlanRepository planRepository,
     IGacPersonalBattleRepository personalBattleRepository,
+    IGacLiveAttackStateRepository liveStateRepository,
     IGacAttackPlanOptimizerService optimizerService,
     IClock clock) : IGacAttackExecutionService
 {
@@ -62,6 +63,8 @@ internal sealed class GacAttackExecutionService(
 
         GacVisibleDefenseDetails defense = state.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == attackDetails.DefenseId)
             ?? throw new InvalidOperationException("The attack references a defense that is no longer visible in the plan.");
+        string[] remainingEnemyUnitDefinitionIds = ResolveRemainingEnemyUnits(input, defense);
+
         GacRoundPlan plan = await planRepository
             .FindByIdAsync(state.Plan.Id, cancellationToken)
             .ConfigureAwait(false)
@@ -77,7 +80,8 @@ internal sealed class GacAttackExecutionService(
             attack.TeamPresetId,
             attack.Attempt,
             input.Status,
-            notes);
+            notes,
+            attack.DatacronId);
         GacAttackAssignment[] updatedAttacks =
         [
             .. plan.Attacks.Select(item => item.Id == attackId ? updatedAttack : item)
@@ -92,13 +96,30 @@ internal sealed class GacAttackExecutionService(
                 "The GAC plan changed while the attack result was being recorded. Reload the round and try again.");
         }
 
+        bool preloadedTurnMeter = input.Status == GacAttackPlanStatus.Failed && input.PreloadedTurnMeter;
+        GacLiveAttackState liveState = GacLiveAttackState.Create(
+            state.Plan.Id,
+            state.Plan.PlayerAllyCode,
+            attack.Id,
+            attack.DefenseId,
+            attack.Attempt,
+            input.Status,
+            input.Banners,
+            notes,
+            remainingEnemyUnitDefinitionIds,
+            preloadedTurnMeter,
+            recordedAtUtc);
         GacPlannerState committedState = BuildCommittedState(
             state,
             attackDetails,
             input,
             notes,
+            remainingEnemyUnitDefinitionIds,
+            preloadedTurnMeter,
             recordedAtUtc);
         var warnings = new List<string>();
+
+        await PersistLiveStateBestEffortAsync(liveState, warnings).ConfigureAwait(false);
 
         GacPersonalBattleObservation observation = GacPersonalBattleObservation.Create(
             state.Plan.PlayerAllyCode,
@@ -128,10 +149,67 @@ internal sealed class GacAttackExecutionService(
                 input.Status,
                 input.Banners,
                 notes,
+                remainingEnemyUnitDefinitionIds,
+                preloadedTurnMeter,
+                attack.Attempt > 1,
                 resultState,
                 optimization,
                 next,
                 warnings));
+    }
+
+    private static string[] ResolveRemainingEnemyUnits(
+        ExecuteGacAttackResult input,
+        GacVisibleDefenseDetails defense)
+    {
+        if (input.Status == GacAttackPlanStatus.Won)
+        {
+            return [];
+        }
+
+        string[] currentDefenseIds =
+        [
+            .. defense.Squad.AllUnits.Select(unit => unit.DefinitionId)
+        ];
+        string[] requested = input.RemainingEnemyUnitDefinitionIds is null
+            ? currentDefenseIds
+            : [.. input.RemainingEnemyUnitDefinitionIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)];
+        if (requested.Length == 0)
+        {
+            throw new ArgumentException(
+                "A failed attack must leave at least one enemy unit alive.",
+                nameof(input));
+        }
+
+        HashSet<string> available = currentDefenseIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string? invalid = requested.FirstOrDefault(id => !available.Contains(id));
+        if (invalid is not null)
+        {
+            throw new ArgumentException(
+                $"Enemy survivor '{invalid}' is not part of the defense currently being attacked.",
+                nameof(input));
+        }
+
+        return requested;
+    }
+
+    private async Task PersistLiveStateBestEffortAsync(
+        GacLiveAttackState state,
+        ICollection<string> warnings)
+    {
+        using var timeout = new CancellationTokenSource(PostCommitOperationTimeout);
+        try
+        {
+            await liveStateRepository.UpsertAsync(state, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            warnings.Add(
+                "El resultado se guardó, pero el estado de cleanup (supervivientes/TM) no pudo persistirse en esta operación.");
+        }
     }
 
     private async Task PersistObservationBestEffortAsync(
@@ -186,13 +264,17 @@ internal sealed class GacAttackExecutionService(
         GacAttackAssignmentDetails attackDetails,
         ExecuteGacAttackResult input,
         string? notes,
+        IReadOnlyCollection<string> remainingEnemyUnitDefinitionIds,
+        bool preloadedTurnMeter,
         DateTimeOffset recordedAtUtc)
     {
         GacAttackAssignmentDetails committedAttack = attackDetails with
         {
             Status = input.Status,
             Notes = notes,
-            Banners = input.Banners
+            Banners = input.Banners,
+            RemainingEnemyUnitDefinitionIds = remainingEnemyUnitDefinitionIds,
+            PreloadedTurnMeter = preloadedTurnMeter
         };
         GacAttackAssignmentDetails[] attacks =
         [
@@ -200,11 +282,18 @@ internal sealed class GacAttackExecutionService(
         ];
         GacVisibleDefenseDetails[] visibleDefenses =
         [
-            .. state.Plan.VisibleDefenses.Select(defense => defense with
+            .. state.Plan.VisibleDefenses.Select(defense =>
             {
-                Defeated = attacks.Any(attack =>
+                bool defeated = attacks.Any(attack =>
                     attack.DefenseId == defense.Id &&
-                    attack.Status == GacAttackPlanStatus.Won)
+                    attack.Status == GacAttackPlanStatus.Won);
+                if (defense.Id != committedAttack.DefenseId || defeated || input.Status != GacAttackPlanStatus.Failed)
+                {
+                    return defense with { Defeated = defeated };
+                }
+
+                GacPlannerSquadDetails remaining = ReduceSquad(defense.Squad, remainingEnemyUnitDefinitionIds);
+                return defense with { Squad = remaining, Defeated = false };
             })
         ];
         GacRoundPlanDetails plan = state.Plan with
@@ -215,5 +304,19 @@ internal sealed class GacAttackExecutionService(
             Version = state.Plan.Version + 1
         };
         return state with { Plan = plan };
+    }
+
+    private static GacPlannerSquadDetails ReduceSquad(
+        GacPlannerSquadDetails squad,
+        IReadOnlyCollection<string> survivorIds)
+    {
+        HashSet<string> survivors = survivorIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        GacPlannerUnitDetails[] remaining =
+        [
+            .. squad.AllUnits.Where(unit => survivors.Contains(unit.DefinitionId))
+        ];
+        return remaining.Length == 0
+            ? squad
+            : new GacPlannerSquadDetails(remaining[0], [.. remaining.Skip(1)], squad.IsFleet);
     }
 }
