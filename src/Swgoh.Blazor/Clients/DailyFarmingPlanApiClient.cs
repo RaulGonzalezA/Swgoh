@@ -112,6 +112,28 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         DateTimeOffset? KnownBottleneckCompletionAtUtc,
         string Summary);
 
+    public sealed record BudgetScenarioTargetViewModel(
+        string DefinitionId,
+        string Name,
+        bool FullEstimateAvailable,
+        int? EstimatedDays,
+        int? DaysSavedVsF2P);
+
+    public sealed record BudgetScenarioViewModel(
+        int DailyCrystalBudget,
+        string ProfileLabel,
+        bool IsCurrent,
+        int CrystalsSpent,
+        int CrystalsUnspent,
+        int RefreshCount,
+        int EnergyGained,
+        int FullyEstimatedTargetCount,
+        int ReadyNowTargetCount,
+        int? ModeledPortfolioDays,
+        DateTimeOffset? ModeledPortfolioCompletionAtUtc,
+        int? DaysSavedVsF2P,
+        IReadOnlyCollection<BudgetScenarioTargetViewModel> Targets);
+
     public sealed record DailyFarmingPlanViewModel(
         long AllyCode,
         DateTimeOffset GeneratedAtUtc,
@@ -124,6 +146,7 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         CrystalBudgetViewModel CrystalBudget,
         IReadOnlyCollection<ResourceEtaViewModel> ResourceEtas,
         IReadOnlyCollection<TargetEtaViewModel> TargetEtas,
+        IReadOnlyCollection<BudgetScenarioViewModel> BudgetScenarios,
         string Summary,
         string Limitation,
         int FullyEstimatedTargetCount,
