@@ -119,6 +119,50 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_WithCarboniteAndBronzium_ProducesCompleteNormalEnergyEta()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+        [
+            CreateResource(
+                "carbonite_circuit_board",
+                "Carbonite Circuit Board",
+                InventoryResourceKind.RelicMaterial,
+                FarmingLane.Scavenger,
+                missing: 70,
+                priority: "Crítica"),
+            CreateResource(
+                "bronzium_wiring",
+                "Bronzium Wiring",
+                InventoryResourceKind.RelicMaterial,
+                FarmingLane.Scavenger,
+                missing: 20,
+                priority: "Alta")
+        ],
+        targets: [CreateTarget()]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(
+            AllyCode,
+            0,
+            CancellationToken.None);
+
+        Assert.Equal(2, result.ResourceEtas.Count);
+        DailyResourceEta carbonite = Assert.Single(
+            result.ResourceEtas,
+            eta => eta.ResourceId == "carbonite_circuit_board");
+        DailyResourceEta bronzium = Assert.Single(
+            result.ResourceEtas,
+            eta => eta.ResourceId == "bronzium_wiring");
+        Assert.Equal(2, carbonite.EstimatedDays);
+        Assert.Equal(5, bronzium.EstimatedDays);
+
+        DailyTargetEta target = Assert.Single(result.TargetEtas);
+        Assert.True(target.FullEstimateAvailable);
+        Assert.Equal(5, target.EstimatedDays);
+        Assert.Equal(0, target.UnknownBlockingResourceTypes);
+    }
+
+    [Fact]
     public async Task GetAsync_WithActiveTargets_AddsFleetGuardrailInsteadOfInventingNode()
     {
         InvestmentFarmingPlan farmingPlan = CreatePlan([]);

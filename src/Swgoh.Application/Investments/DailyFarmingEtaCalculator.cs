@@ -2,14 +2,34 @@ namespace Swgoh.Application.Investments;
 
 internal static class DailyFarmingEtaCalculator
 {
-    private const int DedicatedCantinaEnergyCost = 16;
-
-    private static readonly IReadOnlyDictionary<string, SignalDataRate> ConservativeSignalDataRates =
-        new Dictionary<string, SignalDataRate>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, ResourceFarmRate> ConservativeFarmRates =
+        new Dictionary<string, ResourceFarmRate>(StringComparer.Ordinal)
         {
-            ["signal_data_fragmented"] = new(1.35m, "Sector 8 empirical conservative baseline"),
-            ["signal_data_incomplete"] = new(0.90m, "Sector 8 empirical conservative baseline"),
-            ["signal_data_flawed"] = new(0.65m, "Sector 8 empirical conservative baseline")
+            ["signal_data_fragmented"] = new(
+                DailyFarmingChannel.CantinaEnergy,
+                1.35m,
+                16,
+                "Cantina 8-C · conservative empirical baseline"),
+            ["signal_data_incomplete"] = new(
+                DailyFarmingChannel.CantinaEnergy,
+                0.90m,
+                16,
+                "Cantina 8-F · conservative empirical baseline"),
+            ["signal_data_flawed"] = new(
+                DailyFarmingChannel.CantinaEnergy,
+                0.65m,
+                16,
+                "Cantina 8-G · conservative empirical baseline"),
+            ["carbonite_circuit_board"] = new(
+                DailyFarmingChannel.NormalEnergy,
+                0.70m,
+                6,
+                "Light Side 1-C · conservative feedstock conversion baseline"),
+            ["bronzium_wiring"] = new(
+                DailyFarmingChannel.NormalEnergy,
+                0.20m,
+                10,
+                "Light Side 7-B · conservative Mk 5 Fabritech conversion baseline")
         };
 
     public static DailyFarmingEtaProjection Build(
@@ -22,13 +42,14 @@ internal static class DailyFarmingEtaCalculator
         ArgumentNullException.ThrowIfNull(crystalBudget);
         ArgumentNullException.ThrowIfNull(baselines);
 
-        int plannedCantinaEnergy = PlannedDailyEnergy(
-            DailyFarmingChannel.CantinaEnergy,
-            baselines,
-            crystalBudget);
+        IReadOnlyDictionary<DailyFarmingChannel, int> plannedEnergyByChannel =
+            Enum.GetValues<DailyFarmingChannel>()
+                .ToDictionary(
+                    channel => channel,
+                    channel => PlannedDailyEnergy(channel, baselines, crystalBudget));
         DailyResourceEta[] resourceEtas = BuildResourceEtas(
             farmingPlan,
-            plannedCantinaEnergy,
+            plannedEnergyByChannel,
             generatedAtUtc);
         DailyTargetEta[] targetEtas = BuildTargetEtas(
             farmingPlan,
@@ -40,31 +61,40 @@ internal static class DailyFarmingEtaCalculator
 
     private static DailyResourceEta[] BuildResourceEtas(
         InvestmentFarmingPlan farmingPlan,
-        int plannedCantinaEnergy,
+        IReadOnlyDictionary<DailyFarmingChannel, int> plannedEnergyByChannel,
         DateTimeOffset generatedAtUtc)
     {
-        if (!farmingPlan.HasInventorySnapshot || plannedCantinaEnergy <= 0)
+        if (!farmingPlan.HasInventorySnapshot)
         {
             return [];
         }
 
-        decimal cumulativeEnergy = 0m;
+        var cumulativeEnergyByChannel = new Dictionary<DailyFarmingChannel, decimal>();
         var result = new List<DailyResourceEta>();
         foreach (FarmingResourcePriority resource in farmingPlan.Resources
             .Where(resource => resource.Missing is > 0)
-            .Where(resource => ConservativeSignalDataRates.ContainsKey(resource.ResourceId))
+            .Where(resource => ConservativeFarmRates.ContainsKey(resource.ResourceId))
             .OrderBy(resource => resource.Rank))
         {
             long missing = resource.Missing!.Value;
-            SignalDataRate rate = ConservativeSignalDataRates[resource.ResourceId];
+            ResourceFarmRate rate = ConservativeFarmRates[resource.ResourceId];
+            int plannedDailyEnergy = plannedEnergyByChannel.GetValueOrDefault(rate.Channel);
+            if (plannedDailyEnergy <= 0)
+            {
+                continue;
+            }
+
             decimal expectedAttempts = missing / rate.ExpectedDropsPerAttempt;
-            decimal expectedEnergy = expectedAttempts * DedicatedCantinaEnergyCost;
-            cumulativeEnergy += expectedEnergy;
+            decimal expectedEnergy = expectedAttempts * rate.EnergyCostPerAttempt;
+            decimal cumulativeEnergy = cumulativeEnergyByChannel.GetValueOrDefault(rate.Channel)
+                + expectedEnergy;
+            cumulativeEnergyByChannel[rate.Channel] = cumulativeEnergy;
+
             int estimatedDays = Math.Max(
                 1,
-                (int)Math.Ceiling(cumulativeEnergy / plannedCantinaEnergy));
+                (int)Math.Ceiling(cumulativeEnergy / plannedDailyEnergy));
             decimal expectedDailyYield = Math.Round(
-                plannedCantinaEnergy / (decimal)DedicatedCantinaEnergyCost * rate.ExpectedDropsPerAttempt,
+                plannedDailyEnergy / (decimal)rate.EnergyCostPerAttempt * rate.ExpectedDropsPerAttempt,
                 1);
 
             result.Add(new DailyResourceEta(
@@ -72,8 +102,8 @@ internal static class DailyFarmingEtaCalculator
                 resource.ResourceName,
                 missing,
                 rate.ExpectedDropsPerAttempt,
-                DedicatedCantinaEnergyCost,
-                plannedCantinaEnergy,
+                rate.EnergyCostPerAttempt,
+                plannedDailyEnergy,
                 expectedDailyYield,
                 estimatedDays,
                 generatedAtUtc.AddDays(estimatedDays),
@@ -197,7 +227,7 @@ internal static class DailyFarmingEtaCalculator
 
         if (modeled > 0 && knownDays is int partialDays)
         {
-            return $"ETA parcial de Signal Data: ~{partialDays} día{(partialDays == 1 ? string.Empty : "s")}; quedan {unknown} bloqueo{(unknown == 1 ? string.Empty : "s")} sin ETA fiable.";
+            return $"ETA parcial de recursos modelados: ~{partialDays} día{(partialDays == 1 ? string.Empty : "s")}; quedan {unknown} bloqueo{(unknown == 1 ? string.Empty : "s")} sin ETA fiable.";
         }
 
         if (target.StarStepsRemaining > 0 && !target.RelicMaterialsTracked)
@@ -222,8 +252,10 @@ internal static class DailyFarmingEtaCalculator
         return baseline + gained;
     }
 
-    private sealed record SignalDataRate(
+    private sealed record ResourceFarmRate(
+        DailyFarmingChannel Channel,
         decimal ExpectedDropsPerAttempt,
+        int EnergyCostPerAttempt,
         string Basis);
 }
 

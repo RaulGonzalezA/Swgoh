@@ -100,7 +100,7 @@ internal sealed class InvestmentDailyFarmingPlanService(
             eta.TargetEtas,
             budgetScenarios,
             summary,
-            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. La ETA usa tasas empíricas conservadoras solo para Signal Data y no acredita el beneficio simultáneo de los nodos duales de Sector 9; cualquier otro bloqueo sin cadencia fiable queda explícitamente fuera de la fecha completa.");
+            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. La ETA usa tasas empíricas conservadoras para Signal Data y para los farms de feedstock de Carbonite/Bronzium; no acredita el beneficio simultáneo de Sector 9 ni otras fuentes secundarias. Cualquier bloqueo sin cadencia fiable queda explícitamente fuera de la fecha completa.");
     }
 
     private static DailyFarmingAction BuildResourceAction(FarmingResourcePriority resource)

@@ -73,15 +73,15 @@ public sealed class DailyFarmingEtaCalculatorTests
             "Fragmented Signal Data",
             missing: 40,
             rank: 1);
-        FarmingResourcePriority carbonite = Resource(
-            "carbonite_circuit_board",
-            "Carbonite Circuit Board",
-            missing: 120,
+        FarmingResourcePriority chromium = Resource(
+            "chromium_transistor",
+            "Chromium Transistor",
+            missing: 40,
             rank: 2,
             kind: InventoryResourceKind.RelicMaterial,
             lane: FarmingLane.Scavenger);
         InvestmentFarmingPlan plan = Plan(
-            [fragmented, carbonite],
+            [fragmented, chromium],
             [Target("UNIT_A", "Unit A", blockingResourceTypes: 2)]);
 
         DailyFarmingEtaProjection result = DailyFarmingEtaCalculator.Build(
@@ -99,6 +99,108 @@ public sealed class DailyFarmingEtaCalculatorTests
         Assert.Equal(1, target.UnknownBlockingResourceTypes);
         Assert.Equal(Now.AddDays(3), target.KnownBottleneckCompletionAtUtc);
         Assert.Contains("ETA parcial", target.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_WithCarboniteFeedstock_ModelsNormalEnergyEta()
+    {
+        FarmingResourcePriority carbonite = Resource(
+            "carbonite_circuit_board",
+            "Carbonite Circuit Board",
+            missing: 70,
+            rank: 1,
+            kind: InventoryResourceKind.RelicMaterial,
+            lane: FarmingLane.Scavenger);
+        InvestmentFarmingPlan plan = Plan(
+            [carbonite],
+            [Target("UNIT_A", "Unit A")]);
+
+        DailyFarmingEtaProjection result = DailyFarmingEtaCalculator.Build(
+            plan,
+            Budget(),
+            Baselines(),
+            Now);
+
+        DailyResourceEta resource = Assert.Single(result.ResourceEtas);
+        Assert.Equal(0.70m, resource.ExpectedDropsPerAttempt);
+        Assert.Equal(6, resource.EnergyCostPerAttempt);
+        Assert.Equal(375, resource.PlannedDailyEnergy);
+        Assert.Equal(43.8m, resource.ExpectedDailyYield);
+        Assert.Equal(2, resource.EstimatedDays);
+        Assert.Contains("1-C", resource.Basis, StringComparison.Ordinal);
+
+        DailyTargetEta target = Assert.Single(result.TargetEtas);
+        Assert.True(target.FullEstimateAvailable);
+        Assert.Equal(2, target.EstimatedDays);
+    }
+
+    [Fact]
+    public void Build_WithCarboniteAndBronzium_SharesNormalEnergyByPortfolioOrder()
+    {
+        FarmingResourcePriority carbonite = Resource(
+            "carbonite_circuit_board",
+            "Carbonite Circuit Board",
+            missing: 70,
+            rank: 1,
+            kind: InventoryResourceKind.RelicMaterial,
+            lane: FarmingLane.Scavenger);
+        FarmingResourcePriority bronzium = Resource(
+            "bronzium_wiring",
+            "Bronzium Wiring",
+            missing: 20,
+            rank: 2,
+            kind: InventoryResourceKind.RelicMaterial,
+            lane: FarmingLane.Scavenger);
+        InvestmentFarmingPlan plan = Plan(
+            [carbonite, bronzium],
+            [Target("UNIT_A", "Unit A", blockingResourceTypes: 2)]);
+
+        DailyFarmingEtaProjection result = DailyFarmingEtaCalculator.Build(
+            plan,
+            Budget(),
+            Baselines(),
+            Now);
+
+        DailyResourceEta carboniteEta = Assert.Single(
+            result.ResourceEtas,
+            eta => eta.ResourceId == "carbonite_circuit_board");
+        DailyResourceEta bronziumEta = Assert.Single(
+            result.ResourceEtas,
+            eta => eta.ResourceId == "bronzium_wiring");
+
+        Assert.Equal(2, carboniteEta.EstimatedDays);
+        Assert.Equal(0.20m, bronziumEta.ExpectedDropsPerAttempt);
+        Assert.Equal(10, bronziumEta.EnergyCostPerAttempt);
+        Assert.Equal(5, bronziumEta.EstimatedDays);
+        DailyTargetEta target = Assert.Single(result.TargetEtas);
+        Assert.True(target.FullEstimateAvailable);
+        Assert.Equal(5, target.EstimatedDays);
+    }
+
+    [Fact]
+    public void Build_WithNormalEnergyRefresh_ShortensBronziumEta()
+    {
+        FarmingResourcePriority bronzium = Resource(
+            "bronzium_wiring",
+            "Bronzium Wiring",
+            missing: 40,
+            rank: 1,
+            kind: InventoryResourceKind.RelicMaterial,
+            lane: FarmingLane.Scavenger);
+        InvestmentFarmingPlan plan = Plan(
+            [bronzium],
+            [Target("UNIT_A", "Unit A")]);
+
+        DailyFarmingEtaProjection result = DailyFarmingEtaCalculator.Build(
+            plan,
+            Budget(normalEnergyGained: 120),
+            Baselines(),
+            Now);
+
+        DailyResourceEta resource = Assert.Single(result.ResourceEtas);
+        Assert.Equal(495, resource.PlannedDailyEnergy);
+        Assert.Equal(5, resource.EstimatedDays);
+        Assert.Equal(Now.AddDays(5), resource.EstimatedCompletionAtUtc);
     }
 
     [Fact]
@@ -281,27 +383,51 @@ public sealed class DailyFarmingEtaCalculatorTests
             120,
             45,
             165,
+            "test"),
+        new(
+            DailyFarmingChannel.NormalEnergy,
+            "Normal",
+            240,
+            135,
+            375,
             "test")
     ];
 
-    private static DailyCrystalBudgetPlan Budget(int cantinaEnergyGained = 0)
+    private static DailyCrystalBudgetPlan Budget(
+        int cantinaEnergyGained = 0,
+        int normalEnergyGained = 0)
     {
-        IReadOnlyCollection<DailyRefreshRecommendation> refreshes = cantinaEnergyGained == 0
-            ? []
-            :
-            [
-                new DailyRefreshRecommendation(
-                    DailyFarmingChannel.CantinaEnergy,
-                    "Energía de Cantina",
-                    1,
-                    100,
-                    cantinaEnergyGained,
-                    165,
-                    165 + cantinaEnergyGained,
-                    100,
-                    "test")
-            ];
-        int spent = cantinaEnergyGained == 0 ? 0 : 100;
+        var refreshes = new List<DailyRefreshRecommendation>();
+        if (cantinaEnergyGained > 0)
+        {
+            refreshes.Add(new DailyRefreshRecommendation(
+                DailyFarmingChannel.CantinaEnergy,
+                "Energía de Cantina",
+                1,
+                100,
+                cantinaEnergyGained,
+                165,
+                165 + cantinaEnergyGained,
+                100,
+                "test"));
+        }
+
+        if (normalEnergyGained > 0)
+        {
+            refreshes.Add(new DailyRefreshRecommendation(
+                DailyFarmingChannel.NormalEnergy,
+                "Energía normal",
+                1,
+                50,
+                normalEnergyGained,
+                375,
+                375 + normalEnergyGained,
+                50,
+                "test"));
+        }
+
+        int spent = (cantinaEnergyGained > 0 ? 100 : 0)
+            + (normalEnergyGained > 0 ? 50 : 0);
         return new DailyCrystalBudgetPlan(
             spent,
             spent,
