@@ -43,8 +43,13 @@ internal sealed class InvestmentDailyFarmingPlanService(
         ];
 
         var actions = pendingResources
+            .Where(resource => resource.ResourceId is not (
+                "signal_data_fragmented"
+                or "signal_data_incomplete"
+                or "signal_data_flawed"))
             .Select(BuildResourceAction)
             .ToList();
+        actions.AddRange(SignalDataCantinaRouter.Build(pendingResources, CantinaEnergyPerDay));
 
         if (farmingPlan.ActiveTargetCount > 0)
         {
@@ -86,9 +91,6 @@ internal sealed class InvestmentDailyFarmingPlanService(
     {
         return resource.ResourceId switch
         {
-            "signal_data_fragmented" => Cantina(resource, "Cantina 8-C", "Fragmented Signal Data"),
-            "signal_data_incomplete" => Cantina(resource, "Cantina 8-F", "Incomplete Signal Data"),
-            "signal_data_flawed" => Cantina(resource, "Cantina 8-G", "Flawed Signal Data"),
             "carbonite_circuit_board" => NormalEnergy(
                 resource,
                 "Light Side 1-C (Normal)",
@@ -99,7 +101,7 @@ internal sealed class InvestmentDailyFarmingPlanService(
                 "Light Side 7-B (Normal)",
                 10,
                 "Prioriza este nodo como fuente de gear útil para convertir en Bronzium Wiring, sin sacrificar reservas necesarias para equipar personajes."),
-            "corrupted_signal_data" => Scavenger(
+            "signal_data_corrupted" => Scavenger(
                 resource,
                 "Chatarrero · conversión de Signal Data",
                 "Convierte Signal Data sobrante en Corrupted Signal Data cuando R10 sea el bloqueo prioritario.",
@@ -113,28 +115,6 @@ internal sealed class InvestmentDailyFarmingPlanService(
                 DailyFarmingPrecision.Guided)
         };
     }
-
-    private static DailyFarmingAction Cantina(
-        FarmingResourcePriority resource,
-        string node,
-        string name) => new(
-            0,
-            DailyFarmingChannel.CantinaEnergy,
-            "Energía de Cantina",
-            DailyFarmingPrecision.Exact,
-            "Nodo exacto",
-            $"Farmea {name}",
-            $"Gasta primero la energía de Cantina destinada a reliquias en {node}.",
-            resource.ResourceId,
-            resource.ResourceName,
-            node,
-            16,
-            CantinaEnergyPerDay,
-            resource.Missing,
-            resource.AffectedTargetCount,
-            resource.SharedBottleneck,
-            resource.Priority,
-            StopCondition(resource));
 
     private static DailyFarmingAction NormalEnergy(
         FarmingResourcePriority resource,
