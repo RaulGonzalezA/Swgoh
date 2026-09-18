@@ -301,6 +301,71 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_WithManualCadence_CompletesChromiumEtaAndExposesPreference()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+            [CreateResource(
+                "chromium_transistor",
+                "Chromium Transistor",
+                InventoryResourceKind.RelicMaterial,
+                FarmingLane.Scavenger,
+                missing: 24,
+                priority: "Crítica")],
+            targets: [CreateTarget()]);
+        var service = CreateService(farmingPlan);
+        IReadOnlyDictionary<string, decimal> manualRates =
+            new Dictionary<string, decimal>(StringComparer.Ordinal)
+            {
+                ["chromium_transistor"] = 6m
+            };
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(
+            AllyCode,
+            0,
+            manualRates,
+            CancellationToken.None);
+
+        DailyResourceEta eta = Assert.Single(result.ResourceEtas);
+        Assert.Equal(DailyResourceEtaMode.ManualCadence, eta.Mode);
+        Assert.Equal(4, eta.EstimatedDays);
+
+        DailyTargetEta target = Assert.Single(result.TargetEtas);
+        Assert.True(target.FullEstimateAvailable);
+        Assert.Equal(4, target.EstimatedDays);
+
+        DailyManualCadenceResource cadence = Assert.Single(result.ManualCadenceResources);
+        Assert.Equal("chromium_transistor", cadence.ResourceId);
+        Assert.Equal(6m, cadence.DailyRate);
+    }
+
+    [Fact]
+    public async Task GetAsync_WithoutManualCadence_ExposesUnknownResourceForConfiguration()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+            [CreateResource(
+                "aurodium_heatsink",
+                "Aurodium Heatsink",
+                InventoryResourceKind.RelicMaterial,
+                FarmingLane.Scavenger,
+                missing: 20,
+                priority: "Alta")],
+            targets: [CreateTarget()]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(
+            AllyCode,
+            0,
+            CancellationToken.None);
+
+        Assert.Empty(result.ResourceEtas);
+        DailyManualCadenceResource cadence = Assert.Single(result.ManualCadenceResources);
+        Assert.Equal("aurodium_heatsink", cadence.ResourceId);
+        Assert.Null(cadence.DailyRate);
+        DailyTargetEta target = Assert.Single(result.TargetEtas);
+        Assert.False(target.FullEstimateAvailable);
+    }
+
+    [Fact]
     public async Task GetAsync_With50CrystalBudgetAndCantinaOnly_LeavesCrystalsUnspent()
     {
         InvestmentFarmingPlan farmingPlan = CreatePlan(
