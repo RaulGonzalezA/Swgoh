@@ -52,8 +52,9 @@ public sealed class GacAttackExecutionServiceTests
         Assert.Equal(["D1", "D2", "D3"], observation.DefenderDefinitionIds);
 
         Assert.Equal(1, optimizer.Calls);
-        Assert.Equal(GacAttackOptimizationMode.FillGaps, optimizer.LastMode);
-        Assert.False(optimizer.LastApply);
+        Assert.Equal(GacAttackOptimizationMode.RebuildPlanned, optimizer.LastMode);
+        Assert.True(optimizer.LastApply);
+        Assert.NotNull(result.Execution.Replan);
     }
 
     [Fact]
@@ -79,8 +80,8 @@ public sealed class GacAttackExecutionServiceTests
             55m,
             10);
         GacAttackOptimizationResult optimization = new(
-            GacAttackOptimizationMode.FillGaps,
-            Applied: false,
+            GacAttackOptimizationMode.RebuildPlanned,
+            Applied: true,
             TargetDefenses: 1,
             RecommendedAttacks: 1,
             HistoricalMatches: 1,
@@ -272,8 +273,8 @@ public sealed class GacAttackExecutionServiceTests
         OmicronCount: 0);
 
     private static GacAttackOptimizationResult EmptyOptimization() => new(
-        GacAttackOptimizationMode.FillGaps,
-        Applied: false,
+        GacAttackOptimizationMode.RebuildPlanned,
+        Applied: true,
         TargetDefenses: 0,
         RecommendedAttacks: 0,
         HistoricalMatches: 0,
