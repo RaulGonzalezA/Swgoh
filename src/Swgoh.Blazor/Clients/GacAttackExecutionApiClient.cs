@@ -56,10 +56,20 @@ public sealed class GacAttackExecutionApiClient(HttpClient httpClient)
         GacPlannerApiClient.OptimizationViewModel? Optimization,
         ExecutedAttackViewModel Execution,
         GacPlannerApiClient.OptimizationRecommendationViewModel? NextRecommendation,
+        WarRoomReplanViewModel? Replan,
         IReadOnlyCollection<string>? Warnings = null)
     {
         public IReadOnlyCollection<string> PostCommitWarnings => Warnings ?? [];
     }
+
+    public sealed record WarRoomReplanViewModel(
+        bool Applied,
+        int PreviousPendingAttacks,
+        int CurrentPendingAttacks,
+        int ReplacedPendingAttacks,
+        int CoveredDefenses,
+        int UncoveredDefenses,
+        IReadOnlyCollection<Guid> ReplannedDefenseIds);
 
     public sealed record ExecutedAttackViewModel(
         Guid AttackId,

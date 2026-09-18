@@ -62,6 +62,83 @@ public sealed class GacDatacronAssignmentTests
     }
 
     [Fact]
+    public void AllocateAttackDatacrons_RebuildDoesNotReuseDatacronFromCompletedAttack()
+    {
+        GacTeamPresetDetails usedTeam = Team(relicTier: 7);
+        GacTeamPresetDetails nextTeam = Team(relicTier: 7);
+        Guid defenseId = Guid.NewGuid();
+        GacPlannerDatacronDetails used = Datacron("dc-used", tier: 9, requiredRelic: 7, hasAbility: true);
+        GacPlannerDatacronDetails available = Datacron("dc-free", tier: 6, requiredRelic: 5, hasAbility: false);
+
+        var opponent = new CurrentGacOpponent(
+            PlayerAllyCode,
+            OpponentAllyCode,
+            "Opponent",
+            null,
+            GacLeague.Kyber,
+            GacFormat.FiveVsFive,
+            "event",
+            "instance",
+            "bracket",
+            1,
+            "test",
+            "test");
+        var completedAttack = new GacAttackAssignmentDetails(
+            Guid.NewGuid(),
+            defenseId,
+            usedTeam,
+            1,
+            GacAttackPlanStatus.Won,
+            null,
+            Banners: 57,
+            DatacronId: used.Id);
+        var plan = new GacRoundPlanDetails(
+            GacRoundPlan.BuildId(PlayerAllyCode, "instance", 1),
+            PlayerAllyCode,
+            OpponentAllyCode,
+            "Opponent",
+            "event",
+            "instance",
+            1,
+            GacFormat.FiveVsFive,
+            GacLeague.Kyber,
+            [],
+            [],
+            [completedAttack],
+            [],
+            [],
+            Now);
+        var state = new GacPlannerState(
+            opponent,
+            [usedTeam, nextTeam],
+            plan,
+            [used, available]);
+        var recommendation = new GacAttackOptimizationRecommendation(
+            defenseId,
+            "Enemy",
+            "Sur frontal",
+            nextTeam.Id,
+            nextTeam.Name,
+            80m,
+            5m,
+            "Test",
+            "High",
+            "Test",
+            null,
+            null,
+            null,
+            null);
+
+        IReadOnlyDictionary<Guid, string?> allocation =
+            HardenedGacAttackPlanOptimizerService.AllocateAttackDatacrons(
+                state,
+                [recommendation],
+                GacAttackOptimizationMode.RebuildPlanned);
+
+        Assert.Equal(available.Id, allocation[nextTeam.Id]);
+    }
+
+    [Fact]
     public void BestEligible_SkipsReservedDatacronAndUsesNextEligibleOne()
     {
         GacTeamPresetDetails team = Team(relicTier: 7);

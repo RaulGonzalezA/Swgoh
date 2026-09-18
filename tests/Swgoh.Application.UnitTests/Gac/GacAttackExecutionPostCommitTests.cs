@@ -72,7 +72,7 @@ public sealed class GacAttackExecutionPostCommitTests
         Assert.Single(personalRepository.Items);
         Assert.Contains(
             result.Execution.PostCommitWarnings,
-            warning => warning.Contains("recalcular", StringComparison.OrdinalIgnoreCase));
+            warning => warning.Contains("War Room", StringComparison.OrdinalIgnoreCase));
     }
 
     private static Scenario BuildScenario()
@@ -183,8 +183,8 @@ public sealed class GacAttackExecutionPostCommitTests
         OmicronCount: 0);
 
     private static GacAttackOptimizationResult EmptyOptimization() => new(
-        GacAttackOptimizationMode.FillGaps,
-        Applied: false,
+        GacAttackOptimizationMode.RebuildPlanned,
+        Applied: true,
         TargetDefenses: 0,
         RecommendedAttacks: 0,
         HistoricalMatches: 0,
