@@ -138,7 +138,11 @@ internal sealed class GacAttackExecutionService(
             recordedAtUtc);
         await PersistObservationBestEffortAsync(observation, warnings).ConfigureAwait(false);
 
-        (GacPlannerState resultState, GacAttackOptimizationResult? optimization, GacAttackOptimizationRecommendation? next) =
+        (
+            GacPlannerState resultState,
+            GacAttackOptimizationResult? optimization,
+            GacAttackOptimizationRecommendation? next,
+            GacWarRoomReplanSummary? replan) =
             await ReoptimizeBestEffortAsync(allyCode, committedState, warnings).ConfigureAwait(false);
 
         return new GacAttackExecutionLookup(
@@ -155,6 +159,7 @@ internal sealed class GacAttackExecutionService(
                 resultState,
                 optimization,
                 next,
+                replan,
                 warnings));
     }
 
@@ -233,7 +238,11 @@ internal sealed class GacAttackExecutionService(
         }
     }
 
-    private async Task<(GacPlannerState State, GacAttackOptimizationResult? Optimization, GacAttackOptimizationRecommendation? Next)>
+    private async Task<(
+        GacPlannerState State,
+        GacAttackOptimizationResult? Optimization,
+        GacAttackOptimizationRecommendation? Next,
+        GacWarRoomReplanSummary? Replan)>
         ReoptimizeBestEffortAsync(
             long allyCode,
             GacPlannerState committedState,
@@ -242,25 +251,41 @@ internal sealed class GacAttackExecutionService(
         using var timeout = new CancellationTokenSource(PostCommitOperationTimeout);
         try
         {
+            int previousPending = committedState.Plan.Attacks.Count(attack =>
+                attack.Status == GacAttackPlanStatus.Planned);
             GacAttackOptimizationLookup optimizationLookup = await optimizerService
                 .OptimizeCurrentAsync(
                     allyCode,
-                    GacAttackOptimizationMode.FillGaps,
-                    apply: false,
+                    GacAttackOptimizationMode.RebuildPlanned,
+                    apply: true,
                     timeout.Token)
                 .ConfigureAwait(false);
             GacPlannerState resultState = optimizationLookup.State ?? committedState;
-            GacAttackOptimizationRecommendation? next = optimizationLookup.Optimization?.Recommendations
+            GacAttackOptimizationResult? optimization = optimizationLookup.Optimization;
+            GacAttackOptimizationRecommendation? next = optimization?.Recommendations
                 .OrderByDescending(recommendation => recommendation.Score)
                 .ThenBy(recommendation => recommendation.StrategicCost)
                 .FirstOrDefault();
-            return (resultState, optimizationLookup.Optimization, next);
+            int currentPending = resultState.Plan.Attacks.Count(attack =>
+                attack.Status == GacAttackPlanStatus.Planned);
+            GacWarRoomReplanSummary? replan = optimization is null
+                ? null
+                : new GacWarRoomReplanSummary(
+                    optimization.Applied,
+                    previousPending,
+                    currentPending,
+                    optimization.Applied ? previousPending : 0,
+                    optimization.Recommendations.Count,
+                    optimization.UncoveredDefenseIds.Count,
+                    [.. optimization.Recommendations.Select(recommendation => recommendation.DefenseId)]);
+
+            return (resultState, optimization, next, replan);
         }
         catch (Exception)
         {
             warnings.Add(
-                "El resultado del ataque se guardó, pero no se pudo recalcular el siguiente ataque en esta operación.");
-            return (committedState, null, null);
+                "El resultado del ataque se guardó, pero no se pudo reconstruir el plan pendiente del War Room en esta operación.");
+            return (committedState, null, null, null);
         }
     }
 
