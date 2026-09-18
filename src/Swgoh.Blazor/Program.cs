@@ -32,7 +32,7 @@ builder.Services.AddHttpClient<ConquestApiClient>(client => client.BaseAddress =
 builder.Services.AddHttpClient<ConquestDailyPlanApiClient>(client => client.BaseAddress = apiBaseAddress);
 builder.Services.AddHttpClient<EraApiClient>(client => client.BaseAddress = apiBaseAddress);
 builder.Services.AddHttpClient<InvestmentApiClient>(client => client.BaseAddress = apiBaseAddress);
-builder.Services.AddHttpClient<FarmingPlanApiClient>(client => client.BaseAddress = apiBaseAddress);
+builder.Services.AddHttpClient<FarmingPlanApiClient>(client => client.BaseAddress = apiBaseAddress);\nbuilder.Services.AddHttpClient<DailyFarmingPlanApiClient>(client => client.BaseAddress = apiBaseAddress);
 builder.Services.AddHttpClient<RiseOfEmpireApiClient>(client =>
 {
     client.BaseAddress = apiBaseAddress;
