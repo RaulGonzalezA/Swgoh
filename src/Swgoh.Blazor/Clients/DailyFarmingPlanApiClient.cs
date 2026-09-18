@@ -87,6 +87,31 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         int RefreshCount,
         int EnergyGained);
 
+    public sealed record ResourceEtaViewModel(
+        string ResourceId,
+        string ResourceName,
+        long Missing,
+        decimal ExpectedDropsPerAttempt,
+        int EnergyCostPerAttempt,
+        int PlannedDailyEnergy,
+        decimal ExpectedDailyYield,
+        int EstimatedDays,
+        DateTimeOffset EstimatedCompletionAtUtc,
+        string Basis);
+
+    public sealed record TargetEtaViewModel(
+        string DefinitionId,
+        string Name,
+        string? ThumbnailName,
+        bool ReadyNow,
+        bool FullEstimateAvailable,
+        int? EstimatedDays,
+        DateTimeOffset? EstimatedCompletionAtUtc,
+        int ModeledBlockingResourceTypes,
+        int UnknownBlockingResourceTypes,
+        DateTimeOffset? KnownBottleneckCompletionAtUtc,
+        string Summary);
+
     public sealed record DailyFarmingPlanViewModel(
         long AllyCode,
         DateTimeOffset GeneratedAtUtc,
@@ -97,6 +122,10 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         IReadOnlyCollection<EnergyBaselineViewModel> EnergyBaselines,
         IReadOnlyCollection<ActionViewModel> Actions,
         CrystalBudgetViewModel CrystalBudget,
+        IReadOnlyCollection<ResourceEtaViewModel> ResourceEtas,
+        IReadOnlyCollection<TargetEtaViewModel> TargetEtas,
         string Summary,
-        string Limitation);
+        string Limitation,
+        int FullyEstimatedTargetCount,
+        int ReadyNowTargetCount);
 }
