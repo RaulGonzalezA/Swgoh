@@ -7,5 +7,11 @@ window.swgohPreferences = {
     },
     clearAllyCode: function () {
         window.localStorage.removeItem("swgoh.allyCode");
+    },
+    getDailyCrystalBudget: function (allyCode) {
+        return window.localStorage.getItem("swgoh.dailyCrystalBudget." + allyCode);
+    },
+    setDailyCrystalBudget: function (allyCode, budget) {
+        window.localStorage.setItem("swgoh.dailyCrystalBudget." + allyCode, budget);
     }
 };
