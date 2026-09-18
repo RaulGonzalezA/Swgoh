@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Asp.Versioning;
 
 using Swgoh.Application.Investments;
@@ -196,13 +198,19 @@ internal static class InvestmentEndpoints
     private static async Task<IResult> GetDailyFarmingPlanAsync(
         long allyCode,
         int? crystalBudget,
+        string? dailyRates,
         IInvestmentDailyFarmingPlanService service,
         CancellationToken cancellationToken)
     {
         try
         {
+            IReadOnlyDictionary<string, decimal> manualDailyRates = ParseDailyRates(dailyRates);
             InvestmentDailyFarmingPlan plan = await service
-                .GetAsync(allyCode, crystalBudget ?? 0, cancellationToken)
+                .GetAsync(
+                    allyCode,
+                    crystalBudget ?? 0,
+                    manualDailyRates,
+                    cancellationToken)
                 .ConfigureAwait(false);
             return Results.Ok(plan);
         }
@@ -210,6 +218,46 @@ internal static class InvestmentEndpoints
         {
             return Validation(exception);
         }
+    }
+
+    private static IReadOnlyDictionary<string, decimal> ParseDailyRates(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new Dictionary<string, decimal>(StringComparer.Ordinal);
+        }
+
+        var knownResources = PlayerInventoryCatalog.Resources
+            .Select(resource => resource.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (string entry in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] parts = entry.Split(':', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || !knownResources.Contains(parts[0]))
+            {
+                throw new ArgumentException(
+                    $"Cadencia manual no válida: '{entry}'.",
+                    nameof(value));
+            }
+
+            if (!decimal.TryParse(
+                    parts[1],
+                    NumberStyles.Number,
+                    CultureInfo.InvariantCulture,
+                    out decimal dailyRate)
+                || dailyRate <= 0m
+                || dailyRate > 1_000_000m)
+            {
+                throw new ArgumentException(
+                    $"La cadencia de '{parts[0]}' debe ser mayor que 0 y menor o igual a 1.000.000 unidades/día.",
+                    nameof(value));
+            }
+
+            result[parts[0]] = dailyRate;
+        }
+
+        return result;
     }
 
     private static InventoryResponse ToInventoryResponse(PlayerInventorySnapshot? snapshot)
