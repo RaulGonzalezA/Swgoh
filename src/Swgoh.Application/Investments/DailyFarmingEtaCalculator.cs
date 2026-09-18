@@ -36,11 +36,14 @@ internal static class DailyFarmingEtaCalculator
         InvestmentFarmingPlan farmingPlan,
         DailyCrystalBudgetPlan crystalBudget,
         IReadOnlyCollection<DailyEnergyBaseline> baselines,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        IReadOnlyDictionary<string, decimal>? manualDailyRates = null)
     {
         ArgumentNullException.ThrowIfNull(farmingPlan);
         ArgumentNullException.ThrowIfNull(crystalBudget);
         ArgumentNullException.ThrowIfNull(baselines);
+
+        manualDailyRates ??= new Dictionary<string, decimal>(StringComparer.Ordinal);
 
         IReadOnlyDictionary<DailyFarmingChannel, int> plannedEnergyByChannel =
             Enum.GetValues<DailyFarmingChannel>()
@@ -50,7 +53,8 @@ internal static class DailyFarmingEtaCalculator
         DailyResourceEta[] resourceEtas = BuildResourceEtas(
             farmingPlan,
             plannedEnergyByChannel,
-            generatedAtUtc);
+            generatedAtUtc,
+            manualDailyRates);
         DailyTargetEta[] targetEtas = BuildTargetEtas(
             farmingPlan,
             resourceEtas,
@@ -62,7 +66,8 @@ internal static class DailyFarmingEtaCalculator
     private static DailyResourceEta[] BuildResourceEtas(
         InvestmentFarmingPlan farmingPlan,
         IReadOnlyDictionary<DailyFarmingChannel, int> plannedEnergyByChannel,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        IReadOnlyDictionary<string, decimal> manualDailyRates)
     {
         if (!farmingPlan.HasInventorySnapshot)
         {
@@ -73,11 +78,33 @@ internal static class DailyFarmingEtaCalculator
         var result = new List<DailyResourceEta>();
         foreach (FarmingResourcePriority resource in farmingPlan.Resources
             .Where(resource => resource.Missing is > 0)
-            .Where(resource => ConservativeFarmRates.ContainsKey(resource.ResourceId))
             .OrderBy(resource => resource.Rank))
         {
             long missing = resource.Missing!.Value;
-            ResourceFarmRate rate = ConservativeFarmRates[resource.ResourceId];
+            if (manualDailyRates.TryGetValue(resource.ResourceId, out decimal manualRate)
+                && manualRate > 0m)
+            {
+                int estimatedDays = Math.Max(1, (int)Math.Ceiling(missing / manualRate));
+                result.Add(new DailyResourceEta(
+                    resource.ResourceId,
+                    resource.ResourceName,
+                    missing,
+                    DailyResourceEtaMode.ManualCadence,
+                    null,
+                    null,
+                    null,
+                    manualRate,
+                    estimatedDays,
+                    generatedAtUtc.AddDays(estimatedDays),
+                    "Cadencia manual configurada por el jugador"));
+                continue;
+            }
+
+            if (!ConservativeFarmRates.TryGetValue(resource.ResourceId, out ResourceFarmRate? rate))
+            {
+                continue;
+            }
+
             int plannedDailyEnergy = plannedEnergyByChannel.GetValueOrDefault(rate.Channel);
             if (plannedDailyEnergy <= 0)
             {
@@ -90,7 +117,7 @@ internal static class DailyFarmingEtaCalculator
                 + expectedEnergy;
             cumulativeEnergyByChannel[rate.Channel] = cumulativeEnergy;
 
-            int estimatedDays = Math.Max(
+            int energyEstimatedDays = Math.Max(
                 1,
                 (int)Math.Ceiling(cumulativeEnergy / plannedDailyEnergy));
             decimal expectedDailyYield = Math.Round(
@@ -101,12 +128,13 @@ internal static class DailyFarmingEtaCalculator
                 resource.ResourceId,
                 resource.ResourceName,
                 missing,
+                DailyResourceEtaMode.EnergyFarm,
                 rate.ExpectedDropsPerAttempt,
                 rate.EnergyCostPerAttempt,
                 plannedDailyEnergy,
                 expectedDailyYield,
-                estimatedDays,
-                generatedAtUtc.AddDays(estimatedDays),
+                energyEstimatedDays,
+                generatedAtUtc.AddDays(energyEstimatedDays),
                 rate.Basis));
         }
 
@@ -237,6 +265,9 @@ internal static class DailyFarmingEtaCalculator
 
         return $"Sin ETA completa: quedan {unknown} bloqueo{(unknown == 1 ? string.Empty : "s")} cuya cadencia no está modelada.";
     }
+
+    public static bool HasAutomaticRate(string resourceId) =>
+        ConservativeFarmRates.ContainsKey(resourceId);
 
     private static int PlannedDailyEnergy(
         DailyFarmingChannel channel,
