@@ -46,3 +46,33 @@ The UI shows theoretical free daily energy, assuming regeneration is not capped 
 - Cantina: 120 regeneration + 45 bonus = 165.
 
 These are planning baselines, not the player's live energy balance.
+
+
+## Crystal budget and paid energy refreshes
+
+Verified on 2026-09-18 against SWGOH Wiki:
+
+- Normal Energy refreshes grant 120 energy. The first three cost 50 crystals each; the next three cost 100 each, then the price continues to escalate.
+- Fleet Energy refreshes grant 120 energy and use the same initial 50 / 50 / 50, then 100 / 100 / 100 structure.
+- Cantina Energy refreshes grant 120 energy. The first three cost 100 crystals each; subsequent refreshes cost more.
+- The application contains the documented escalation tables, but treats the configured crystal amount as a maximum rather than a spending target.
+
+References:
+
+- https://swgoh.wiki/wiki/Light_Side_Battles%3A_1-E_%28Normal%29
+- https://swgoh.wiki/wiki/Fleet_Battles%3A_2-B_%28Normal%29
+- https://swgoh.wiki/wiki/Cantina_Battles%3A_2-B
+
+### Budget profiles
+
+The Blazor UI stores the selected daily budget locally per ally code:
+
+- F2P: 0 crystals/day.
+- Ahorro: 50 crystals/day.
+- Eficiente: 150 crystals/day.
+- Acelerado: 300 crystals/day.
+- Custom: 0-5,000 crystals/day.
+
+The planner only allocates crystals to Normal, Cantina or Fleet when that channel has an actionable material farm with a real resource dependency. Fleet guardrails and other informational actions are intentionally ineligible. Unused crystals remain explicitly unspent.
+
+Refresh allocation is marginal: each additional refresh on the same channel has diminishing planning priority. This allows a constrained budget to diversify between a critical Cantina farm and a useful Normal farm instead of spending the entire budget on one channel by default.

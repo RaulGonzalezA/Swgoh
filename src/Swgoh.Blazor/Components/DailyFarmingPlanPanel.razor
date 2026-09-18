@@ -1,5 +1,7 @@
 @using Swgoh.Blazor.Clients
+@using Swgoh.Blazor.State
 @inject DailyFarmingPlanApiClient DailyFarmingClient
+@inject PlayerPreferenceService PreferenceService
 
 @if (!_loading && _plan is not null && (_plan.ActiveTargetCount > 0 || !Compact))
 {
@@ -19,8 +21,79 @@
             }
         </div>
 
-        @if (!Compact)
+        @if (Compact)
         {
+            <div class="daily-budget-compact">
+                <strong>@_plan.CrystalBudget.ProfileLabel</strong>
+                <span>@CompactBudgetSummary</span>
+            </div>
+        }
+        else
+        {
+            <section class="daily-budget">
+                <div class="daily-budget-heading">
+                    <div>
+                        <span class="section-kicker">Presupuesto de cristales</span>
+                        <h3>@_plan.CrystalBudget.ProfileLabel</h3>
+                        <p>El presupuesto es un máximo diario. El plan solo compra refreshes cuando existe una granja de energía modelada que los justifique.</p>
+                    </div>
+                    <div class="daily-budget-totals">
+                        <span><strong>@_plan.CrystalBudget.CrystalsSpent</strong> gastar</span>
+                        <span><strong>@_plan.CrystalBudget.CrystalsUnspent</strong> reservar</span>
+                        <span><strong>+@_plan.CrystalBudget.EnergyGained</strong> energía</span>
+                    </div>
+                </div>
+
+                <div class="daily-budget-controls" aria-label="Presupuesto diario de cristales">
+                    @foreach (int preset in BudgetPresets)
+                    {
+                        <button type="button"
+                                class="daily-budget-preset @(_crystalBudget == preset ? "selected" : string.Empty)"
+                                @onclick="() => SetBudgetAsync(preset)">
+                            @BudgetPresetLabel(preset)
+                        </button>
+                    }
+                    <label class="daily-budget-custom">
+                        <span>Personalizado</span>
+                        <input type="number"
+                               min="0"
+                               max="5000"
+                               step="50"
+                               value="@_crystalBudget"
+                               @onchange="OnCustomBudgetChangedAsync" />
+                    </label>
+                </div>
+
+                @if (_plan.CrystalBudget.Refreshes.Count == 0)
+                {
+                    <div class="daily-farm-notice">
+                        <strong>@(_crystalBudget == 0 ? "Perfil F2P" : "Cristales reservados")</strong>
+                        <span>@(_crystalBudget == 0
+                            ? "No se recomiendan refreshes de pago."
+                            : "No hay un refresh justificable con los farms de energía que el modelo conoce ahora mismo.")</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="daily-refresh-grid">
+                        @foreach (DailyFarmingPlanApiClient.RefreshRecommendationViewModel refresh in _plan.CrystalBudget.Refreshes)
+                        {
+                            <article>
+                                <span>@refresh.ChannelLabel</span>
+                                <strong>@refresh.RefreshCount refresh@(refresh.RefreshCount == 1 ? string.Empty : "es")</strong>
+                                <small>@refresh.CrystalCost cristales · +@refresh.EnergyGained energía</small>
+                                <small>@refresh.BaselineFreeEnergy gratis → @refresh.PlannedDailyEnergy planificados</small>
+                                @if (refresh.NextRefreshCost is int nextCost)
+                                {
+                                    <small>Siguiente refresh: @nextCost cristales</small>
+                                }
+                                <p>@refresh.Reason</p>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+
             <div class="daily-energy-grid">
                 @foreach (DailyFarmingPlanApiClient.EnergyBaselineViewModel baseline in _plan.EnergyBaselines)
                 {
@@ -90,7 +163,7 @@
 
         @if (Compact)
         {
-            <a class="daily-farm-more" href="@($"/investments/{AllyCode}")">Abrir plan diario completo →</a>
+            <a class="daily-farm-more" href="@($"/investments/{AllyCode}")">Abrir plan diario y presupuesto →</a>
         }
         else
         {
@@ -106,6 +179,8 @@ else if (!_loading && _error is not null && !Compact)
 }
 
 @code {
+    private static readonly int[] BudgetPresets = [0, 50, 150, 300];
+
     [Parameter, EditorRequired] public long AllyCode { get; set; }
     [Parameter] public bool Compact { get; set; }
     [Parameter] public long RefreshToken { get; set; }
@@ -114,6 +189,8 @@ else if (!_loading && _error is not null && !Compact)
     private string? _error;
     private long? _loadedAllyCode;
     private long _loadedRefreshToken = long.MinValue;
+    private int _crystalBudget;
+    private int _loadedCrystalBudget = int.MinValue;
     private DailyFarmingPlanApiClient.DailyFarmingPlanViewModel? _plan;
 
     private IReadOnlyCollection<DailyFarmingPlanApiClient.ActionViewModel> VisibleActions =>
@@ -123,20 +200,57 @@ else if (!_loading && _error is not null && !Compact)
                 ? [.. _plan.Actions.Take(3)]
                 : _plan.Actions;
 
-    protected override async Task OnParametersSetAsync()
+    private string CompactBudgetSummary => _plan?.CrystalBudget switch
     {
-        if (_loadedAllyCode == AllyCode && _loadedRefreshToken == RefreshToken)
+        null => string.Empty,
+        { DailyCrystalBudget: 0 } => "sin refreshes de pago",
+        { CrystalsSpent: 0 } budget => $"{budget.DailyCrystalBudget} cristales reservados · sin gasto justificado",
+        var budget => $"{budget.CrystalsSpent} cristales · {budget.RefreshCount} refreshes · +{budget.EnergyGained} energía"
+    };
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            int? savedBudget = await PreferenceService.GetDailyCrystalBudgetAsync(AllyCode);
+            if (savedBudget is int budget && budget != _crystalBudget)
+            {
+                _crystalBudget = budget;
+                await LoadAsync(force: true);
+                StateHasChanged();
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Local preference is optional; the F2P default remains valid.
+        }
+    }
+
+    private async Task LoadAsync(bool force = false)
+    {
+        if (!force
+            && _loadedAllyCode == AllyCode
+            && _loadedRefreshToken == RefreshToken
+            && _loadedCrystalBudget == _crystalBudget)
         {
             return;
         }
 
         _loadedAllyCode = AllyCode;
         _loadedRefreshToken = RefreshToken;
+        _loadedCrystalBudget = _crystalBudget;
         _loading = true;
         _error = null;
         try
         {
-            _plan = await DailyFarmingClient.GetAsync(AllyCode);
+            _plan = await DailyFarmingClient.GetAsync(AllyCode, _crystalBudget);
         }
         catch (Exception exception)
         {
@@ -147,6 +261,31 @@ else if (!_loading && _error is not null && !Compact)
             _loading = false;
         }
     }
+
+    private async Task SetBudgetAsync(int budget)
+    {
+        int normalized = Math.Clamp(budget, 0, 5_000);
+        _crystalBudget = normalized;
+        await PreferenceService.SetDailyCrystalBudgetAsync(AllyCode, normalized);
+        await LoadAsync(force: true);
+    }
+
+    private async Task OnCustomBudgetChangedAsync(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out int budget))
+        {
+            await SetBudgetAsync(budget);
+        }
+    }
+
+    private static string BudgetPresetLabel(int budget) => budget switch
+    {
+        0 => "F2P",
+        50 => "50 / día",
+        150 => "150 / día",
+        300 => "300 / día",
+        _ => $"{budget} / día"
+    };
 
     private static string PriorityCss(string priority) => priority switch
     {

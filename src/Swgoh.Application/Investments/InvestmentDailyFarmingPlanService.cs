@@ -7,6 +7,11 @@ public interface IInvestmentDailyFarmingPlanService
     Task<InvestmentDailyFarmingPlan> GetAsync(
         long allyCode,
         CancellationToken cancellationToken = default);
+
+    Task<InvestmentDailyFarmingPlan> GetAsync(
+        long allyCode,
+        int dailyCrystalBudget,
+        CancellationToken cancellationToken = default);
 }
 
 internal sealed class InvestmentDailyFarmingPlanService(
@@ -17,8 +22,14 @@ internal sealed class InvestmentDailyFarmingPlanService(
     private const int FleetEnergyPerDay = 285;
     private const int CantinaEnergyPerDay = 165;
 
+    public Task<InvestmentDailyFarmingPlan> GetAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default) =>
+        GetAsync(allyCode, 0, cancellationToken);
+
     public async Task<InvestmentDailyFarmingPlan> GetAsync(
         long allyCode,
+        int dailyCrystalBudget,
         CancellationToken cancellationToken = default)
     {
         InvestmentFarmingPlan farmingPlan = await farmingPlanService
@@ -51,6 +62,11 @@ internal sealed class InvestmentDailyFarmingPlanService(
                 .Select((action, index) => action with { Rank = index + 1 })
         ];
 
+        IReadOnlyCollection<DailyEnergyBaseline> baselines = EnergyBaselines();
+        DailyCrystalBudgetPlan crystalBudget = DailyEnergyRefreshPlanner.Build(
+            dailyCrystalBudget,
+            rankedActions,
+            baselines);
         string summary = BuildSummary(farmingPlan, rankedActions);
         return new InvestmentDailyFarmingPlan(
             allyCode,
@@ -59,10 +75,11 @@ internal sealed class InvestmentDailyFarmingPlanService(
             farmingPlan.InventoryCapturedAtUtc,
             farmingPlan.ActiveTargetCount,
             farmingPlan.MissingResourceTypes,
-            EnergyBaselines(),
+            baselines,
             rankedActions,
+            crystalBudget,
             summary,
-            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tu presupuesto de cristales no son públicos. El plan no inventa esos datos ni recomienda refrescos de pago.");
+            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. El presupuesto seleccionado se trata como un tope diario; los cristales sin una granja modelada se dejan sin gastar.");
     }
 
     private static DailyFarmingAction BuildResourceAction(FarmingResourcePriority resource)

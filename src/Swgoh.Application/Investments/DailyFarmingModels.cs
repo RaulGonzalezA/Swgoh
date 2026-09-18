@@ -44,6 +44,28 @@ public sealed record DailyFarmingAction(
     string Priority,
     string StopCondition);
 
+public sealed record DailyRefreshRecommendation(
+    DailyFarmingChannel Channel,
+    string ChannelLabel,
+    int RefreshCount,
+    int CrystalCost,
+    int EnergyGained,
+    int BaselineFreeEnergy,
+    int PlannedDailyEnergy,
+    int? NextRefreshCost,
+    string Reason);
+
+public sealed record DailyCrystalBudgetPlan(
+    int DailyCrystalBudget,
+    int CrystalsSpent,
+    int CrystalsUnspent,
+    string ProfileLabel,
+    IReadOnlyCollection<DailyRefreshRecommendation> Refreshes)
+{
+    public int RefreshCount => Refreshes.Sum(refresh => refresh.RefreshCount);
+    public int EnergyGained => Refreshes.Sum(refresh => refresh.EnergyGained);
+}
+
 public sealed record InvestmentDailyFarmingPlan(
     long AllyCode,
     DateTimeOffset GeneratedAtUtc,
@@ -53,5 +75,6 @@ public sealed record InvestmentDailyFarmingPlan(
     int MissingResourceTypes,
     IReadOnlyCollection<DailyEnergyBaseline> EnergyBaselines,
     IReadOnlyCollection<DailyFarmingAction> Actions,
+    DailyCrystalBudgetPlan CrystalBudget,
     string Summary,
     string Limitation);
