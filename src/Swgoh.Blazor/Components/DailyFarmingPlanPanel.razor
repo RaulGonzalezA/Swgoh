@@ -1,0 +1,158 @@
+@using Swgoh.Blazor.Clients
+@inject DailyFarmingPlanApiClient DailyFarmingClient
+
+@if (!_loading && _plan is not null && (_plan.ActiveTargetCount > 0 || !Compact))
+{
+    <section class="daily-farm @(Compact ? "compact" : string.Empty)">
+        <div class="daily-farm-heading">
+            <div>
+                <span class="section-kicker">Plan diario de farmeo</span>
+                <h2>@(Compact ? "Qué gastar hoy" : "Qué hacer hoy con cada energía")</h2>
+                <p>@_plan.Summary</p>
+            </div>
+            @if (!Compact)
+            {
+                <div class="daily-farm-summary">
+                    <span><strong>@_plan.ActiveTargetCount</strong> objetivos</span>
+                    <span><strong>@_plan.MissingResourceTypes</strong> déficits</span>
+                </div>
+            }
+        </div>
+
+        @if (!Compact)
+        {
+            <div class="daily-energy-grid">
+                @foreach (DailyFarmingPlanApiClient.EnergyBaselineViewModel baseline in _plan.EnergyBaselines)
+                {
+                    <article>
+                        <span>@baseline.Label</span>
+                        <strong>@baseline.BaselineFreeEnergy</strong>
+                        <small>@baseline.RegenerationPerDay regen + @baseline.BonusEnergyPerDay bonus</small>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (!_plan.HasInventorySnapshot)
+        {
+            <div class="daily-farm-notice">
+                <strong>Déficit todavía aproximado</strong>
+                <span>Actualiza el inventario para convertir requisitos en faltantes exactos.</span>
+            </div>
+        }
+
+        <div class="daily-farm-actions">
+            @foreach (DailyFarmingPlanApiClient.ActionViewModel action in VisibleActions)
+            {
+                <article class="daily-farm-action priority-@PriorityCss(action.Priority)">
+                    <div class="daily-farm-rank">#@action.Rank</div>
+                    <div class="daily-farm-action-main">
+                        <div class="daily-farm-action-title">
+                            <div>
+                                <span>@action.ChannelLabel · @action.PrecisionLabel</span>
+                                <h3>@action.Title</h3>
+                            </div>
+                            @if (action.Missing is long missing)
+                            {
+                                <strong>faltan @missing.ToString("N0")</strong>
+                            }
+                        </div>
+
+                        <p>@action.Action</p>
+                        <div class="daily-farm-facts">
+                            <span><strong>Fuente:</strong> @action.Source</span>
+                            @if (action.EnergyCostPerAttempt is int energyCost)
+                            {
+                                <span><strong>Coste:</strong> @energyCost energía/intento</span>
+                            }
+                            @if (action.BaselineFreeEnergy is int baseline)
+                            {
+                                <span><strong>Base diaria:</strong> @baseline gratis teóricos</span>
+                            }
+                            @if (action.ResourceId is not null)
+                            {
+                                <span><strong>Afecta:</strong> @action.AffectedTargetCount objetivo@(action.AffectedTargetCount == 1 ? string.Empty : "s")</span>
+                            }
+                            @if (action.SharedBottleneck)
+                            {
+                                <span class="daily-farm-shared">Cuello de botella compartido</span>
+                            }
+                        </div>
+
+                        @if (!Compact)
+                        {
+                            <small class="daily-farm-stop">@action.StopCondition</small>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+
+        @if (Compact)
+        {
+            <a class="daily-farm-more" href="@($"/investments/{AllyCode}")">Abrir plan diario completo →</a>
+        }
+        else
+        {
+            <p class="daily-farm-limitation">@_plan.Limitation</p>
+        }
+    </section>
+}
+else if (!_loading && _error is not null && !Compact)
+{
+    <UiCard Kicker="Plan diario" Title="No se pudo calcular">
+        <p>@_error</p>
+    </UiCard>
+}
+
+@code {
+    [Parameter, EditorRequired] public long AllyCode { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public long RefreshToken { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private long? _loadedAllyCode;
+    private long _loadedRefreshToken = long.MinValue;
+    private DailyFarmingPlanApiClient.DailyFarmingPlanViewModel? _plan;
+
+    private IReadOnlyCollection<DailyFarmingPlanApiClient.ActionViewModel> VisibleActions =>
+        _plan is null
+            ? []
+            : Compact
+                ? [.. _plan.Actions.Take(3)]
+                : _plan.Actions;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedAllyCode == AllyCode && _loadedRefreshToken == RefreshToken)
+        {
+            return;
+        }
+
+        _loadedAllyCode = AllyCode;
+        _loadedRefreshToken = RefreshToken;
+        _loading = true;
+        _error = null;
+        try
+        {
+            _plan = await DailyFarmingClient.GetAsync(AllyCode);
+        }
+        catch (Exception exception)
+        {
+            _error = $"No se pudo cargar el plan diario: {exception.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string PriorityCss(string priority) => priority switch
+    {
+        "Crítica" => "critical",
+        "Alta" => "high",
+        "Media" => "medium",
+        _ => "normal"
+    };
+}
