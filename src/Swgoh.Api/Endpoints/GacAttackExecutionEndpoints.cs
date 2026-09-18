@@ -77,6 +77,7 @@ internal static class GacAttackExecutionEndpoints
                     ? null
                     : GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse.From(
                         execution.NextRecommendation),
+                execution.Replan is null ? null : WarRoomReplanResponse.From(execution.Replan),
                 execution.PostCommitWarnings));
         }
 
@@ -116,7 +117,27 @@ internal static class GacAttackExecutionEndpoints
         GacPlannerOptimizationEndpoints.OptimizationResponse? Optimization,
         ExecutedAttackResponse Execution,
         GacPlannerOptimizationEndpoints.OptimizationRecommendationResponse? NextRecommendation,
+        WarRoomReplanResponse? Replan,
         IReadOnlyCollection<string> Warnings);
+
+    internal sealed record WarRoomReplanResponse(
+        bool Applied,
+        int PreviousPendingAttacks,
+        int CurrentPendingAttacks,
+        int ReplacedPendingAttacks,
+        int CoveredDefenses,
+        int UncoveredDefenses,
+        IReadOnlyCollection<Guid> ReplannedDefenseIds)
+    {
+        public static WarRoomReplanResponse From(GacWarRoomReplanSummary summary) => new(
+            summary.Applied,
+            summary.PreviousPendingAttacks,
+            summary.CurrentPendingAttacks,
+            summary.ReplacedPendingAttacks,
+            summary.CoveredDefenses,
+            summary.UncoveredDefenses,
+            summary.ReplannedDefenseIds);
+    }
 
     internal sealed record ExecutedAttackResponse(
         Guid AttackId,
