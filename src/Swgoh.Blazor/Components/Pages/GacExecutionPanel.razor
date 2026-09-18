@@ -52,7 +52,7 @@
                     <strong>@(replan.Applied ? "Plan pendiente reconstruido" : "Replanificación calculada")</strong>
                     <small>
                         @(replan.Applied
-                            ? $"Se sustituyeron {replan.ReplacedPendingAttacks} ataque(s) pendientes por el nuevo óptimo."
+                            ? $"Se reconstruyeron {replan.ReplacedPendingAttacks} ataque(s) pendientes con el nuevo óptimo."
                             : "El resultado se guardó, pero el plan pendiente anterior sigue activo.")
                     </small>
                 </div>
