@@ -55,11 +55,19 @@ public sealed class PlayerPreferenceService(IJSRuntime jsRuntime)
             return new Dictionary<string, decimal>(StringComparer.Ordinal);
         }
 
-        Dictionary<string, decimal>? cadences = JsonSerializer.Deserialize<Dictionary<string, decimal>>(stored);
-        return cadences?
-            .Where(pair => pair.Value > 0m)
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
-            ?? new Dictionary<string, decimal>(StringComparer.Ordinal);
+        try
+        {
+            Dictionary<string, decimal>? cadences =
+                JsonSerializer.Deserialize<Dictionary<string, decimal>>(stored);
+            return cadences?
+                .Where(pair => pair.Value > 0m)
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                ?? new Dictionary<string, decimal>(StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, decimal>(StringComparer.Ordinal);
+        }
     }
 
     public ValueTask SetDailyResourceCadencesAsync(
