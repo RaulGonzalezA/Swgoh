@@ -30,6 +30,8 @@ internal static class InvestmentEndpoints
             .WithSummary("Remove a persistent investment target");
         group.MapGet("/farming-plan", GetFarmingPlanAsync)
             .WithSummary("Build a farming plan across active investment targets without double-counting inventory");
+        group.MapGet("/daily-farming-plan", GetDailyFarmingPlanAsync)
+            .WithSummary("Build today's farming actions across Cantina, normal energy, Fleet, Scavenger and stores");
         return endpoints;
     }
 
@@ -183,6 +185,22 @@ internal static class InvestmentEndpoints
         try
         {
             InvestmentFarmingPlan plan = await service.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(plan);
+        }
+        catch (ArgumentException exception)
+        {
+            return Validation(exception);
+        }
+    }
+
+    private static async Task<IResult> GetDailyFarmingPlanAsync(
+        long allyCode,
+        IInvestmentDailyFarmingPlanService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            InvestmentDailyFarmingPlan plan = await service.GetAsync(allyCode, cancellationToken).ConfigureAwait(false);
             return Results.Ok(plan);
         }
         catch (ArgumentException exception)
