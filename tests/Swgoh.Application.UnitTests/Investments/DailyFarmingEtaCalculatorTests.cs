@@ -28,6 +28,7 @@ public sealed class DailyFarmingEtaCalculatorTests
             Now);
 
         DailyResourceEta resource = Assert.Single(result.ResourceEtas);
+        Assert.Equal(DailyResourceEtaMode.EnergyFarm, resource.Mode);
         Assert.Equal(1.35m, resource.ExpectedDropsPerAttempt);
         Assert.Equal(165, resource.PlannedDailyEnergy);
         Assert.Equal(3, resource.EstimatedDays);
@@ -201,6 +202,77 @@ public sealed class DailyFarmingEtaCalculatorTests
         Assert.Equal(495, resource.PlannedDailyEnergy);
         Assert.Equal(5, resource.EstimatedDays);
         Assert.Equal(Now.AddDays(5), resource.EstimatedCompletionAtUtc);
+    }
+
+    [Fact]
+    public void Build_WithManualChromiumCadence_CompletesPreviouslyUnknownEta()
+    {
+        FarmingResourcePriority chromium = Resource(
+            "chromium_transistor",
+            "Chromium Transistor",
+            missing: 24,
+            rank: 1,
+            kind: InventoryResourceKind.RelicMaterial,
+            lane: FarmingLane.Scavenger);
+        InvestmentFarmingPlan plan = Plan(
+            [chromium],
+            [Target("UNIT_A", "Unit A")]);
+        IReadOnlyDictionary<string, decimal> manualRates =
+            new Dictionary<string, decimal>(StringComparer.Ordinal)
+            {
+                ["chromium_transistor"] = 6m
+            };
+
+        DailyFarmingEtaProjection result = DailyFarmingEtaCalculator.Build(
+            plan,
+            Budget(),
+            Baselines(),
+            Now,
+            manualRates);
+
+        DailyResourceEta resource = Assert.Single(result.ResourceEtas);
+        Assert.Equal(DailyResourceEtaMode.ManualCadence, resource.Mode);
+        Assert.Null(resource.ExpectedDropsPerAttempt);
+        Assert.Null(resource.EnergyCostPerAttempt);
+        Assert.Null(resource.PlannedDailyEnergy);
+        Assert.Equal(6m, resource.ExpectedDailyYield);
+        Assert.Equal(4, resource.EstimatedDays);
+        Assert.Contains("manual", resource.Basis, StringComparison.OrdinalIgnoreCase);
+
+        DailyTargetEta target = Assert.Single(result.TargetEtas);
+        Assert.True(target.FullEstimateAvailable);
+        Assert.Equal(4, target.EstimatedDays);
+        Assert.Equal(0, target.UnknownBlockingResourceTypes);
+    }
+
+    [Fact]
+    public void Build_ManualCadence_OverridesAutomaticRate()
+    {
+        FarmingResourcePriority fragmented = Resource(
+            "signal_data_fragmented",
+            "Fragmented Signal Data",
+            missing: 40,
+            rank: 1);
+        InvestmentFarmingPlan plan = Plan(
+            [fragmented],
+            [Target("UNIT_A", "Unit A")]);
+        IReadOnlyDictionary<string, decimal> manualRates =
+            new Dictionary<string, decimal>(StringComparer.Ordinal)
+            {
+                ["signal_data_fragmented"] = 20m
+            };
+
+        DailyFarmingEtaProjection result = DailyFarmingEtaCalculator.Build(
+            plan,
+            Budget(),
+            Baselines(),
+            Now,
+            manualRates);
+
+        DailyResourceEta resource = Assert.Single(result.ResourceEtas);
+        Assert.Equal(DailyResourceEtaMode.ManualCadence, resource.Mode);
+        Assert.Equal(2, resource.EstimatedDays);
+        Assert.Equal(20m, resource.ExpectedDailyYield);
     }
 
     [Fact]

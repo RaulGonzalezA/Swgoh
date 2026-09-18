@@ -1,3 +1,4 @@
+@using System.Globalization
 @using Swgoh.Blazor.Clients
 @using Swgoh.Blazor.State
 @inject DailyFarmingPlanApiClient DailyFarmingClient
@@ -147,6 +148,10 @@
                     </div>
                 </section>
             }
+
+            <DailyResourceCadenceEditor Resources="_plan.ManualCadenceResources"
+                                        ResourceEtas="_plan.ResourceEtas"
+                                        CadenceChanged="OnCadenceChangedAsync" />
 
             <div class="daily-energy-grid">
                 @foreach (DailyFarmingPlanApiClient.EnergyBaselineViewModel baseline in _plan.EnergyBaselines)
@@ -299,6 +304,8 @@ else if (!_loading && _error is not null && !Compact)
     private long _loadedRefreshToken = long.MinValue;
     private int _crystalBudget;
     private int _loadedCrystalBudget = int.MinValue;
+    private Dictionary<string, decimal> _dailyCadences = new(StringComparer.Ordinal);
+    private string _loadedCadenceSignature = string.Empty;
     private DailyFarmingPlanApiClient.DailyFarmingPlanViewModel? _plan;
 
     private IReadOnlyCollection<DailyFarmingPlanApiClient.ActionViewModel> VisibleActions =>
@@ -328,16 +335,37 @@ else if (!_loading && _error is not null && !Compact)
         try
         {
             int? savedBudget = await PreferenceService.GetDailyCrystalBudgetAsync(AllyCode);
+            IReadOnlyDictionary<string, decimal> savedCadences =
+                await PreferenceService.GetDailyResourceCadencesAsync(AllyCode);
+            bool changed = false;
+
             if (savedBudget is int budget && budget != _crystalBudget)
             {
                 _crystalBudget = budget;
+                changed = true;
+            }
+
+            if (!string.Equals(
+                    CadenceSignature(savedCadences),
+                    CadenceSignature(_dailyCadences),
+                    StringComparison.Ordinal))
+            {
+                _dailyCadences = savedCadences.ToDictionary(
+                    pair => pair.Key,
+                    pair => pair.Value,
+                    StringComparer.Ordinal);
+                changed = true;
+            }
+
+            if (changed)
+            {
                 await LoadAsync(force: true);
                 StateHasChanged();
             }
         }
         catch (InvalidOperationException)
         {
-            // Local preference is optional; the F2P default remains valid.
+            // Local preferences are optional; server defaults remain valid.
         }
     }
 
@@ -346,7 +374,11 @@ else if (!_loading && _error is not null && !Compact)
         if (!force
             && _loadedAllyCode == AllyCode
             && _loadedRefreshToken == RefreshToken
-            && _loadedCrystalBudget == _crystalBudget)
+            && _loadedCrystalBudget == _crystalBudget
+            && string.Equals(
+                _loadedCadenceSignature,
+                CadenceSignature(_dailyCadences),
+                StringComparison.Ordinal))
         {
             return;
         }
@@ -354,11 +386,15 @@ else if (!_loading && _error is not null && !Compact)
         _loadedAllyCode = AllyCode;
         _loadedRefreshToken = RefreshToken;
         _loadedCrystalBudget = _crystalBudget;
+        _loadedCadenceSignature = CadenceSignature(_dailyCadences);
         _loading = true;
         _error = null;
         try
         {
-            _plan = await DailyFarmingClient.GetAsync(AllyCode, _crystalBudget);
+            _plan = await DailyFarmingClient.GetAsync(
+                AllyCode,
+                _crystalBudget,
+                _dailyCadences);
         }
         catch (Exception exception)
         {
@@ -369,6 +405,30 @@ else if (!_loading && _error is not null && !Compact)
             _loading = false;
         }
     }
+
+    private async Task OnCadenceChangedAsync((string ResourceId, decimal? DailyRate) change)
+    {
+        if (change.DailyRate is decimal dailyRate)
+        {
+            _dailyCadences[change.ResourceId] = dailyRate;
+        }
+        else
+        {
+            _dailyCadences.Remove(change.ResourceId);
+        }
+
+        await PreferenceService.SetDailyResourceCadencesAsync(AllyCode, _dailyCadences);
+        await LoadAsync(force: true);
+    }
+
+    private static string CadenceSignature(IReadOnlyDictionary<string, decimal> cadences) =>
+        string.Join(
+            "|",
+            cadences
+                .Where(pair => pair.Value > 0m)
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair =>
+                    $"{pair.Key}:{pair.Value.ToString(CultureInfo.InvariantCulture)}"));
 
     private async Task SetBudgetAsync(int budget)
     {

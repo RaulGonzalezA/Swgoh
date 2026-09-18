@@ -201,6 +201,74 @@ public sealed class DailyFarmingBudgetScenarioCalculatorTests
     }
 
     [Fact]
+    public void Build_WithManualCadence_UsesSameRateAcrossBudgetScenarios()
+    {
+        FarmingResourcePriority chromium = new(
+            1,
+            "chromium_transistor",
+            "Chromium Transistor",
+            InventoryResourceKind.RelicMaterial,
+            FarmingLane.Scavenger,
+            "Chatarrero",
+            "test",
+            24,
+            0,
+            24,
+            0m,
+            1,
+            false,
+            "Crítica",
+            [new FarmingTargetDependency("UNIT_A", "Unit A", 24)]);
+        InvestmentFarmingPlan plan = Plan(
+            [chromium],
+            [Target()]);
+        DailyFarmingAction[] actions =
+        [
+            new DailyFarmingAction(
+                1,
+                DailyFarmingChannel.Scavenger,
+                "Chatarrero",
+                DailyFarmingPrecision.Guided,
+                "Conversión guiada",
+                "Convierte para Chromium Transistor",
+                "test",
+                chromium.ResourceId,
+                chromium.ResourceName,
+                "Chatarrero",
+                null,
+                null,
+                24,
+                1,
+                false,
+                "Crítica",
+                "test")
+        ];
+        IReadOnlyDictionary<string, decimal> manualRates =
+            new Dictionary<string, decimal>(StringComparer.Ordinal)
+            {
+                ["chromium_transistor"] = 6m
+            };
+
+        IReadOnlyCollection<DailyBudgetScenario> result =
+            DailyFarmingBudgetScenarioCalculator.Build(
+                plan,
+                actions,
+                Baselines(),
+                currentBudget: 300,
+                Now,
+                manualRates);
+
+        foreach (DailyBudgetScenario scenario in result)
+        {
+            Assert.Equal(4, scenario.ModeledPortfolioDays);
+            Assert.Equal(0, scenario.DaysSavedVsF2P);
+            DailyBudgetScenarioTarget target = Assert.Single(scenario.Targets);
+            Assert.True(target.FullEstimateAvailable);
+            Assert.Equal(4, target.EstimatedDays);
+        }
+    }
+
+    [Fact]
     public void Build_WithUnknownBlocker_DoesNotInventPortfolioSavings()
     {
         FarmingResourcePriority signal = SignalResource(missing: 100);

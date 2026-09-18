@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using Microsoft.JSInterop;
 
 namespace Swgoh.Blazor.State;
@@ -40,6 +42,52 @@ public sealed class PlayerPreferenceService(IJSRuntime jsRuntime)
             cancellationToken,
             allyCode.ToString(),
             Math.Clamp(dailyCrystalBudget, 0, 5_000).ToString());
+
+    public async ValueTask<IReadOnlyDictionary<string, decimal>> GetDailyResourceCadencesAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default)
+    {
+        string? stored = await jsRuntime.InvokeAsync<string?>(
+            "swgohPreferences.getDailyResourceCadences",
+            cancellationToken,
+            allyCode.ToString());
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return new Dictionary<string, decimal>(StringComparer.Ordinal);
+        }
+
+        try
+        {
+            Dictionary<string, decimal>? cadences =
+                JsonSerializer.Deserialize<Dictionary<string, decimal>>(stored);
+            return cadences?
+                .Where(pair => pair.Value > 0m)
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                ?? new Dictionary<string, decimal>(StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, decimal>(StringComparer.Ordinal);
+        }
+    }
+
+    public ValueTask SetDailyResourceCadencesAsync(
+        long allyCode,
+        IReadOnlyDictionary<string, decimal> cadences,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(cadences);
+
+        Dictionary<string, decimal> normalized = cadences
+            .Where(pair => pair.Value > 0m)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        string json = JsonSerializer.Serialize(normalized);
+        return jsRuntime.InvokeVoidAsync(
+            "swgohPreferences.setDailyResourceCadences",
+            cancellationToken,
+            allyCode.ToString(),
+            json);
+    }
 
     public ValueTask ClearAsync(CancellationToken cancellationToken = default) =>
         jsRuntime.InvokeVoidAsync("swgohPreferences.clearAllyCode", cancellationToken);

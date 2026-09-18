@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 
 namespace Swgoh.Blazor.Clients;
@@ -9,14 +10,40 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         CancellationToken cancellationToken = default) =>
         GetAsync(allyCode, 0, cancellationToken);
 
+    public Task<DailyFarmingPlanViewModel> GetAsync(
+        long allyCode,
+        int dailyCrystalBudget,
+        CancellationToken cancellationToken = default) =>
+        GetAsync(
+            allyCode,
+            dailyCrystalBudget,
+            new Dictionary<string, decimal>(StringComparer.Ordinal),
+            cancellationToken);
+
     public async Task<DailyFarmingPlanViewModel> GetAsync(
         long allyCode,
         int dailyCrystalBudget,
+        IReadOnlyDictionary<string, decimal> manualDailyRates,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(manualDailyRates);
+
         int budget = Math.Clamp(dailyCrystalBudget, 0, 5_000);
+        string rates = string.Join(
+            ",",
+            manualDailyRates
+                .Where(pair => pair.Value > 0m)
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair =>
+                    $"{pair.Key}:{pair.Value.ToString(CultureInfo.InvariantCulture)}"));
+        string url = $"/api/v1/investments/players/{allyCode}/daily-farming-plan?crystalBudget={budget}";
+        if (!string.IsNullOrEmpty(rates))
+        {
+            url += $"&dailyRates={Uri.EscapeDataString(rates)}";
+        }
+
         using HttpResponseMessage response = await httpClient.GetAsync(
-            $"/api/v1/investments/players/{allyCode}/daily-farming-plan?crystalBudget={budget}",
+            url,
             cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<DailyFarmingPlanViewModel>(cancellationToken)
@@ -87,17 +114,32 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         int RefreshCount,
         int EnergyGained);
 
+    public enum DailyResourceEtaModeViewModel
+    {
+        EnergyFarm = 1,
+        ManualCadence = 2
+    }
+
     public sealed record ResourceEtaViewModel(
         string ResourceId,
         string ResourceName,
         long Missing,
-        decimal ExpectedDropsPerAttempt,
-        int EnergyCostPerAttempt,
-        int PlannedDailyEnergy,
+        DailyResourceEtaModeViewModel Mode,
+        decimal? ExpectedDropsPerAttempt,
+        int? EnergyCostPerAttempt,
+        int? PlannedDailyEnergy,
         decimal ExpectedDailyYield,
         int EstimatedDays,
         DateTimeOffset EstimatedCompletionAtUtc,
         string Basis);
+
+    public sealed record ManualCadenceResourceViewModel(
+        string ResourceId,
+        string ResourceName,
+        long Missing,
+        decimal? DailyRate,
+        int AffectedTargetCount,
+        string Priority);
 
     public sealed record TargetEtaViewModel(
         string DefinitionId,
@@ -146,6 +188,7 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         CrystalBudgetViewModel CrystalBudget,
         IReadOnlyCollection<ResourceEtaViewModel> ResourceEtas,
         IReadOnlyCollection<TargetEtaViewModel> TargetEtas,
+        IReadOnlyCollection<ManualCadenceResourceViewModel> ManualCadenceResources,
         IReadOnlyCollection<BudgetScenarioViewModel> BudgetScenarios,
         string Summary,
         string Limitation,
