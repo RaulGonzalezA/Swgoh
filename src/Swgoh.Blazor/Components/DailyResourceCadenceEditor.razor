@@ -1,0 +1,100 @@
+@using System.Globalization
+@using Swgoh.Blazor.Clients
+
+@if (Resources.Count > 0)
+{
+    <section class="daily-cadences">
+        <div class="daily-cadences-heading">
+            <div>
+                <span class="section-kicker">Cadencias personales</span>
+                <h3>Completa las ETA que dependen de tiendas y recompensas</h3>
+                <p>Indica cuántas unidades consigues de media al día. Se guarda solo en este navegador para tu ally code y puedes dejarlo vacío si no quieres estimarlo.</p>
+            </div>
+        </div>
+
+        <div class="daily-cadence-grid">
+            @foreach (DailyFarmingPlanApiClient.ManualCadenceResourceViewModel resource in Resources)
+            {
+                <article class="@(resource.DailyRate is not null ? "configured" : string.Empty)">
+                    <div class="daily-cadence-title">
+                        <div>
+                            <span>@resource.Priority</span>
+                            <h4>@resource.ResourceName</h4>
+                        </div>
+                        <strong>faltan @resource.Missing.ToString("N0")</strong>
+                    </div>
+
+                    <label>
+                        <span>Unidades / día</span>
+                        <input type="number"
+                               min="0"
+                               max="1000000"
+                               step="0.1"
+                               value="@CadenceValue(resource)"
+                               @onchange="(ChangeEventArgs args) => OnChangedAsync(resource.ResourceId, args)" />
+                    </label>
+
+                    <small>Afecta a @resource.AffectedTargetCount objetivo@(resource.AffectedTargetCount == 1 ? string.Empty : "s"). @CadenceEtaLabel(resource)</small>
+
+                    @if (resource.DailyRate is not null)
+                    {
+                        <button type="button"
+                                class="daily-cadence-clear"
+                                @onclick="() => CadenceChanged.InvokeAsync((resource.ResourceId, (decimal?)null))">
+                            Quitar cadencia
+                        </button>
+                    }
+                </article>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyCollection<DailyFarmingPlanApiClient.ManualCadenceResourceViewModel> Resources { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public IReadOnlyCollection<DailyFarmingPlanApiClient.ResourceEtaViewModel> ResourceEtas { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<(string ResourceId, decimal? DailyRate)> CadenceChanged { get; set; }
+
+    private async Task OnChangedAsync(string resourceId, ChangeEventArgs args)
+    {
+        decimal? rate = TryParseCadence(args.Value?.ToString() ?? string.Empty, out decimal parsed)
+            ? Math.Min(parsed, 1_000_000m)
+            : null;
+        await CadenceChanged.InvokeAsync((resourceId, rate));
+    }
+
+    private static bool TryParseCadence(string raw, out decimal dailyRate)
+    {
+        bool parsed = decimal.TryParse(
+                raw,
+                NumberStyles.Number,
+                CultureInfo.CurrentCulture,
+                out dailyRate)
+            || decimal.TryParse(
+                raw,
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out dailyRate);
+        return parsed && dailyRate > 0m;
+    }
+
+    private static string CadenceValue(
+        DailyFarmingPlanApiClient.ManualCadenceResourceViewModel resource) =>
+        resource.DailyRate?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private string CadenceEtaLabel(
+        DailyFarmingPlanApiClient.ManualCadenceResourceViewModel resource)
+    {
+        DailyFarmingPlanApiClient.ResourceEtaViewModel? eta = ResourceEtas
+            .FirstOrDefault(item =>
+                string.Equals(item.ResourceId, resource.ResourceId, StringComparison.Ordinal));
+        return eta is null
+            ? "Sin ETA hasta configurar una cadencia."
+            : $"ETA de este recurso: ~{eta.EstimatedDays} día{(eta.EstimatedDays == 1 ? string.Empty : "s")}.";
+    }
+}
