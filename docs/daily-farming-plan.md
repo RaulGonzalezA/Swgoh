@@ -181,3 +181,32 @@ The modeled portfolio horizon is the latest completion date among targets that h
 A higher configured budget is never treated as mandatory spending. For example, a 50-crystal scenario with only a Cantina Signal Data farm keeps all 50 crystals unspent because the first Cantina refresh costs 100. Similarly, crystals allocated to Normal Energy may be useful to the daily farming plan without shortening a Signal-Data-only ETA.
 
 The UI keeps simulations read-only until the player explicitly selects a scenario. Choosing a scenario then stores that daily budget through the existing player preference flow and recalculates the plan.
+
+
+## Manual acquisition cadences
+
+Some relic materials do not have an honest energy-based daily rate. Current guidance still recommends store or currency acquisition for materials such as Chromium Transistor and Aurodium Heatsink rather than intentionally farming one fixed node:
+
+- Chromium Transistor: Guild Store purchases and crafted gear conversion are the preferred source.
+- Aurodium Heatsink: Mk 3 Sienar Holo Projector salvage/full pieces from store or other reward sources are the preferred conversion path.
+
+References verified on 2026-09-18:
+
+- https://swgoh.wiki/wiki/Scavenger_Guide
+- https://swgoh.wiki/wiki/Aurodium_Heatsink
+- https://www.reddit.com/r/SWGalaxyOfHeroes/comments/1u9du00/relic_material_farming/
+
+The planner therefore does not invent a fixed Chromium/Aurodium drop rate. Instead, pending resources without an automatic model appear under **Cadencias personales**.
+
+The player can enter an observed average in units/day. Examples might come from raid currency spending, guild-store purchases, event rewards, shipments, or a personal mix of those sources.
+
+Manual cadences:
+
+- are stored locally per ally code in the browser;
+- are sent only when calculating the daily farming plan;
+- can complete an ETA that was previously partial;
+- override an automatic rate if a resource is explicitly supplied;
+- are reused unchanged across crystal-budget simulations, so a higher crystal budget cannot falsely claim to accelerate a store-based cadence;
+- can be removed at any time to return the resource to automatic/unknown behavior.
+
+A manual rate is a planning input, not a claim that the game guarantees that income every day.
