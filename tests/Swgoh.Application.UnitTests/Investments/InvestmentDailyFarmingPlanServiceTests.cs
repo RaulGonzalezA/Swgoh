@@ -40,6 +40,47 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_WithTwoSignalDataDeficits_UsesMatchingSector9DualNode()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+        [
+            CreateResource(
+                "signal_data_fragmented",
+                "Fragmented Signal Data",
+                InventoryResourceKind.SignalData,
+                FarmingLane.SignalData,
+                missing: 40,
+                affectedTargets: 2,
+                shared: true,
+                priority: "Crítica"),
+            CreateResource(
+                "signal_data_incomplete",
+                "Incomplete Signal Data",
+                InventoryResourceKind.SignalData,
+                FarmingLane.SignalData,
+                missing: 25,
+                affectedTargets: 1,
+                priority: "Alta")
+        ]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, 100, CancellationToken.None);
+
+        DailyFarmingAction action = Assert.Single(
+            result.Actions,
+            item => item.Channel == DailyFarmingChannel.CantinaEnergy);
+        Assert.Equal("Cantina 9-B", action.Source);
+        Assert.Equal(20, action.EnergyCostPerAttempt);
+        Assert.Equal("Nodo dual exacto", action.PrecisionLabel);
+        Assert.DoesNotContain(
+            result.Actions,
+            item => item.Source is "Cantina 8-C" or "Cantina 8-F");
+        DailyRefreshRecommendation refresh = Assert.Single(result.CrystalBudget.Refreshes);
+        Assert.Equal(DailyFarmingChannel.CantinaEnergy, refresh.Channel);
+        Assert.Equal(100, refresh.CrystalCost);
+    }
+
+    [Fact]
     public async Task GetAsync_WithScavengerFeedstock_UsesGuidedNormalEnergyNodes()
     {
         InvestmentFarmingPlan farmingPlan = CreatePlan(

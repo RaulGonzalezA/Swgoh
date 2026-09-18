@@ -7,7 +7,7 @@ The daily farming planner translates the aggregate investment farming plan into 
 The public player provider does not expose current player energy, live shipments, crystal budget, unequipped gear, or shard inventory. The planner therefore:
 
 - never claims to know current energy;
-- never recommends paid refreshes without a future explicit crystal-budget model;
+- only recommends paid refreshes inside the explicit daily crystal budget selected by the player;
 - treats store/event availability as a check, not a guaranteed purchase;
 - keeps Fleet energy unassigned when no exact relic-material node is modeled;
 - labels normal-energy scavenger farms as guided feedstock rather than direct relic drops.
@@ -25,7 +25,26 @@ Verified on 2026-09-18 against SWGOH Wiki:
 | Bronzium Wiring feedstock | Light Side 7-B Normal | 10 Energy |
 | Corrupted Signal Data | Scavenger conversion | n/a |
 
-References:
+### Smart Signal Data routing
+
+Sector 9 adds exact dual-Signal-Data nodes at 20 Cantina Energy per attempt:
+
+| Active deficits | Preferred route while both remain open | Cost |
+| --- | --- | ---: |
+| Fragmented + Incomplete | Cantina 9-B | 20 Cantina Energy |
+| Fragmented + Flawed | Cantina 9-D | 20 Cantina Energy |
+| Incomplete + Flawed | Cantina 9-F | 20 Cantina Energy |
+
+The planner keeps the legacy Sector 8 node when only one Signal Data type is needed. When two compatible deficits are active it uses the corresponding Sector 9 dual node. If all three types are missing, it pairs the two highest-priority deficits and leaves the remaining resource on its dedicated Sector 8 node.
+
+This is deliberately a routing heuristic rather than a claim about guaranteed drops. The dual-node rewards and energy costs are verified from the live SWGOH.GG campaign database. Community tracking published in June 2026 used roughly 28,000 observations across two studies and supports Sector 9 as a useful aggregate farm while Sector 8 remains appropriate for a single specific short-term deficit; those rates are empirical, not official guarantees.
+
+Sector 9 references:
+
+- https://swgoh.gg/campaigns/cantina-battles/M09/
+- https://www.reddit.com/r/SWGalaxyOfHeroes/comments/1u3s6tt/cantina_sector_9_drop_rates_final_version_and/
+
+Original route references:
 
 - https://swgoh.wiki/wiki/Fragmented_Signal_Data
 - https://swgoh.wiki/wiki/Incomplete_Signal_Data
