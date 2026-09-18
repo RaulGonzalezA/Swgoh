@@ -83,7 +83,7 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
         InvestmentFarmingPlan farmingPlan = CreatePlan([]);
         var service = CreateService(farmingPlan);
 
-        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, CancellationToken.None);
+        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, 300, CancellationToken.None);
 
         DailyFarmingAction action = Assert.Single(result.Actions);
         Assert.Equal(DailyFarmingChannel.FleetEnergy, action.Channel);
@@ -92,6 +92,9 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
         Assert.Null(action.EnergyCostPerAttempt);
         Assert.Equal(285, action.BaselineFreeEnergy);
         Assert.Contains("no conoce un nodo Fleet exacto", action.Action, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(result.CrystalBudget.Refreshes);
+        Assert.Equal(0, result.CrystalBudget.CrystalsSpent);
+        Assert.Equal(300, result.CrystalBudget.CrystalsUnspent);
     }
 
     [Fact]
@@ -114,7 +117,72 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
         Assert.Equal(165, cantina.BaselineFreeEnergy);
         Assert.Equal(375, normal.BaselineFreeEnergy);
         Assert.Equal(285, fleet.BaselineFreeEnergy);
-        Assert.Contains("refrescos de pago", result.Limitation, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("F2P", result.CrystalBudget.ProfileLabel);
+        Assert.Equal(0, result.CrystalBudget.DailyCrystalBudget);
+        Assert.Empty(result.CrystalBudget.Refreshes);
+    }
+
+    [Fact]
+    public async Task GetAsync_With150CrystalBudget_SplitsCriticalCantinaAndNormalRefreshes()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+        [
+            CreateResource(
+                "signal_data_fragmented",
+                "Fragmented Signal Data",
+                InventoryResourceKind.SignalData,
+                FarmingLane.SignalData,
+                missing: 40,
+                affectedTargets: 2,
+                shared: true,
+                priority: "Crítica"),
+            CreateResource(
+                "carbonite_circuit_board",
+                "Carbonite Circuit Board",
+                InventoryResourceKind.RelicMaterial,
+                FarmingLane.Scavenger,
+                missing: 120,
+                priority: "Alta")
+        ]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, 150, CancellationToken.None);
+
+        Assert.Equal(150, result.CrystalBudget.CrystalsSpent);
+        Assert.Equal(0, result.CrystalBudget.CrystalsUnspent);
+        Assert.Equal(2, result.CrystalBudget.RefreshCount);
+        DailyRefreshRecommendation cantina = Assert.Single(
+            result.CrystalBudget.Refreshes,
+            refresh => refresh.Channel == DailyFarmingChannel.CantinaEnergy);
+        DailyRefreshRecommendation normal = Assert.Single(
+            result.CrystalBudget.Refreshes,
+            refresh => refresh.Channel == DailyFarmingChannel.NormalEnergy);
+        Assert.Equal(1, cantina.RefreshCount);
+        Assert.Equal(100, cantina.CrystalCost);
+        Assert.Equal(285, cantina.PlannedDailyEnergy);
+        Assert.Equal(1, normal.RefreshCount);
+        Assert.Equal(50, normal.CrystalCost);
+        Assert.Equal(495, normal.PlannedDailyEnergy);
+    }
+
+    [Fact]
+    public async Task GetAsync_With50CrystalBudgetAndCantinaOnly_LeavesCrystalsUnspent()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+            [CreateResource(
+                "signal_data_fragmented",
+                "Fragmented Signal Data",
+                InventoryResourceKind.SignalData,
+                FarmingLane.SignalData,
+                missing: 40,
+                priority: "Crítica")]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, 50, CancellationToken.None);
+
+        Assert.Equal(0, result.CrystalBudget.CrystalsSpent);
+        Assert.Equal(50, result.CrystalBudget.CrystalsUnspent);
+        Assert.Empty(result.CrystalBudget.Refreshes);
     }
 
     private static InvestmentDailyFarmingPlanService CreateService(InvestmentFarmingPlan plan) => new(
