@@ -9,12 +9,14 @@ internal static class DailyFarmingBudgetScenarioCalculator
         IReadOnlyCollection<DailyFarmingAction> actions,
         IReadOnlyCollection<DailyEnergyBaseline> baselines,
         int currentBudget,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        IReadOnlyDictionary<string, decimal>? manualDailyRates = null)
     {
         ArgumentNullException.ThrowIfNull(farmingPlan);
         ArgumentNullException.ThrowIfNull(actions);
         ArgumentNullException.ThrowIfNull(baselines);
 
+        manualDailyRates ??= new Dictionary<string, decimal>(StringComparer.Ordinal);
         int normalizedCurrentBudget = Math.Clamp(currentBudget, 0, 5_000);
         int[] budgets =
         [
@@ -29,7 +31,8 @@ internal static class DailyFarmingBudgetScenarioCalculator
             actions,
             baselines,
             0,
-            generatedAtUtc);
+            generatedAtUtc,
+            manualDailyRates);
         IReadOnlyDictionary<string, int?> baselineDaysByTarget = baseline.TargetEtas
             .ToDictionary(
                 target => target.DefinitionId,
@@ -46,6 +49,7 @@ internal static class DailyFarmingBudgetScenarioCalculator
                     budget,
                     normalizedCurrentBudget,
                     generatedAtUtc,
+                    manualDailyRates,
                     baseline.ModeledPortfolioDays,
                     baselineDaysByTarget))
         ];
@@ -58,6 +62,7 @@ internal static class DailyFarmingBudgetScenarioCalculator
         int budget,
         int currentBudget,
         DateTimeOffset generatedAtUtc,
+        IReadOnlyDictionary<string, decimal> manualDailyRates,
         int? baselinePortfolioDays,
         IReadOnlyDictionary<string, int?> baselineDaysByTarget)
     {
@@ -66,7 +71,8 @@ internal static class DailyFarmingBudgetScenarioCalculator
             actions,
             baselines,
             budget,
-            generatedAtUtc);
+            generatedAtUtc,
+            manualDailyRates);
         int? daysSavedVsF2P = baselinePortfolioDays is int baselineDays
             && snapshot.ModeledPortfolioDays is int scenarioDays
                 ? Math.Max(0, baselineDays - scenarioDays)
@@ -116,7 +122,8 @@ internal static class DailyFarmingBudgetScenarioCalculator
         IReadOnlyCollection<DailyFarmingAction> actions,
         IReadOnlyCollection<DailyEnergyBaseline> baselines,
         int budget,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        IReadOnlyDictionary<string, decimal> manualDailyRates)
     {
         DailyCrystalBudgetPlan crystalBudget = DailyEnergyRefreshPlanner.Build(
             budget,
@@ -126,7 +133,8 @@ internal static class DailyFarmingBudgetScenarioCalculator
             farmingPlan,
             crystalBudget,
             baselines,
-            generatedAtUtc);
+            generatedAtUtc,
+            manualDailyRates);
         int? modeledPortfolioDays = ModeledPortfolioDays(eta.TargetEtas);
 
         return new ScenarioSnapshot(
