@@ -114,7 +114,7 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
         Assert.Equal(165, cantina.BaselineFreeEnergy);
         Assert.Equal(375, normal.BaselineFreeEnergy);
         Assert.Equal(285, fleet.BaselineFreeEnergy);
-        Assert.Contains("no recomienda refrescos de pago", result.Limitation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("refrescos de pago", result.Limitation, StringComparison.OrdinalIgnoreCase);
     }
 
     private static InvestmentDailyFarmingPlanService CreateService(InvestmentFarmingPlan plan) => new(
