@@ -141,3 +141,24 @@ A target receives a complete ETA only when every aggregate blocker that affects 
 - Shared inventory is evaluated at portfolio level, so the ETA does not let multiple targets spend the same materials virtually.
 
 The date remains a planning estimate: RNG, bonus/double-drop events, missed bonus energy, energy caps, extra purchases, and manual changes to the active target list can move the actual completion date.
+
+
+## Budget what-if simulator
+
+The daily plan now evaluates the same active farming portfolio under several crystal-budget scenarios without changing the player's saved preference.
+
+Scenarios always include:
+
+- F2P: 0 crystals/day.
+- 50 crystals/day.
+- 150 crystals/day.
+- 300 crystals/day.
+- The current custom budget when it is not already one of those presets.
+
+Each scenario reuses the same refresh allocator and conservative ETA engine as the live plan. It reports the crystals actually spendable under the current farming actions, unused budget, refresh count, extra energy, number of targets with a complete ETA, the modeled portfolio horizon, and days saved relative to F2P.
+
+The modeled portfolio horizon is the latest completion date among targets that have a complete ETA. It is not presented as the completion date of targets that still depend on shards, live stores, Scavenger conversions, credits, or other unmodeled acquisition rates.
+
+A higher configured budget is never treated as mandatory spending. For example, a 50-crystal scenario with only a Cantina Signal Data farm keeps all 50 crystals unspent because the first Cantina refresh costs 100. Similarly, crystals allocated to Normal Energy may be useful to the daily farming plan without shortening a Signal-Data-only ETA.
+
+The UI keeps simulations read-only until the player explicitly selects a scenario. Choosing a scenario then stores that daily budget through the existing player preference flow and recalculates the plan.

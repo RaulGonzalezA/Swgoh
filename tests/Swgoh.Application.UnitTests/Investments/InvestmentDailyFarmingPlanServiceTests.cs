@@ -233,6 +233,30 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_ExposesBudgetScenariosAndMarksCurrentBudget()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+            [CreateResource(
+                "signal_data_fragmented",
+                "Fragmented Signal Data",
+                InventoryResourceKind.SignalData,
+                FarmingLane.SignalData,
+                missing: 100,
+                priority: "Crítica")],
+            targets: [CreateTarget()]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, 100, CancellationToken.None);
+
+        Assert.Equal([0, 50, 100, 150, 300], result.BudgetScenarios.Select(item => item.DailyCrystalBudget));
+        DailyBudgetScenario current = Assert.Single(result.BudgetScenarios, scenario => scenario.IsCurrent);
+        Assert.Equal(100, current.DailyCrystalBudget);
+        Assert.Equal(100, current.CrystalsSpent);
+        Assert.Equal(5, current.ModeledPortfolioDays);
+        Assert.Equal(3, current.DaysSavedVsF2P);
+    }
+
+    [Fact]
     public async Task GetAsync_With50CrystalBudgetAndCantinaOnly_LeavesCrystalsUnspent()
     {
         InvestmentFarmingPlan farmingPlan = CreatePlan(

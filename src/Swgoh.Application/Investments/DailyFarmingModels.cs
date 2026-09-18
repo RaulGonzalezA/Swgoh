@@ -91,6 +91,28 @@ public sealed record DailyTargetEta(
     DateTimeOffset? KnownBottleneckCompletionAtUtc,
     string Summary);
 
+public sealed record DailyBudgetScenarioTarget(
+    string DefinitionId,
+    string Name,
+    bool FullEstimateAvailable,
+    int? EstimatedDays,
+    int? DaysSavedVsF2P);
+
+public sealed record DailyBudgetScenario(
+    int DailyCrystalBudget,
+    string ProfileLabel,
+    bool IsCurrent,
+    int CrystalsSpent,
+    int CrystalsUnspent,
+    int RefreshCount,
+    int EnergyGained,
+    int FullyEstimatedTargetCount,
+    int ReadyNowTargetCount,
+    int? ModeledPortfolioDays,
+    DateTimeOffset? ModeledPortfolioCompletionAtUtc,
+    int? DaysSavedVsF2P,
+    IReadOnlyCollection<DailyBudgetScenarioTarget> Targets);
+
 public sealed record InvestmentDailyFarmingPlan(
     long AllyCode,
     DateTimeOffset GeneratedAtUtc,
@@ -103,6 +125,7 @@ public sealed record InvestmentDailyFarmingPlan(
     DailyCrystalBudgetPlan CrystalBudget,
     IReadOnlyCollection<DailyResourceEta> ResourceEtas,
     IReadOnlyCollection<DailyTargetEta> TargetEtas,
+    IReadOnlyCollection<DailyBudgetScenario> BudgetScenarios,
     string Summary,
     string Limitation)
 {
