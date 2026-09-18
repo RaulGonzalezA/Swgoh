@@ -72,10 +72,16 @@ internal sealed class InvestmentDailyFarmingPlanService(
             dailyCrystalBudget,
             rankedActions,
             baselines);
+        DateTimeOffset generatedAtUtc = clock.UtcNow;
+        DailyFarmingEtaProjection eta = DailyFarmingEtaCalculator.Build(
+            farmingPlan,
+            crystalBudget,
+            baselines,
+            generatedAtUtc);
         string summary = BuildSummary(farmingPlan, rankedActions);
         return new InvestmentDailyFarmingPlan(
             allyCode,
-            clock.UtcNow,
+            generatedAtUtc,
             farmingPlan.HasInventorySnapshot,
             farmingPlan.InventoryCapturedAtUtc,
             farmingPlan.ActiveTargetCount,
@@ -83,8 +89,10 @@ internal sealed class InvestmentDailyFarmingPlanService(
             baselines,
             rankedActions,
             crystalBudget,
+            eta.ResourceEtas,
+            eta.TargetEtas,
             summary,
-            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. El presupuesto seleccionado se trata como un tope diario; los cristales sin una granja modelada se dejan sin gastar.");
+            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. La ETA usa tasas empíricas conservadoras solo para Signal Data y no acredita el beneficio simultáneo de los nodos duales de Sector 9; cualquier otro bloqueo sin cadencia fiable queda explícitamente fuera de la fecha completa.");
     }
 
     private static DailyFarmingAction BuildResourceAction(FarmingResourcePriority resource)
