@@ -39,12 +39,12 @@ The planner keeps the legacy Sector 8 node when only one Signal Data type is nee
 
 This is deliberately a routing heuristic rather than a claim about guaranteed drops. The dual-node rewards and energy costs are verified from the live SWGOH.GG campaign database. Community tracking published in June 2026 used roughly 28,000 observations across two studies and supports Sector 9 as a useful aggregate farm while Sector 8 remains appropriate for a single specific short-term deficit; those rates are empirical, not official guarantees.
 
-References:
+Sector 9 references:
 
 - https://swgoh.gg/campaigns/cantina-battles/M09/
 - https://www.reddit.com/r/SWGalaxyOfHeroes/comments/1u3s6tt/cantina_sector_9_drop_rates_final_version_and/
 
-References:
+Original route references:
 
 - https://swgoh.wiki/wiki/Fragmented_Signal_Data
 - https://swgoh.wiki/wiki/Incomplete_Signal_Data
