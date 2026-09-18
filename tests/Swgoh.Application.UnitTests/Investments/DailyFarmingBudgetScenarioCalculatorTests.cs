@@ -134,13 +134,80 @@ public sealed class DailyFarmingBudgetScenarioCalculatorTests
     }
 
     [Fact]
+    public void Build_WithCarboniteFeedstock_ShowsNormalEnergyRefreshSavings()
+    {
+        FarmingResourcePriority carbonite = new(
+            1,
+            "carbonite_circuit_board",
+            "Carbonite Circuit Board",
+            InventoryResourceKind.RelicMaterial,
+            FarmingLane.Scavenger,
+            "Chatarrero",
+            "test",
+            150,
+            10,
+            140,
+            0.067m,
+            1,
+            false,
+            "Crítica",
+            [new FarmingTargetDependency("UNIT_A", "Unit A", 150)]);
+        InvestmentFarmingPlan plan = Plan(
+            [carbonite],
+            [Target()]);
+        DailyFarmingAction[] actions =
+        [
+            new DailyFarmingAction(
+                1,
+                DailyFarmingChannel.NormalEnergy,
+                "Energía normal",
+                DailyFarmingPrecision.Guided,
+                "Feedstock sugerido",
+                "Alimenta Carbonite Circuit Board",
+                "test",
+                carbonite.ResourceId,
+                carbonite.ResourceName,
+                "Light Side 1-C (Normal)",
+                6,
+                375,
+                140,
+                1,
+                false,
+                "Crítica",
+                "test")
+        ];
+
+        IReadOnlyCollection<DailyBudgetScenario> result =
+            DailyFarmingBudgetScenarioCalculator.Build(
+                plan,
+                actions,
+                Baselines(),
+                currentBudget: 50,
+                Now);
+
+        DailyBudgetScenario f2p = Assert.Single(
+            result,
+            scenario => scenario.DailyCrystalBudget == 0);
+        DailyBudgetScenario saving = Assert.Single(
+            result,
+            scenario => scenario.DailyCrystalBudget == 50);
+
+        Assert.Equal(4, f2p.ModeledPortfolioDays);
+        Assert.Equal(3, saving.ModeledPortfolioDays);
+        Assert.Equal(1, saving.DaysSavedVsF2P);
+        Assert.Equal(50, saving.CrystalsSpent);
+        Assert.Equal(1, saving.RefreshCount);
+        Assert.Equal(120, saving.EnergyGained);
+    }
+
+    [Fact]
     public void Build_WithUnknownBlocker_DoesNotInventPortfolioSavings()
     {
         FarmingResourcePriority signal = SignalResource(missing: 100);
-        FarmingResourcePriority carbonite = new(
+        FarmingResourcePriority chromium = new(
             2,
-            "carbonite_circuit_board",
-            "Carbonite Circuit Board",
+            "chromium_transistor",
+            "Chromium Transistor",
             InventoryResourceKind.RelicMaterial,
             FarmingLane.Scavenger,
             "Chatarrero",
@@ -154,24 +221,24 @@ public sealed class DailyFarmingBudgetScenarioCalculatorTests
             "Alta",
             [new FarmingTargetDependency("UNIT_A", "Unit A", 120)]);
         InvestmentFarmingPlan plan = Plan(
-            [signal, carbonite],
+            [signal, chromium],
             [Target(blockingResourceTypes: 2)]);
         DailyFarmingAction[] actions =
         [
             SignalAction(),
             new DailyFarmingAction(
                 2,
-                DailyFarmingChannel.NormalEnergy,
-                "Energía normal",
+                DailyFarmingChannel.Scavenger,
+                "Chatarrero",
                 DailyFarmingPrecision.Guided,
-                "Feedstock sugerido",
-                "Alimenta Carbonite Circuit Board",
+                "Conversión guiada",
+                "Convierte para Chromium Transistor",
                 "test",
-                carbonite.ResourceId,
-                carbonite.ResourceName,
-                "Light Side 1-C (Normal)",
-                6,
-                375,
+                chromium.ResourceId,
+                chromium.ResourceName,
+                "Chatarrero",
+                null,
+                null,
                 120,
                 1,
                 false,
