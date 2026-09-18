@@ -78,6 +78,13 @@ internal sealed class InvestmentDailyFarmingPlanService(
             crystalBudget,
             baselines,
             generatedAtUtc);
+        IReadOnlyCollection<DailyBudgetScenario> budgetScenarios =
+            DailyFarmingBudgetScenarioCalculator.Build(
+                farmingPlan,
+                rankedActions,
+                baselines,
+                dailyCrystalBudget,
+                generatedAtUtc);
         string summary = BuildSummary(farmingPlan, rankedActions);
         return new InvestmentDailyFarmingPlan(
             allyCode,
@@ -91,6 +98,7 @@ internal sealed class InvestmentDailyFarmingPlanService(
             crystalBudget,
             eta.ResourceEtas,
             eta.TargetEtas,
+            budgetScenarios,
             summary,
             "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. La ETA usa tasas empíricas conservadoras solo para Signal Data y no acredita el beneficio simultáneo de los nodos duales de Sector 9; cualquier otro bloqueo sin cadencia fiable queda explícitamente fuera de la fecha completa.");
     }
