@@ -12,6 +12,12 @@ public interface IInvestmentDailyFarmingPlanService
         long allyCode,
         int dailyCrystalBudget,
         CancellationToken cancellationToken = default);
+
+    Task<InvestmentDailyFarmingPlan> GetAsync(
+        long allyCode,
+        int dailyCrystalBudget,
+        IReadOnlyDictionary<string, decimal> manualDailyRates,
+        CancellationToken cancellationToken = default);
 }
 
 internal sealed class InvestmentDailyFarmingPlanService(
@@ -27,11 +33,24 @@ internal sealed class InvestmentDailyFarmingPlanService(
         CancellationToken cancellationToken = default) =>
         GetAsync(allyCode, 0, cancellationToken);
 
+    public Task<InvestmentDailyFarmingPlan> GetAsync(
+        long allyCode,
+        int dailyCrystalBudget,
+        CancellationToken cancellationToken = default) =>
+        GetAsync(
+            allyCode,
+            dailyCrystalBudget,
+            new Dictionary<string, decimal>(StringComparer.Ordinal),
+            cancellationToken);
+
     public async Task<InvestmentDailyFarmingPlan> GetAsync(
         long allyCode,
         int dailyCrystalBudget,
+        IReadOnlyDictionary<string, decimal> manualDailyRates,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(manualDailyRates);
+
         InvestmentFarmingPlan farmingPlan = await farmingPlanService
             .GetAsync(allyCode, cancellationToken)
             .ConfigureAwait(false);
@@ -77,14 +96,32 @@ internal sealed class InvestmentDailyFarmingPlanService(
             farmingPlan,
             crystalBudget,
             baselines,
-            generatedAtUtc);
+            generatedAtUtc,
+            manualDailyRates);
         IReadOnlyCollection<DailyBudgetScenario> budgetScenarios =
             DailyFarmingBudgetScenarioCalculator.Build(
                 farmingPlan,
                 rankedActions,
                 baselines,
                 dailyCrystalBudget,
-                generatedAtUtc);
+                generatedAtUtc,
+                manualDailyRates);
+        DailyManualCadenceResource[] manualCadenceResources =
+        [
+            .. pendingResources
+                .Where(resource =>
+                    !DailyFarmingEtaCalculator.HasAutomaticRate(resource.ResourceId)
+                    || manualDailyRates.ContainsKey(resource.ResourceId))
+                .Select(resource => new DailyManualCadenceResource(
+                    resource.ResourceId,
+                    resource.ResourceName,
+                    resource.Missing ?? 0,
+                    manualDailyRates.TryGetValue(resource.ResourceId, out decimal dailyRate)
+                        ? dailyRate
+                        : null,
+                    resource.AffectedTargetCount,
+                    resource.Priority))
+        ];
         string summary = BuildSummary(farmingPlan, rankedActions);
         return new InvestmentDailyFarmingPlan(
             allyCode,
@@ -98,9 +135,10 @@ internal sealed class InvestmentDailyFarmingPlanService(
             crystalBudget,
             eta.ResourceEtas,
             eta.TargetEtas,
+            manualCadenceResources,
             budgetScenarios,
             summary,
-            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. La ETA usa tasas empíricas conservadoras para Signal Data y para los farms de feedstock de Carbonite/Bronzium; no acredita el beneficio simultáneo de Sector 9 ni otras fuentes secundarias. Cualquier bloqueo sin cadencia fiable queda explícitamente fuera de la fecha completa.");
+            "La energía actual, los fragmentos, el gear no inventariado, las tiendas en vivo y tus ingresos de cristales no son públicos. La ETA usa tasas conservadoras automáticas donde están justificadas y admite cadencias manuales para tiendas, raid y otras fuentes personales. Cualquier bloqueo sin una tasa automática o manual queda explícitamente fuera de la fecha completa.");
     }
 
     private static DailyFarmingAction BuildResourceAction(FarmingResourcePriority resource)
