@@ -95,6 +95,59 @@
                 }
             </section>
 
+            @if (_plan.BudgetScenarios.Count > 0)
+            {
+                <section class="daily-scenarios">
+                    <div class="daily-scenarios-heading">
+                        <div>
+                            <span class="section-kicker">Simulador de presupuesto</span>
+                            <h3>Qué ganas por gastar más</h3>
+                            <p>Compara el mismo portfolio sin cambiar tu presupuesto guardado. El horizonte solo resume objetivos con ETA completa.</p>
+                        </div>
+                    </div>
+
+                    <div class="daily-scenario-grid">
+                        @foreach (DailyFarmingPlanApiClient.BudgetScenarioViewModel scenario in _plan.BudgetScenarios)
+                        {
+                            <article class="@(scenario.IsCurrent ? "current" : string.Empty)">
+                                <div class="daily-scenario-title">
+                                    <div>
+                                        <span>@(scenario.IsCurrent ? "Actual" : "Simulación")</span>
+                                        <h4>@scenario.ProfileLabel</h4>
+                                    </div>
+                                    @if (scenario.ModeledPortfolioDays is int modeledDays)
+                                    {
+                                        <strong>~@modeledDays día@(modeledDays == 1 ? string.Empty : "s")</strong>
+                                    }
+                                    else
+                                    {
+                                        <strong>Sin horizonte completo</strong>
+                                    }
+                                </div>
+
+                                <div class="daily-scenario-metrics">
+                                    <span><strong>@scenario.CrystalsSpent</strong> cristales/día usados</span>
+                                    <span><strong>@scenario.RefreshCount</strong> refreshes</span>
+                                    <span><strong>+@scenario.EnergyGained</strong> energía</span>
+                                    <span><strong>@scenario.FullyEstimatedTargetCount</strong> ETA completas</span>
+                                </div>
+
+                                <p>@ScenarioSavingsLabel(scenario)</p>
+
+                                @if (!scenario.IsCurrent)
+                                {
+                                    <button type="button"
+                                            class="daily-scenario-apply"
+                                            @onclick="() => SetBudgetAsync(scenario.DailyCrystalBudget)">
+                                        Usar @scenario.DailyCrystalBudget cristales/día
+                                    </button>
+                                }
+                            </article>
+                        }
+                    </div>
+                </section>
+            }
+
             <div class="daily-energy-grid">
                 @foreach (DailyFarmingPlanApiClient.EnergyBaselineViewModel baseline in _plan.EnergyBaselines)
                 {
@@ -341,6 +394,23 @@ else if (!_loading && _error is not null && !Compact)
         300 => "300 / día",
         _ => $"{budget} / día"
     };
+
+    private static string ScenarioSavingsLabel(DailyFarmingPlanApiClient.BudgetScenarioViewModel scenario)
+    {
+        if (scenario.DailyCrystalBudget == 0)
+        {
+            return "Referencia F2P para comparar el ahorro de tiempo.";
+        }
+
+        if (scenario.DaysSavedVsF2P is > 0)
+        {
+            return $"Recorta ~{scenario.DaysSavedVsF2P} día{(scenario.DaysSavedVsF2P == 1 ? string.Empty : "s")} frente a F2P en el horizonte modelado.";
+        }
+
+        return scenario.CrystalsSpent == 0
+            ? "El presupuesto queda reservado: no hay refresh justificable con el plan actual."
+            : "Con los bloqueos modelados actuales no recorta el horizonte frente a F2P.";
+    }
 
     private static string FormatEtaDate(DateTimeOffset value) => value.ToString("dd/MM/yyyy");
 
