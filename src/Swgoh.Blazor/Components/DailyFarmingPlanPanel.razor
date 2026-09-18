@@ -149,54 +149,9 @@
                 </section>
             }
 
-            @if (_plan.ManualCadenceResources.Count > 0)
-            {
-                <section class="daily-cadences">
-                    <div class="daily-cadences-heading">
-                        <div>
-                            <span class="section-kicker">Cadencias personales</span>
-                            <h3>Completa las ETA que dependen de tiendas y recompensas</h3>
-                            <p>Indica cuántas unidades consigues de media al día. Se guarda solo en este navegador para tu ally code y puedes dejarlo vacío si no quieres estimarlo.</p>
-                        </div>
-                    </div>
-
-                    <div class="daily-cadence-grid">
-                        @foreach (DailyFarmingPlanApiClient.ManualCadenceResourceViewModel resource in _plan.ManualCadenceResources)
-                        {
-                            <article class="@(resource.DailyRate is not null ? "configured" : string.Empty)">
-                                <div class="daily-cadence-title">
-                                    <div>
-                                        <span>@resource.Priority</span>
-                                        <h4>@resource.ResourceName</h4>
-                                    </div>
-                                    <strong>faltan @resource.Missing.ToString("N0")</strong>
-                                </div>
-
-                                <label>
-                                    <span>Unidades / día</span>
-                                    <input type="number"
-                                           min="0"
-                                           max="1000000"
-                                           step="0.1"
-                                           value="@CadenceValue(resource)"
-                                           @onchange="(ChangeEventArgs args) => OnCadenceChangedAsync(resource.ResourceId, args)" />
-                                </label>
-
-                                <small>Afecta a @resource.AffectedTargetCount objetivo@(resource.AffectedTargetCount == 1 ? string.Empty : "s"). @CadenceEtaLabel(resource)</small>
-
-                                @if (resource.DailyRate is not null)
-                                {
-                                    <button type="button"
-                                            class="daily-cadence-clear"
-                                            @onclick="() => ClearCadenceAsync(resource.ResourceId)">
-                                        Quitar cadencia
-                                    </button>
-                                }
-                            </article>
-                        }
-                    </div>
-                </section>
-            }
+            <DailyResourceCadenceEditor Resources="_plan.ManualCadenceResources"
+                                        ResourceEtas="_plan.ResourceEtas"
+                                        CadenceChanged="OnCadenceChangedAsync" />
 
             <div class="daily-energy-grid">
                 @foreach (DailyFarmingPlanApiClient.EnergyBaselineViewModel baseline in _plan.EnergyBaselines)
@@ -451,42 +406,19 @@ else if (!_loading && _error is not null && !Compact)
         }
     }
 
-    private async Task OnCadenceChangedAsync(string resourceId, ChangeEventArgs args)
+    private async Task OnCadenceChangedAsync((string ResourceId, decimal? DailyRate) change)
     {
-        string raw = args.Value?.ToString() ?? string.Empty;
-        if (TryParseCadence(raw, out decimal dailyRate))
+        if (change.DailyRate is decimal dailyRate)
         {
-            _dailyCadences[resourceId] = Math.Min(dailyRate, 1_000_000m);
+            _dailyCadences[change.ResourceId] = dailyRate;
         }
         else
         {
-            _dailyCadences.Remove(resourceId);
+            _dailyCadences.Remove(change.ResourceId);
         }
 
         await PreferenceService.SetDailyResourceCadencesAsync(AllyCode, _dailyCadences);
         await LoadAsync(force: true);
-    }
-
-    private async Task ClearCadenceAsync(string resourceId)
-    {
-        _dailyCadences.Remove(resourceId);
-        await PreferenceService.SetDailyResourceCadencesAsync(AllyCode, _dailyCadences);
-        await LoadAsync(force: true);
-    }
-
-    private static bool TryParseCadence(string raw, out decimal dailyRate)
-    {
-        bool parsed = decimal.TryParse(
-                raw,
-                NumberStyles.Number,
-                CultureInfo.CurrentCulture,
-                out dailyRate)
-            || decimal.TryParse(
-                raw,
-                NumberStyles.Number,
-                CultureInfo.InvariantCulture,
-                out dailyRate);
-        return parsed && dailyRate > 0m;
     }
 
     private static string CadenceSignature(IReadOnlyDictionary<string, decimal> cadences) =>
@@ -497,21 +429,6 @@ else if (!_loading && _error is not null && !Compact)
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair =>
                     $"{pair.Key}:{pair.Value.ToString(CultureInfo.InvariantCulture)}"));
-
-    private static string CadenceValue(
-        DailyFarmingPlanApiClient.ManualCadenceResourceViewModel resource) =>
-        resource.DailyRate?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
-
-    private string CadenceEtaLabel(
-        DailyFarmingPlanApiClient.ManualCadenceResourceViewModel resource)
-    {
-        DailyFarmingPlanApiClient.ResourceEtaViewModel? eta = _plan?.ResourceEtas
-            .FirstOrDefault(item =>
-                string.Equals(item.ResourceId, resource.ResourceId, StringComparison.Ordinal));
-        return eta is null
-            ? "Sin ETA hasta configurar una cadencia."
-            : $"ETA de este recurso: ~{eta.EstimatedDays} día{(eta.EstimatedDays == 1 ? string.Empty : "s")}.";
-    }
 
     private async Task SetBudgetAsync(int budget)
     {
