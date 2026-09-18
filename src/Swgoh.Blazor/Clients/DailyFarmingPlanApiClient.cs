@@ -4,12 +4,19 @@ namespace Swgoh.Blazor.Clients;
 
 public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
 {
+    public Task<DailyFarmingPlanViewModel> GetAsync(
+        long allyCode,
+        CancellationToken cancellationToken = default) =>
+        GetAsync(allyCode, 0, cancellationToken);
+
     public async Task<DailyFarmingPlanViewModel> GetAsync(
         long allyCode,
+        int dailyCrystalBudget,
         CancellationToken cancellationToken = default)
     {
+        int budget = Math.Clamp(dailyCrystalBudget, 0, 5_000);
         using HttpResponseMessage response = await httpClient.GetAsync(
-            $"/api/v1/investments/players/{allyCode}/daily-farming-plan",
+            $"/api/v1/investments/players/{allyCode}/daily-farming-plan?crystalBudget={budget}",
             cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<DailyFarmingPlanViewModel>(cancellationToken)
@@ -60,6 +67,26 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         string Priority,
         string StopCondition);
 
+    public sealed record RefreshRecommendationViewModel(
+        DailyFarmingChannelViewModel Channel,
+        string ChannelLabel,
+        int RefreshCount,
+        int CrystalCost,
+        int EnergyGained,
+        int BaselineFreeEnergy,
+        int PlannedDailyEnergy,
+        int? NextRefreshCost,
+        string Reason);
+
+    public sealed record CrystalBudgetViewModel(
+        int DailyCrystalBudget,
+        int CrystalsSpent,
+        int CrystalsUnspent,
+        string ProfileLabel,
+        IReadOnlyCollection<RefreshRecommendationViewModel> Refreshes,
+        int RefreshCount,
+        int EnergyGained);
+
     public sealed record DailyFarmingPlanViewModel(
         long AllyCode,
         DateTimeOffset GeneratedAtUtc,
@@ -69,6 +96,7 @@ public sealed class DailyFarmingPlanApiClient(HttpClient httpClient)
         int MissingResourceTypes,
         IReadOnlyCollection<EnergyBaselineViewModel> EnergyBaselines,
         IReadOnlyCollection<ActionViewModel> Actions,
+        CrystalBudgetViewModel CrystalBudget,
         string Summary,
         string Limitation);
 }
