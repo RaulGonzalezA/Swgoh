@@ -26,8 +26,7 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             .ConfigureAwait(false);
         if (!apply ||
             preview.State is null ||
-            preview.Optimization is null ||
-            preview.Optimization.Recommendations.Count == 0)
+            preview.Optimization is null)
         {
             return preview;
         }
@@ -35,6 +34,16 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
         cancellationToken.ThrowIfCancellationRequested();
         GacPlannerState state = preview.State;
         GacAttackOptimizationResult optimization = preview.Optimization;
+        if (optimization.Recommendations.Count == 0)
+        {
+            return mode == GacAttackOptimizationMode.RebuildPlanned
+                ? await ApplyEmptyRebuildAsync(
+                    allyCode,
+                    state,
+                    optimization,
+                    cancellationToken).ConfigureAwait(false)
+                : preview;
+        }
         IReadOnlyDictionary<Guid, string?> temporaryDatacrons = AllocateAttackDatacrons(
             state,
             optimization.Recommendations,
@@ -134,7 +143,50 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             optimization with { Applied = true });
     }
 
-    private static IReadOnlyDictionary<Guid, string?> AllocateAttackDatacrons(
+    private async Task<GacAttackOptimizationLookup> ApplyEmptyRebuildAsync(
+        long allyCode,
+        GacPlannerState state,
+        GacAttackOptimizationResult optimization,
+        CancellationToken cancellationToken)
+    {
+        GacRoundPlan plan = await planRepository
+            .FindByIdAsync(state.Plan.Id, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The current GAC round plan could not be loaded for optimization.");
+
+        GacAttackAssignment[] retainedAttacks =
+        [
+            .. plan.Attacks.Where(attack => attack.Status != GacAttackPlanStatus.Planned)
+        ];
+        if (retainedAttacks.Length != plan.Attacks.Count)
+        {
+            plan.Replace(plan.OwnDefenses, plan.VisibleDefenses, retainedAttacks, clock.UtcNow);
+            bool saved = await planRepository
+                .TrySaveAsync(plan, state.Plan.Version, cancellationToken)
+                .ConfigureAwait(false);
+            if (!saved)
+            {
+                throw new GacPlannerConcurrencyException(
+                    "The GAC plan changed while the attack optimizer was running. Recalculate before applying the result.");
+            }
+        }
+
+        GacPlannerLookup refreshed = await plannerService
+            .GetCurrentAsync(allyCode, cancellationToken)
+            .ConfigureAwait(false);
+        if (refreshed.State is not null)
+        {
+            await PruneBestEffortAsync(allyCode, refreshed.State, cancellationToken).ConfigureAwait(false);
+        }
+
+        return new GacAttackOptimizationLookup(
+            refreshed.Status,
+            refreshed.Message,
+            refreshed.State,
+            optimization with { Applied = true });
+    }
+
+    internal static IReadOnlyDictionary<Guid, string?> AllocateAttackDatacrons(
         GacPlannerState state,
         IReadOnlyCollection<GacAttackOptimizationRecommendation> recommendations,
         GacAttackOptimizationMode mode)
@@ -145,6 +197,16 @@ internal sealed class HardenedGacAttackPlanOptimizerService(
             .Where(id => id is not null)
             .Select(id => id!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string id in state.Plan.Attacks
+                     .Where(attack => attack.Status is GacAttackPlanStatus.Won or GacAttackPlanStatus.Failed)
+                     .Select(attack => attack.DatacronId)
+                     .Where(id => id is not null)
+                     .Select(id => id!))
+        {
+            used.Add(id);
+        }
+
         if (mode == GacAttackOptimizationMode.FillGaps)
         {
             foreach (string id in state.Plan.Attacks
