@@ -227,7 +227,7 @@ internal static class DailyFarmingEtaCalculator
 
         if (modeled > 0 && knownDays is int partialDays)
         {
-            return $"ETA parcial de Signal Data: ~{partialDays} día{(partialDays == 1 ? string.Empty : "s")}; quedan {unknown} bloqueo{(unknown == 1 ? string.Empty : "s")} sin ETA fiable.";
+            return $"ETA parcial de recursos modelados: ~{partialDays} día{(partialDays == 1 ? string.Empty : "s")}; quedan {unknown} bloqueo{(unknown == 1 ? string.Empty : "s")} sin ETA fiable.";
         }
 
         if (target.StarStepsRemaining > 0 && !target.RelicMaterialsTracked)
