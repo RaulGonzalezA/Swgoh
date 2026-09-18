@@ -66,17 +66,32 @@ public sealed record DailyCrystalBudgetPlan(
     public int EnergyGained => Refreshes.Sum(refresh => refresh.EnergyGained);
 }
 
+public enum DailyResourceEtaMode
+{
+    EnergyFarm = 1,
+    ManualCadence = 2
+}
+
 public sealed record DailyResourceEta(
     string ResourceId,
     string ResourceName,
     long Missing,
-    decimal ExpectedDropsPerAttempt,
-    int EnergyCostPerAttempt,
-    int PlannedDailyEnergy,
+    DailyResourceEtaMode Mode,
+    decimal? ExpectedDropsPerAttempt,
+    int? EnergyCostPerAttempt,
+    int? PlannedDailyEnergy,
     decimal ExpectedDailyYield,
     int EstimatedDays,
     DateTimeOffset EstimatedCompletionAtUtc,
     string Basis);
+
+public sealed record DailyManualCadenceResource(
+    string ResourceId,
+    string ResourceName,
+    long Missing,
+    decimal? DailyRate,
+    int AffectedTargetCount,
+    string Priority);
 
 public sealed record DailyTargetEta(
     string DefinitionId,
@@ -125,6 +140,7 @@ public sealed record InvestmentDailyFarmingPlan(
     DailyCrystalBudgetPlan CrystalBudget,
     IReadOnlyCollection<DailyResourceEta> ResourceEtas,
     IReadOnlyCollection<DailyTargetEta> TargetEtas,
+    IReadOnlyCollection<DailyManualCadenceResource> ManualCadenceResources,
     IReadOnlyCollection<DailyBudgetScenario> BudgetScenarios,
     string Summary,
     string Limitation)
