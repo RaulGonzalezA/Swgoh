@@ -13,5 +13,11 @@ window.swgohPreferences = {
     },
     setDailyCrystalBudget: function (allyCode, budget) {
         window.localStorage.setItem("swgoh.dailyCrystalBudget." + allyCode, budget);
+    },
+    getDailyResourceCadences: function (allyCode) {
+        return window.localStorage.getItem("swgoh.dailyResourceCadences." + allyCode);
+    },
+    setDailyResourceCadences: function (allyCode, cadencesJson) {
+        window.localStorage.setItem("swgoh.dailyResourceCadences." + allyCode, cadencesJson);
     }
 };
