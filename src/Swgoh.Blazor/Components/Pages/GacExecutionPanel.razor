@@ -4,9 +4,9 @@
 <section id="gac-execution" class="gac-execution-panel" aria-labelledby="gac-execution-title">
     <div class="gac-execution-heading">
         <div>
-            <span class="section-kicker">Modo ejecución</span>
-            <h2 id="gac-execution-title">Ataca, registra el resultado y recalcula</h2>
-            <p>Los equipos usados quedan consumidos. Si fallas, indica qué enemigos sobreviven y si quedan con TM precargado para que el siguiente counter se calcule como cleanup real.</p>
+            <span class="section-kicker">GAC War Room 3.0</span>
+            <h2 id="gac-execution-title">Ejecuta la ronda y reoptimiza en vivo</h2>
+            <p>Cada resultado consume equipo y datacron, conserva el estado real de la defensa y reconstruye automáticamente todo el plan pendiente con los recursos que quedan.</p>
         </div>
         <div class="gac-execution-summary">
             <span><strong>@PlannedAttacks.Count</strong> preparados</span>
@@ -44,6 +44,37 @@
             }
         </div>
 
+        @if (LastExecution.Replan is { } replan)
+        {
+            <div class="gac-war-room-replan @(replan.Applied ? "applied" : "preview")">
+                <div>
+                    <span class="section-kicker">Replanificación en vivo</span>
+                    <strong>@(replan.Applied ? "Plan pendiente reconstruido" : "Replanificación calculada")</strong>
+                    <small>
+                        @(replan.Applied
+                            ? $"Se sustituyeron {replan.ReplacedPendingAttacks} ataque(s) pendientes por el nuevo óptimo."
+                            : "El resultado se guardó, pero el plan pendiente anterior sigue activo.")
+                    </small>
+                </div>
+                <div class="gac-war-room-replan-metrics">
+                    <span><strong>@replan.PreviousPendingAttacks</strong> antes</span>
+                    <span><strong>@replan.CurrentPendingAttacks</strong> ahora</span>
+                    <span><strong>@replan.CoveredDefenses</strong> cubiertas</span>
+                    <span class="@(replan.UncoveredDefenses > 0 ? "warning" : string.Empty)"><strong>@replan.UncoveredDefenses</strong> sin counter</span>
+                </div>
+            </div>
+        }
+
+        @if (LastExecution.PostCommitWarnings.Count > 0)
+        {
+            <div class="gac-war-room-warnings" role="status">
+                @foreach (string warning in LastExecution.PostCommitWarnings)
+                {
+                    <span>! @warning</span>
+                }
+            </div>
+        }
+
         @if (LastExecution.NextRecommendation is not null)
         {
             GacPlannerApiClient.OptimizationRecommendationViewModel next = LastExecution.NextRecommendation;
@@ -56,6 +87,8 @@
                     <p>@next.Rationale</p>
                     <div class="gac-next-action-meta">
                         <span>Score <strong>@next.Score.ToString("0.#")</strong></span>
+                        <span>Win est. <strong>@next.EstimatedWinProbability.ToString("0.#")%</strong></span>
+                        <span>Riesgo <strong>@FriendlyRisk(next.Risk)</strong></span>
                         <span>Confianza <strong>@FriendlyConfidence(next.Confidence)</strong></span>
                         @if (next.PersonalSamples > 0)
                         {
@@ -111,6 +144,28 @@
                                 }
                             </div>
                         </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(next.StrategicRationale))
+                {
+                    <p class="gac-war-room-strategy">@next.StrategicRationale</p>
+                }
+                @if (next.FutureDefensesAtRisk > 0)
+                {
+                    <div class="gac-war-room-preserve-note">
+                        Preserva piezas: este counter protege @next.FutureDefensesAtRisk defensa(s) futura(s) frente a alternativas más caras.
+                    </div>
+                }
+                @if (ReservedAfterNext.Count > 0)
+                {
+                    <div class="gac-war-room-reserved">
+                        <span>Reserva después de este ataque</span>
+                        @foreach (GacPlannerApiClient.AttackViewModel reserved in ReservedAfterNext)
+                        {
+                            GacPlannerApiClient.VisibleDefenseViewModel? reservedDefense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == reserved.DefenseId);
+                            <small>@reserved.Team.Name → @(reservedDefense?.Label ?? reservedDefense?.Squad.Leader.Name ?? "Defensa rival")</small>
+                        }
                     </div>
                 }
             </article>
@@ -196,7 +251,7 @@
                     <small>Opcional. Si la dejas vacía se conserva la nota del planificador.</small>
                 </label>
                 <button class="primary-button" type="button" @onclick="SubmitExecutionAsync" disabled="@ExecutionBusy">
-                    @(ExecutionBusy ? "Registrando y recalculando…" : "Guardar resultado y calcular siguiente")
+                    @(ExecutionBusy ? "Registrando y reconstruyendo ronda…" : "Guardar resultado y reconstruir ronda")
                 </button>
             </div>
 
@@ -253,11 +308,19 @@
                 GacPlannerApiClient.VisibleDefenseViewModel? defense = Planner.Plan.VisibleDefenses.FirstOrDefault(item => item.Id == attack.DefenseId);
                 <article class="gac-execution-card @(SelectedAttackId == attack.Id ? "selected" : string.Empty)">
                     <div class="gac-execution-card-copy">
-                        <span>@(defense?.Zone ?? "Zona") · @(attack.IsCleanup ? "cleanup" : "intento") #@attack.Attempt</span>
+                        @{
+                            int warRoomOrder = WarRoomOrder(attack);
+                            string orderLabel = warRoomOrder == int.MaxValue ? string.Empty : $"Orden #{warRoomOrder} · ";
+                        }
+                        <span>@orderLabel@(defense?.Zone ?? "Zona") · @(attack.IsCleanup ? "cleanup" : "intento") #@attack.Attempt</span>
                         <strong>@(defense?.Label ?? defense?.Squad.Leader.Name ?? "Defensa") → @attack.Team.Name</strong>
                         @if (!string.IsNullOrWhiteSpace(attack.Notes))
                         {
                             <small>@attack.Notes</small>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(attack.DatacronId))
+                        {
+                            <small class="gac-war-room-datacron">DC reservado: @attack.DatacronId</small>
                         }
                     </div>
                     <div class="gac-execution-card-team rich-squad">
@@ -347,8 +410,29 @@
     private IReadOnlyCollection<GacPlannerApiClient.AttackViewModel> PlannedAttacks =>
         [.. Planner.Plan.Attacks
             .Where(attack => attack.Status == "Planned")
-            .OrderBy(attack => DefenseZone(attack.DefenseId), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(WarRoomOrder)
+            .ThenBy(attack => DefenseZone(attack.DefenseId), StringComparer.OrdinalIgnoreCase)
             .ThenBy(attack => attack.Attempt)];
+
+    private IReadOnlyCollection<GacPlannerApiClient.AttackViewModel> ReservedAfterNext
+    {
+        get
+        {
+            if (LastExecution?.NextRecommendation is not { } next)
+            {
+                return [];
+            }
+
+            return
+            [
+                .. PlannedAttacks
+                    .Where(attack =>
+                        attack.DefenseId != next.DefenseId ||
+                        attack.Team.Id != next.TeamPresetId)
+                    .Take(2)
+            ];
+        }
+    }
 
     private IReadOnlyCollection<GacPlannerApiClient.AttackViewModel> CompletedAttacks =>
         [.. Planner.Plan.Attacks
@@ -512,12 +596,46 @@
     private PlayerApiClient.RosterUnitViewModel? FindOpponentRosterUnit(string definitionId) => OpponentRoster.FirstOrDefault(unit =>
         string.Equals(unit.DefinitionId, definitionId, StringComparison.OrdinalIgnoreCase));
 
+    private int WarRoomOrder(GacPlannerApiClient.AttackViewModel attack)
+    {
+        if (Optimization is null)
+        {
+            return int.MaxValue;
+        }
+
+        GacPlannerApiClient.OptimizationRecommendationViewModel[] ordered =
+        [
+            .. Optimization.Recommendations
+                .OrderByDescending(recommendation => recommendation.Score)
+                .ThenBy(recommendation => recommendation.StrategicCost)
+        ];
+        for (int index = 0; index < ordered.Length; index++)
+        {
+            GacPlannerApiClient.OptimizationRecommendationViewModel recommendation = ordered[index];
+            if (recommendation.DefenseId == attack.DefenseId &&
+                recommendation.TeamPresetId == attack.Team.Id)
+            {
+                return index + 1;
+            }
+        }
+
+        return int.MaxValue;
+    }
+
     private static string FriendlyConfidence(string confidence) => confidence switch
     {
         "High" => "Alta",
         "Medium" => "Media",
         "Low" => "Baja",
         _ => confidence
+    };
+
+    private static string FriendlyRisk(string risk) => risk switch
+    {
+        "Low" => "Bajo",
+        "Medium" => "Medio",
+        "High" => "Alto",
+        _ => risk
     };
 
     private static string ExecutionLabel(GacAttackExecutionApiClient.ExecutedAttackViewModel execution)
