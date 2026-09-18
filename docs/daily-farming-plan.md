@@ -95,3 +95,49 @@ The Blazor UI stores the selected daily budget locally per ally code:
 The planner only allocates crystals to Normal, Cantina or Fleet when that channel has an actionable material farm with a real resource dependency. Fleet guardrails and other informational actions are intentionally ineligible. Unused crystals remain explicitly unspent.
 
 Refresh allocation is marginal: each additional refresh on the same channel has diminishing planning priority. This allows a constrained budget to diversify between a critical Cantina farm and a useful Normal farm instead of spending the entire budget on one channel by default.
+
+
+## Target ETA projection
+
+The planner now projects a conservative completion date for each active investment target when the remaining blockers can be modeled safely.
+
+### Signal Data basis
+
+The ETA engine deliberately uses the dedicated Sector 8 nodes as a conservative baseline even when the daily route uses a dual Sector 9 node:
+
+- Fragmented Signal Data: 1.35 expected units per attempt on Cantina 8-C.
+- Incomplete Signal Data: 0.90 expected units per attempt on Cantina 8-F.
+- Flawed Signal Data: 0.65 expected units per attempt on Cantina 8-G.
+- Each dedicated attempt costs 16 Cantina Energy.
+- Planned daily Cantina Energy is the free-energy baseline plus the refresh energy actually allocated by the current crystal budget.
+
+These planning rates are intentionally slightly below the long-running empirical community averages commonly cited around 1.37 / 0.93 / 0.66. They are expectations over many attempts, not guaranteed drops.
+
+Current campaign data confirms the dedicated Sector 8 Signal Data nodes and their 16-energy cost:
+
+- https://swgoh.gg/campaigns/cantina-battles/M08/
+
+Empirical references:
+
+- https://www.reddit.com/r/SWGalaxyOfHeroes/comments/ugtcwo/
+- https://www.reddit.com/r/SWGalaxyOfHeroes/comments/15r7ae6/
+
+### Conservative portfolio scheduling
+
+Signal Data deficits are projected in the same portfolio priority order as the aggregate farming plan. The calculation does not credit the simultaneous second Signal Data drop from Sector 9. Therefore a smart 9-B / 9-D / 9-F route may finish earlier than the displayed ETA.
+
+The June 2026 Sector 9 study collected roughly 28,000 observations and supports using dual nodes for aggregate value, but those empirical rates are not treated as guaranteed constants in the ETA engine:
+
+- https://www.reddit.com/r/SWGalaxyOfHeroes/comments/1u3s6tt/cantina_sector_9_drop_rates_final_version_and/
+
+### Complete vs partial ETA
+
+A target receives a complete ETA only when every aggregate blocker that affects it has a modeled cadence.
+
+- Signal Data can currently contribute a modeled ETA.
+- A target whose tracked materials are already covered is marked as ready now.
+- Scavenger conversions, live stores/events, credits, advanced relic materials, gear, and shard/star progress remain without a time estimate unless their acquisition cadence becomes explicitly modeled.
+- If Signal Data is modeled but another blocker is not, the UI shows a partial ETA for the known bottleneck and keeps the final completion date unset.
+- Shared inventory is evaluated at portfolio level, so the ETA does not let multiple targets spend the same materials virtually.
+
+The date remains a planning estimate: RNG, bonus/double-drop events, missed bonus energy, energy caps, extra purchases, and manual changes to the active target list can move the actual completion date.
