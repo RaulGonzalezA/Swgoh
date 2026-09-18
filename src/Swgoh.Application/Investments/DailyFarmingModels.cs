@@ -66,6 +66,31 @@ public sealed record DailyCrystalBudgetPlan(
     public int EnergyGained => Refreshes.Sum(refresh => refresh.EnergyGained);
 }
 
+public sealed record DailyResourceEta(
+    string ResourceId,
+    string ResourceName,
+    long Missing,
+    decimal ExpectedDropsPerAttempt,
+    int EnergyCostPerAttempt,
+    int PlannedDailyEnergy,
+    decimal ExpectedDailyYield,
+    int EstimatedDays,
+    DateTimeOffset EstimatedCompletionAtUtc,
+    string Basis);
+
+public sealed record DailyTargetEta(
+    string DefinitionId,
+    string Name,
+    string? ThumbnailName,
+    bool ReadyNow,
+    bool FullEstimateAvailable,
+    int? EstimatedDays,
+    DateTimeOffset? EstimatedCompletionAtUtc,
+    int ModeledBlockingResourceTypes,
+    int UnknownBlockingResourceTypes,
+    DateTimeOffset? KnownBottleneckCompletionAtUtc,
+    string Summary);
+
 public sealed record InvestmentDailyFarmingPlan(
     long AllyCode,
     DateTimeOffset GeneratedAtUtc,
@@ -76,5 +101,11 @@ public sealed record InvestmentDailyFarmingPlan(
     IReadOnlyCollection<DailyEnergyBaseline> EnergyBaselines,
     IReadOnlyCollection<DailyFarmingAction> Actions,
     DailyCrystalBudgetPlan CrystalBudget,
+    IReadOnlyCollection<DailyResourceEta> ResourceEtas,
+    IReadOnlyCollection<DailyTargetEta> TargetEtas,
     string Summary,
-    string Limitation);
+    string Limitation)
+{
+    public int FullyEstimatedTargetCount => TargetEtas.Count(target => target.FullEstimateAvailable);
+    public int ReadyNowTargetCount => TargetEtas.Count(target => target.ReadyNow);
+}
