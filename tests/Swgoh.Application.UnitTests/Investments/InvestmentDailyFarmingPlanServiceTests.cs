@@ -207,6 +207,32 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_WithSignalDataTarget_ExposesBudgetAwareEta()
+    {
+        InvestmentFarmingPlan farmingPlan = CreatePlan(
+            [CreateResource(
+                "signal_data_fragmented",
+                "Fragmented Signal Data",
+                InventoryResourceKind.SignalData,
+                FarmingLane.SignalData,
+                missing: 40,
+                priority: "Crítica")],
+            targets: [CreateTarget()]);
+        var service = CreateService(farmingPlan);
+
+        InvestmentDailyFarmingPlan result = await service.GetAsync(AllyCode, 100, CancellationToken.None);
+
+        DailyResourceEta resourceEta = Assert.Single(result.ResourceEtas);
+        Assert.Equal(285, resourceEta.PlannedDailyEnergy);
+        Assert.Equal(2, resourceEta.EstimatedDays);
+        DailyTargetEta targetEta = Assert.Single(result.TargetEtas);
+        Assert.True(targetEta.FullEstimateAvailable);
+        Assert.Equal(2, targetEta.EstimatedDays);
+        Assert.Equal(Now.AddDays(2), targetEta.EstimatedCompletionAtUtc);
+        Assert.Equal(1, result.FullyEstimatedTargetCount);
+    }
+
+    [Fact]
     public async Task GetAsync_With50CrystalBudgetAndCantinaOnly_LeavesCrystalsUnspent()
     {
         InvestmentFarmingPlan farmingPlan = CreatePlan(
@@ -232,7 +258,8 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
 
     private static InvestmentFarmingPlan CreatePlan(
         IReadOnlyCollection<FarmingResourcePriority> resources,
-        int activeTargets = 1) => new(
+        int activeTargets = 1,
+        IReadOnlyCollection<FarmingTargetPlan>? targets = null) => new(
             AllyCode,
             Now,
             Now.AddMinutes(-30),
@@ -243,7 +270,23 @@ public sealed class InvestmentDailyFarmingPlanServiceTests
             resources.Count(resource => resource.Missing is > 0),
             resources.Count(resource => resource.SharedBottleneck),
             resources,
-            []);
+            targets ?? []);
+
+    private static FarmingTargetPlan CreateTarget() => new(
+        "UNIT",
+        "Unit",
+        null,
+        5,
+        7,
+        7,
+        null,
+        2,
+        0,
+        0.2m,
+        1,
+        0,
+        true,
+        "test");
 
     private static FarmingResourcePriority CreateResource(
         string resourceId,
