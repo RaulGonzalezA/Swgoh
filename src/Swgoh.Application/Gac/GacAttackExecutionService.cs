@@ -21,6 +21,7 @@ internal sealed class GacAttackExecutionService(
     IGacLiveAttackStateRepository? liveStateRepository = null) : IGacAttackExecutionService
 {
     private static readonly TimeSpan PostCommitOperationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan WarRoomReplanTimeout = TimeSpan.FromSeconds(20);
 
     public async Task<GacAttackExecutionLookup> ExecuteAsync(
         long allyCode,
@@ -248,7 +249,7 @@ internal sealed class GacAttackExecutionService(
             GacPlannerState committedState,
             ICollection<string> warnings)
     {
-        using var timeout = new CancellationTokenSource(PostCommitOperationTimeout);
+        using var timeout = new CancellationTokenSource(WarRoomReplanTimeout);
         try
         {
             int previousPending = committedState.Plan.Attacks.Count(attack =>
